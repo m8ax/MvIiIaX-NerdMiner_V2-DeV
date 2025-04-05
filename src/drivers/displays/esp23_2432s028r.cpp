@@ -21,6 +21,17 @@
  *   si lo has configurado, sino, no te preocupes, no pasa nada, todo seguirá funcionando y
  *   minando como siempre.
  *
+ *   Es **necesario** que durante la **primera configuración del minero** se introduzca correctamente
+ *   la zona horaria (timezone). Este valor es esencial para inicializar correctamente la lógica de
+ *   sincronización y control horario del sistema.
+ *
+ *   Posteriormente, la zona horaria se actualizará automáticamente mediante la IP pública del dispositivo,
+ *   ajustándose de forma dinámica a la ubicación real del usuario, incluyendo también el cambio automático
+ *   por horario de verano (si aplica).
+ *
+ *   Esto asegura que, tras la configuración inicial correcta, el sistema mantenga siempre la hora local
+ *   precisa sin necesidad de intervención manual.
+ *
  *
  *
  *           Un minero de Bitcoin es un dispositivo o software que realiza cálculos
@@ -30,7 +41,7 @@
  *
  *
  *
- *                     Tmp. De Programación 3H - 3440 Líneas De Código
+ *                     Tmp. De Programación 3H - 3465 Líneas De Código
  *                     ------------------------------------------------
  *
  ********************************************************************************************/
@@ -81,11 +92,9 @@ TFT_eSprite background = TFT_eSprite(&tft); // Invoke library sprite
 SPIClass hSPI(HSPI);
 TFT_eTouch<TFT_eSPI> touch(tft, ETOUCH_CS, 0xFF, hSPI);
 
-int colorI = 0, colorIndex = 0, maxtemp = 0, mintemp = 1000;
-int limite = 0, zonilla, solounavez = 0, solouna = 0, sumatele = 1;
+int colorI = 0, colorIndex = 0, maxtemp = 0, mintemp = 1000, limite = 0, zonilla, solounavez = 0, solouna = 0, sumatele = 1;
 uint16_t colors[] = {TFT_WHITE, TFT_RED, TFT_GREEN, TFT_BLUE, TFT_YELLOW, TFT_CYAN, TFT_MAGENTA, TFT_ORANGE, TFT_GREENYELLOW, TFT_PINK, TFT_LIGHTGREY, TFT_SKYBLUE, TFT_OLIVE, TFT_GOLD, TFT_SILVER};
-uint32_t rndnumero, uncontadormas = 0;
-uint32_t refresca = 0, cuentita = 0, numnotis = 0, numfrases = 0;
+uint32_t rndnumero, uncontadormas = 0, refresca = 0, cuentita = 0, numnotis = 0, numfrases = 0;
 unsigned long lastTelegramEpochTime = 0;       // Guarda el tiempo de la última ejecución (en segundos desde Epoch)
 unsigned long startTime = 0;                   // Para guardar Epoch de inicio
 const unsigned long interval = 60 * 2 * 60;    // 2 horas en segundos (2 horas * 60 minutos * 60 segundos)
@@ -118,19 +127,19 @@ moonPhase mymoonPhase;
 
 void getChipInfo(void)
 {
-  Serial.print("M8AX - Chip: ");
-  Serial.println(ESP.getChipModel());
-  Serial.print("M8AX - ChipRevision: ");
-  Serial.println(ESP.getChipRevision());
-  Serial.print("M8AX - Psram size: ");
+  Serial.print("\nM8AX - Chip: ");
+  Serial.print(ESP.getChipModel());
+  Serial.print("\nM8AX - Revisión Del Chip: ");
+  Serial.print(ESP.getChipRevision());
+  Serial.print("\nM8AX - Tamaño De PsRam: ");
   Serial.print(ESP.getPsramSize() / 1024);
   Serial.println("KB");
-  Serial.print("M8AX - Flash size: ");
+  Serial.print("M8AX - Tamaño De Flash: ");
   Serial.print(ESP.getFlashChipSize() / 1024);
   Serial.println("KB");
-  Serial.print("M8AX - CPU frequency: ");
+  Serial.print("M8AX - Frecuencia De CPU: ");
   Serial.print(ESP.getCpuFreqMHz());
-  Serial.println("MHz");
+  Serial.println("MHz\n");
 }
 
 String capitalizar(String palabra)
@@ -1681,66 +1690,82 @@ void recopilaTelegram()
   cadenaEnvio.reserve(0);
 }
 
-int obtenerZonaHoraria()
+int obtenHoraPorIP(const String &ip)
 {
-  time_t now = timeClient.getEpochTime();
-  struct tm timeinfo;
-  localtime_r(&now, &timeinfo);
-  return (timeinfo.tm_isdst > 0) ? 1 : 2;
+  if (WiFi.status() != WL_CONNECTED)
+  {
+    Serial.println("M8AX - Error: No Hay Conexión WiFi Para Obtener La Zona Horaria");
+    return 1000;
+  }
+  String ipapi_url = "https://ipapi.co/" + ip + "/json/";
+  HTTPClient http;
+  http.begin(ipapi_url);
+  int httpCode = http.GET();
+  if (httpCode == 200)
+  {
+    String payload = http.getString();
+    DynamicJsonDocument doc(1024);
+    DeserializationError error = deserializeJson(doc, payload);
+    if (error)
+    {
+      Serial.println("M8AX - Error Al Parsear El JSON, Para Obtener La Zona Horaria");
+      http.end();
+      payload.clear();
+      doc.clear();
+      return 1000;
+    }
+    const char *utc_offset = doc["utc_offset"];
+    if (utc_offset == nullptr)
+    {
+      Serial.println("M8AX - utc_offset No Encontrado En La Respuesta JSON");
+      http.end();
+      payload.clear();
+      doc.clear();
+      return 1000;
+    }
+    int offset = Settings.Timezone;
+    if (utc_offset[0] == '+')
+    {
+      offset = (utc_offset[1] - '0') * 10 + (utc_offset[2] - '0');
+    }
+    else if (utc_offset[0] == '-')
+    {
+      offset = -((utc_offset[1] - '0') * 10 + (utc_offset[2] - '0'));
+    }
+    http.end();
+    payload.clear();
+    doc.clear();
+    Serial.println(String("M8AX - Zona Horaria Obtenida Correctamente Mediante IP: UTC ") + (offset >= 0 ? "+" : "") + String(offset));
+    return offset;
+  }
+  else
+  {
+    Serial.println("M8AX - Error En La Solicitud HTTP");
+    http.end();
+    return 1000;
+  }
 }
 
 void ajustarZonaHoraria()
 {
-  Serial.println("M8AX - Hora Sincronizada Correctamente...");
-  if (Settings.Timezone == 1 || Settings.Timezone == 2)
+  zonilla = obtenHoraPorIP(getPublicIP());
+  int timezoneDifference = abs(Settings.Timezone - zonilla);
+  if (timezoneDifference <= 1)
   {
-    zonilla = obtenerZonaHoraria();
-    if (zonilla == 1)
+    if (Settings.Timezone != zonilla)
     {
-      if (Settings.Timezone != zonilla)
-      {
-        Settings.Timezone = 1;
-        nvMem.saveConfig(&Settings);
-        int offset = Settings.Timezone * 3600;
-        timeClient.setTimeOffset(3600 * Settings.Timezone);
-        configTime(offset, 0, "pool.ntp.org", "time.nist.gov");
-        Serial.println("M8AX - Esperando Sincronización Con NTP...");
-        time_t now;
-        while ((now = time(nullptr)) < 100000)
-        {
-          Serial.print(".");
-          delay(200);
-        }
-        Serial.println("M8AX - Hora Sincronizada Correctamente...");
-        Serial.println("M8AX - Cambiando TimeZone A Horario De Invierno... Que Actualmente Es UTC +" + String(Settings.Timezone));
-      }
-    }
-    else if (zonilla == 2)
-    {
-      if (Settings.Timezone != zonilla)
-      {
-        Settings.Timezone = 2;
-        int offset = Settings.Timezone * 3600;
-        timeClient.setTimeOffset(3600 * Settings.Timezone);
-        configTime(offset, 0, "pool.ntp.org", "time.nist.gov");
-        Serial.println("M8AX - Esperando Sincronización Con NTP...");
-        time_t now;
-        while ((now = time(nullptr)) < 100000)
-        {
-          Serial.print(".");
-          delay(200);
-        }
-        Serial.println("M8AX - Hora Sincronizada Correctamente...");
-        nvMem.saveConfig(&Settings);
-        Serial.println("M8AX - Cambiando TimeZone A Horario De Verano... Que Actualmente Es UTC +" + String(Settings.Timezone));
-      }
+      Settings.Timezone = zonilla;
+      nvMem.saveConfig(&Settings);
+      Serial.println(String("M8AX - Cambiando TimeZone... Actualmente Es UTC ") + (Settings.Timezone >= 0 ? "+" : "") + String(Settings.Timezone));
+      timeClient.setTimeOffset(3600 * Settings.Timezone);
     }
   }
+  Serial.println("M8AX - Combrobación De Ajuste De Hora ( TimeZone ), Correcta...");
 }
 
 void esp32_2432S028R_Init(void)
 {
-  // getChipInfo();
+  getChipInfo();
   tft.init();
   if (nvMem.loadConfig(&Settings))
   {
@@ -1974,8 +1999,8 @@ void esp32_2432S028R_MinerScreen(unsigned long mElapsed)
   background.pushSprite(0, 90);
   // Delete sprite to free the memory heap
   background.deleteSprite();
-  Serial.printf("M8AX - >>> Completados %s Share(s), %s Khashes, Prom. Hashrate %s KH/s %s°\n",
-                mineria.completedShares.c_str(), mineria.totalKHashes.c_str(), mineria.currentHashRate.c_str(), mineria.temp.c_str());
+  Serial.printf("M8AX - %s >>> Completados %s Share(s), %s Khashes, Prom. Hashrate %s KH/s %s°\n",
+                mineria.currentTime, mineria.completedShares.c_str(), mineria.totalKHashes.c_str(), mineria.currentHashRate.c_str(), mineria.temp.c_str());
   cuentita++;
   if (cuentita == 15)
   {
@@ -2029,8 +2054,8 @@ void esp32_2432S028R_ClockScreen(unsigned long mElapsed)
   background.pushSprite(130, 3);
   // Delete sprite to free the memory heap
   background.deleteSprite();
-  Serial.printf("M8AX - >>> Completados %s Share(s), %s Khashes, Prom. Hashrate %s KH/s %s°\n",
-                data.completedShares.c_str(), data.totalKHashes.c_str(), data.currentHashRate.c_str(), mineria.temp.c_str());
+  Serial.printf("M8AX - %s >>> Completados %s Share(s), %s Khashes, Prom. Hashrate %s KH/s %s°\n",
+                mineria.currentTime, mineria.completedShares.c_str(), mineria.totalKHashes.c_str(), mineria.currentHashRate.c_str(), mineria.temp.c_str());
   cuentita++;
   if (cuentita == 15)
   {
@@ -2070,8 +2095,8 @@ void esp32_2432S028R_m8axScreen2(unsigned long mElapsed)
   // Print background screen
   background.pushImage(-190, 0, ImagenM8AXWidth, ImagenM8AXHeight, ImagenM8AX);
   mostrarCalendario(dia, mes, anio, num1, num2, num3, num4);
-  Serial.printf("M8AX - >>> Completados %s Share(s), %s Khashes, Prom. Hashrate %s KH/s %s°\n",
-                mineria.completedShares.c_str(), mineria.totalKHashes.c_str(), mineria.currentHashRate.c_str(), mineria.temp.c_str());
+  Serial.printf("M8AX - %s >>> Completados %s Share(s), %s Khashes, Prom. Hashrate %s KH/s %s°\n",
+                mineria.currentTime, mineria.completedShares.c_str(), mineria.totalKHashes.c_str(), mineria.currentHashRate.c_str(), mineria.temp.c_str());
   cuentita++;
   if (cuentita == 15)
   {
@@ -2137,8 +2162,8 @@ void RelojDeNumeros(unsigned long mElapsed)
   createBackgroundSprite(WIDTH - 5, HEIGHT - 7);
   // Print background screen
   background.pushImage(-190, 0, ImagenM8AXWidth, ImagenM8AXHeight, ImagenM8AX);
-  Serial.printf("M8AX - >>> Completados %s Share(s), %s Khashes, Prom. Hashrate %s KH/s %s°\n",
-                mineria.completedShares.c_str(), mineria.totalKHashes.c_str(), mineria.currentHashRate.c_str(), mineria.temp.c_str());
+  Serial.printf("M8AX - %s >>> Completados %s Share(s), %s Khashes, Prom. Hashrate %s KH/s %s°\n",
+                mineria.currentTime, mineria.completedShares.c_str(), mineria.totalKHashes.c_str(), mineria.currentHashRate.c_str(), mineria.temp.c_str());
   tft.setTextSize(3);
   tft.setCursor(3, 2);
   colorI = esp_random() % (sizeof(colors) / sizeof(colors[0]));
@@ -2298,8 +2323,8 @@ void esp32_2432S028R_m8axScreen1(unsigned long mElapsed)
   }
   hasChangedScreen = false;
   int wdtOffset = 190;
-  Serial.printf("M8AX - >>> Completados %s Share(s), %s Khashes, Prom. Hashrate %s KH/s %s°\n",
-                mineria.completedShares.c_str(), mineria.totalKHashes.c_str(), mineria.currentHashRate.c_str(), mineria.temp.c_str());
+  Serial.printf("M8AX - %s >>> Completados %s Share(s), %s Khashes, Prom. Hashrate %s KH/s %s°\n",
+                mineria.currentTime, mineria.completedShares.c_str(), mineria.totalKHashes.c_str(), mineria.currentHashRate.c_str(), mineria.temp.c_str());
   colorIndex = esp_random() % (sizeof(colors) / sizeof(colors[0]));
   relojAnalogicoM8AX(horis, minutis, secondis);
   tft.setCursor(4, 42);
@@ -2393,8 +2418,8 @@ void tDisplay_m8axScreen4(unsigned long mElapsed)
     refresca = 0;
     tft.fillRect(0, 0, 320, 170, TFT_BLACK);
   }
-  Serial.printf("M8AX - >>> Completados %s Share(s), %s Khashes, Prom. Hashrate %s KH/s %s°\n",
-                mineria.completedShares.c_str(), mineria.totalKHashes.c_str(), mineria.currentHashRate.c_str(), mineria.temp.c_str());
+  Serial.printf("M8AX - %s >>> Completados %s Share(s), %s Khashes, Prom. Hashrate %s KH/s %s°\n",
+                mineria.currentTime, mineria.completedShares.c_str(), mineria.totalKHashes.c_str(), mineria.currentHashRate.c_str(), mineria.temp.c_str());
   colorI = esp_random() % (sizeof(colors) / sizeof(colors[0]));
   if (colorI % 2 == 0)
   {
@@ -2439,8 +2464,8 @@ void tDisplay_m8axScreen5(unsigned long mElapsed)
   clock_data data = getClockData(mElapsed);
   mineria = getMiningData(mElapsed);
   solouna = 0;
-  Serial.printf("M8AX - >>> Completados %s Share(s), %s Khashes, Prom. Hashrate %s KH/s %s°\n",
-                mineria.completedShares.c_str(), mineria.totalKHashes.c_str(), mineria.currentHashRate.c_str(), mineria.temp.c_str());
+  Serial.printf("M8AX - %s >>> Completados %s Share(s), %s Khashes, Prom. Hashrate %s KH/s %s°\n",
+                mineria.currentTime, mineria.completedShares.c_str(), mineria.totalKHashes.c_str(), mineria.currentHashRate.c_str(), mineria.temp.c_str());
   if (hasChangedScreen)
     tft.pushImage(0, 0, initWidth, initHeight, M8AXRelojLunar);
   printPoolData();
@@ -2515,8 +2540,8 @@ void tDisplay_m8axScreen6(unsigned long mElapsed)
   clock_data data = getClockData(mElapsed);
   mineria = getMiningData(mElapsed);
   solounavez = 0;
-  Serial.printf("M8AX - >>> Completados %s Share(s), %s Khashes, Prom. Hashrate %s KH/s %s°\n",
-                mineria.completedShares.c_str(), mineria.totalKHashes.c_str(), mineria.currentHashRate.c_str(), mineria.temp.c_str());
+  Serial.printf("M8AX - %s >>> Completados %s Share(s), %s Khashes, Prom. Hashrate %s KH/s %s°\n",
+                mineria.currentTime, mineria.completedShares.c_str(), mineria.totalKHashes.c_str(), mineria.currentHashRate.c_str(), mineria.temp.c_str());
   if (hasChangedScreen)
     tft.pushImage(0, 0, initWidth, initHeight, M8AXRelojLunar);
   printPoolData();
@@ -2596,8 +2621,8 @@ void tDisplay_m8axScreen7(unsigned long mElapsed)
 {
   mineria = getMiningData(mElapsed);
   clock_data data = getClockData(mElapsed);
-  Serial.printf("M8AX - >>> Completados %s Share(s), %s Khashes, Prom. Hashrate %s KH/s %s°\n",
-                mineria.completedShares.c_str(), mineria.totalKHashes.c_str(), mineria.currentHashRate.c_str(), mineria.temp.c_str());
+  Serial.printf("M8AX - %s >>> Completados %s Share(s), %s Khashes, Prom. Hashrate %s KH/s %s°\n",
+                mineria.currentTime, mineria.completedShares.c_str(), mineria.totalKHashes.c_str(), mineria.currentHashRate.c_str(), mineria.temp.c_str());
   if (hasChangedScreen)
     tft.pushImage(0, 0, initWidth, initHeight, M8AXRelojLunar);
   printPoolData();
@@ -2856,8 +2881,8 @@ void tDisplay_m8axScreen3(unsigned long mElapsed)
   solounavez = 0;
   solouna = 0;
   String btcm8 = "bitcoin:bc1qljq00pm2plq2l9jxzdzt0xc8t79j9wcmu7r8em";
-  Serial.printf("M8AX - >>> Completados %s Share(s), %s Khashes, Prom. Hashrate %s KH/s %s°\n",
-                mineria.completedShares.c_str(), mineria.totalKHashes.c_str(), mineria.currentHashRate.c_str(), mineria.temp.c_str());
+  Serial.printf("M8AX - %s >>> Completados %s Share(s), %s Khashes, Prom. Hashrate %s KH/s %s°\n",
+                mineria.currentTime, mineria.completedShares.c_str(), mineria.totalKHashes.c_str(), mineria.currentHashRate.c_str(), mineria.temp.c_str());
   if (hasChangedScreen)
     tft.pushImage(0, 0, initWidth, initHeight, M8AXRelojLunar);
   printPoolData();
@@ -2964,8 +2989,8 @@ void tDisplay_m8axScreenMegaNerd(unsigned long mElapsed)
   int horas = data.currentTime.substring(0, 2).toInt();
   int minutos = data.currentTime.substring(3, 5).toInt();
   colorI = esp_random() % (sizeof(colors) / sizeof(colors[0]));
-  Serial.printf("M8AX - >>> Completados %s Share(s), %s Khashes, Prom. Hashrate %s KH/s %s°\n",
-                mineria.completedShares.c_str(), mineria.totalKHashes.c_str(), mineria.currentHashRate.c_str(), mineria.temp.c_str());
+  Serial.printf("M8AX - %s >>> Completados %s Share(s), %s Khashes, Prom. Hashrate %s KH/s %s°\n",
+                mineria.currentTime, mineria.completedShares.c_str(), mineria.totalKHashes.c_str(), mineria.currentHashRate.c_str(), mineria.temp.c_str());
   if (hasChangedScreen)
     tft.pushImage(0, 0, initWidth, initHeight, M8AXRelojLunar);
   printPoolData();
@@ -3164,8 +3189,8 @@ void esp32_2432S028R_BTCprice(unsigned long mElapsed)
   background.pushSprite(130, 3);
   // Delete sprite to free the memory heap
   background.deleteSprite();
-  Serial.printf("M8AX - >>> Completados %s Share(s), %s Khashes, Prom. Hashrate %s KH/s %s°\n",
-                mineria.completedShares.c_str(), mineria.totalKHashes.c_str(), mineria.currentHashRate.c_str(), mineria.temp.c_str());
+  Serial.printf("M8AX - %s >>> Completados %s Share(s), %s Khashes, Prom. Hashrate %s KH/s %s°\n",
+                mineria.currentTime, mineria.completedShares.c_str(), mineria.totalKHashes.c_str(), mineria.currentHashRate.c_str(), mineria.temp.c_str());
   cuentita++;
   if (cuentita == 15)
   {

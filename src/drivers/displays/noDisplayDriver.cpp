@@ -8,6 +8,17 @@
  *   Versión para placas WROOM ESP32D, optimizada para minar a 395 KH/s sin pantalla.
  *   Utilizaremos el LED para indicar estados importantes.
  *
+ *   Es **necesario** que durante la **primera configuración del minero** se introduzca correctamente
+ *   la zona horaria (timezone). Este valor es esencial para inicializar correctamente la lógica de
+ *   sincronización y control horario del sistema.
+ *
+ *   Posteriormente, la zona horaria se actualizará automáticamente mediante la IP pública del dispositivo,
+ *   ajustándose de forma dinámica a la ubicación real del usuario, incluyendo también el cambio automático
+ *   por horario de verano (si aplica).
+ *
+ *   Esto asegura que, tras la configuración inicial correcta, el sistema mantenga siempre la hora local
+ *   precisa sin necesidad de intervención manual.
+ *
  *   Comportamiento del LED:
  *   -----------------------
  *
@@ -54,7 +65,7 @@
  *
  *
  *
- *              ///\\\ --- Minimizando código, maximizando funcionalidad. Solo 1985 líneas de código en 6h --- ///\\\
+ *              ///\\\ --- Minimizando código, maximizando funcionalidad. Solo 2035 líneas de código en 6h --- ///\\\
  *
  *                                                     .M8AX Corp. - ¡A Minar!
  *
@@ -199,13 +210,60 @@ void noDisplay_AlternateRotation(void)
 {
 }
 
-int obtenerZonaHoraria()
+int obtenHoraPorIP(String &ip)
 {
-  time_t now;
-  struct tm timeinfo;
-  time(&now);
-  localtime_r(&now, &timeinfo);
-  return (timeinfo.tm_isdst > 0) ? 1 : 2;
+  if (WiFi.status() != WL_CONNECTED)
+  {
+    Serial.println("M8AX - Error: No Hay Conexión WiFi Para Obtener La Zona Horaria");
+    return 1000;
+  }
+  String ipapi_url = "https://ipapi.co/" + ip + "/json/";
+  HTTPClient http;
+  http.begin(ipapi_url);
+  int httpCode = http.GET();
+  if (httpCode == 200)
+  {
+    String payload = http.getString();
+    DynamicJsonDocument doc(1024);
+    DeserializationError error = deserializeJson(doc, payload);
+    if (error)
+    {
+      Serial.println("M8AX - Error Al Parsear El JSON, Para Obtener La Zona Horaria");
+      http.end();
+      payload.clear();
+      doc.clear();
+      return 1000;
+    }
+    const char *utc_offset = doc["utc_offset"];
+    if (utc_offset == nullptr)
+    {
+      Serial.println("M8AX - utc_offset No Encontrado En La Respuesta JSON");
+      http.end();
+      payload.clear();
+      doc.clear();
+      return 1000;
+    }
+    int offset = Settings.Timezone;
+    if (utc_offset[0] == '+')
+    {
+      offset = (utc_offset[1] - '0') * 10 + (utc_offset[2] - '0');
+    }
+    else if (utc_offset[0] == '-')
+    {
+      offset = -((utc_offset[1] - '0') * 10 + (utc_offset[2] - '0'));
+    }
+    http.end();
+    payload.clear();
+    doc.clear();
+    Serial.println(String("M8AX - Zona Horaria Obtenida Correctamente Mediante IP: UTC ") + (offset >= 0 ? "+" : "") + String(offset));
+    return offset;
+  }
+  else
+  {
+    Serial.println("M8AX - Error En La Solicitud HTTP");
+    http.end();
+    return 1000;
+  }
 }
 
 double degToRad(double degrees)
@@ -1108,26 +1166,15 @@ std::string obtenerDiaSemana(const std::string &fecha)
 
 void sincronizarTiempo()
 {
-  if (Settings.Timezone == 1 || Settings.Timezone == 2)
+  zonilla = obtenHoraPorIP(ipPublica);
+  int timezoneDifference = abs(Settings.Timezone - zonilla);
+  if (timezoneDifference <= 1)
   {
-    int zonilla = obtenerZonaHoraria();
-    if (zonilla == 1)
+    if (Settings.Timezone != zonilla)
     {
-      if (Settings.Timezone != zonilla)
-      {
-        Settings.Timezone = 1;
-        nvMem.saveConfig(&Settings);
-        Serial.println("M8AX - Cambiando TimeZone A Horario De Invierno... Que Actualmente Es UTC +" + String(Settings.Timezone));
-      }
-    }
-    else if (zonilla == 2)
-    {
-      if (Settings.Timezone != zonilla)
-      {
-        Settings.Timezone = 2;
-        nvMem.saveConfig(&Settings);
-        Serial.println("M8AX - Cambiando TimeZone A Horario De Verano... Que Actualmente Es UTC +" + String(Settings.Timezone));
-      }
+      Settings.Timezone = zonilla;
+      nvMem.saveConfig(&Settings);
+      Serial.println(String("M8AX - Cambiando TimeZone... Actualmente Es UTC ") + (Settings.Timezone >= 0 ? "+" : "") + String(Settings.Timezone));
     }
   }
   int offset = Settings.Timezone * 3600;
@@ -1506,11 +1553,14 @@ void noDisplay_NoScreen(unsigned long mElapsed)
   cuenta++;
   if (cuenta == 5 && startTime == 0)
   {
-    sincronizarTiempo();
     ipPublica = getPublicIP();
+    vTaskDelay(pdMS_TO_TICKS(250));
+    sincronizarTiempo();
+    vTaskDelay(pdMS_TO_TICKS(250));
     epochTime = time(nullptr);
     startTime = epochTime;
     precioDeBTC = getPrecioBTC();
+    vTaskDelay(pdMS_TO_TICKS(250));
     Tresultado = obtenerCiudadYTemperatura(ipPublica);
     anterBTC = precioDeBTC;
     anterBTC2 = precioDeBTC;
@@ -1844,9 +1894,9 @@ void noDisplay_NoScreen(unsigned long mElapsed)
   }
   if (epochTime - startTime >= minStartupTime && epochTime - lastTelegramEpochTime >= interval)
   {
-    sincronizarTiempo();
-    vTaskDelay(pdMS_TO_TICKS(250));
     ipPublica = getPublicIP();
+    vTaskDelay(pdMS_TO_TICKS(250));
+    sincronizarTiempo();
     vTaskDelay(pdMS_TO_TICKS(250));
     precioDeBTC = getPrecioBTC();
     vTaskDelay(pdMS_TO_TICKS(250));

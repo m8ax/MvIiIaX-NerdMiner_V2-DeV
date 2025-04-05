@@ -21,6 +21,17 @@
  *   si lo has configurado, sino, no te preocupes, no pasa nada, todo seguirá funcionando y
  *   minando como siempre.
  *
+ *   Es **necesario** que durante la **primera configuración del minero** se introduzca correctamente
+ *   la zona horaria (timezone). Este valor es esencial para inicializar correctamente la lógica de
+ *   sincronización y control horario del sistema.
+ *
+ *   Posteriormente, la zona horaria se actualizará automáticamente mediante la IP pública del dispositivo,
+ *   ajustándose de forma dinámica a la ubicación real del usuario, incluyendo también el cambio automático
+ *   por horario de verano (si aplica).
+ *
+ *   Esto asegura que, tras la configuración inicial correcta, el sistema mantenga siempre la hora local
+ *   precisa sin necesidad de intervención manual.
+ *
  *
  *
  *           Un minero de Bitcoin es un dispositivo o software que realiza cálculos
@@ -32,7 +43,7 @@
  *
  *                              PARA MÁS INFORMACIÓN LEER PDF
  *
- *                     Tmp. De Programación 15H - 6395 Líneas De Código
+ *                     Tmp. De Programación 15H - 6450 Líneas De Código
  *                     ------------------------------------------------
  *
  ********************************************************************************************/
@@ -108,21 +119,8 @@ uint16_t coloris[] = {TFT_WHITE, TFT_YELLOW, TFT_CYAN, TFT_GREENYELLOW, TFT_LIGH
 int colorrrr = esp_random() % 9;
 int colorIndex = 0;
 int colorI = 0;
-int columna = 0;
-int secondCounter = 0;
-int random_number = 1;
-int limite = 0;
-int aciertos = 0;
-int fallos = 0;
-int totalci = 0;
-int mirarTiempo = 0;
-int sumatele = 1;
-int abortar = 0;
-int alertatemp = 0;
-int maxtemp = 0;
-int mintemp = 1000;
-int diadecambios;
-int zonilla;
+int columna = 0, secondCounter = 0, random_number = 1, limite = 0, aciertos = 0, fallos = 0, totalci = 0;
+int mirarTiempo = 0, sumatele = 1, abortar = 0, alertatemp = 0, maxtemp = 0, mintemp = 1000, diadecambios, zonilla;
 float anterBTC = 0.0;
 float maxkh = 0.00;
 float minkh = 1000.00;
@@ -276,44 +274,120 @@ void tDisplay_AlternateRotation(void)
   tft.setRotation(flipRotation(tft.getRotation()));
 }
 
-// Esta función obtiene la zona horaria actual basada en el horario de verano del sistema.
-// Retorna 1 si está en horario estándar y 2 si está en horario de verano,
-// utilizando la variable tm_isdst de la estructura tm, que es gestionada automáticamente
-// por localtime_r() según la configuración del sistema.
+// Funcion para obtener nuestra ip pública
 
-int obtenerZonaHoraria()
+String getPublicIP()
 {
-  time_t now = timeClient.getEpochTime();
-  struct tm timeinfo;
-  localtime_r(&now, &timeinfo);
-  return (timeinfo.tm_isdst > 0) ? 1 : 2;
+  HTTPClient http;
+  String publicIP = "";
+
+  http.begin("http://api.ipify.org"); // Servicio que devuelve la IP pública
+  int httpCode = http.GET();
+
+  if (httpCode == HTTP_CODE_OK)
+  {
+    publicIP = http.getString(); // Obtener la respuesta del servidor
+  }
+
+  http.end();
+  return publicIP;
 }
 
 /**
- * Ajusta la zona horaria del sistema según la configuración actual.
+ * Obtiene el desfase horario (UTC offset) de una dirección IP utilizando el servicio ipapi.co.
+ * Realiza una solicitud HTTP GET a la API pública para recuperar información de geolocalización
+ * basada en IP y extrae el campo "utc_offset" del JSON recibido. Devuelve el offset horario como
+ * entero en horas (positivo o negativo). En caso de error en la conexión WiFi, en la solicitud HTTP,
+ * o en el análisis del JSON, retorna 1000 como código de error.
  *
- * Esta función verifica si la configuración de zona horaria (`Settings.Timezone`) es 1 o 2.
- * Luego, obtiene la zona horaria actual mediante `obtenerZonaHoraria()`.
- * Si la zona obtenida es 1 o 2, actualiza `Settings.Timezone` en consecuencia.
- * Finalmente, ajusta el desplazamiento horario en `timeClient` y muestra un mensaje en la consola serie.
+ * @param ip Dirección IP en formato de cadena para la cual se desea obtener la zona horaria.
+ * @return Entero representando el desfase horario respecto a UTC. Retorna 1000 si ocurre un error.
+ */
+
+int obtenHoraPorIP(const String &ip)
+{
+  if (WiFi.status() != WL_CONNECTED)
+  {
+    Serial.println("M8AX - Error: No Hay Conexión WiFi Para Obtener La Zona Horaria");
+    return 1000;
+  }
+  String ipapi_url = "https://ipapi.co/" + ip + "/json/";
+  HTTPClient http;
+  http.begin(ipapi_url);
+  int httpCode = http.GET();
+  if (httpCode == 200)
+  {
+    String payload = http.getString();
+    DynamicJsonDocument doc(1024);
+    DeserializationError error = deserializeJson(doc, payload);
+    if (error)
+    {
+      Serial.println("M8AX - Error Al Parsear El JSON, Para Obtener La Zona Horaria");
+      http.end();
+      payload.clear();
+      doc.clear();
+      return 1000;
+    }
+    const char *utc_offset = doc["utc_offset"];
+    if (utc_offset == nullptr)
+    {
+      Serial.println("M8AX - utc_offset No Encontrado En La Respuesta JSON");
+      http.end();
+      payload.clear();
+      doc.clear();
+      return 1000;
+    }
+    int offset = Settings.Timezone;
+    if (utc_offset[0] == '+')
+    {
+      offset = (utc_offset[1] - '0') * 10 + (utc_offset[2] - '0');
+    }
+    else if (utc_offset[0] == '-')
+    {
+      offset = -((utc_offset[1] - '0') * 10 + (utc_offset[2] - '0'));
+    }
+    http.end();
+    payload.clear();
+    doc.clear();
+    Serial.println(String("M8AX - Zona Horaria Obtenida Correctamente Mediante IP: UTC ") + (offset >= 0 ? "+" : "") + String(offset));
+    return offset;
+  }
+  else
+  {
+    Serial.println("M8AX - Error En La Solicitud HTTP");
+    http.end();
+    return 1000;
+  }
+}
+
+/**
+ * Ajusta la zona horaria del sistema comparando la configuración actual con la zona horaria
+ * obtenida dinámicamente mediante la IP pública. Si la diferencia entre ambas zonas horarias
+ * es menor o igual a 1 hora y no son iguales, actualiza la configuración local (`Settings.Timezone`),
+ * guarda los cambios en la memoria no volátil y aplica el nuevo desfase horario al cliente NTP.
  *
- * Se recomienda llamar a esta función en intervalos específicos o cuando se detecte un cambio en la zona horaria.
+ * La función asume que `getPublicIP()` retorna la IP pública del dispositivo y que `obtenHoraPorIP()`
+ * devuelve el desfase horario correspondiente en horas (UTC offset).
+ *
+ * No realiza ajustes si la diferencia es mayor a 1 hora para evitar modificaciones drásticas por
+ * errores o inconsistencias en la geolocalización.
  */
 
 void ajustarZonaHoraria()
 {
-  if (Settings.Timezone < 1 || Settings.Timezone > 2)
-    return;
-  int zonilla = obtenerZonaHoraria();
-  if (Settings.Timezone == zonilla)
-    return;
-  Settings.Timezone = zonilla;
-  nvMem.saveConfig(&Settings);
-  timeClient.setTimeOffset(3600 * Settings.Timezone);
-  Serial.print("M8AX - Cambiando TimeZone A ");
-  Serial.print(zonilla == 1 ? "Horario De Invierno" : "Horario De Verano");
-  Serial.print(" UTC+");
-  Serial.println(Settings.Timezone);
+  zonilla = obtenHoraPorIP(getPublicIP());
+  int timezoneDifference = abs(Settings.Timezone - zonilla);
+  if (timezoneDifference <= 1)
+  {
+    if (Settings.Timezone != zonilla)
+    {
+      Settings.Timezone = zonilla;
+      nvMem.saveConfig(&Settings);
+      Serial.println(String("M8AX - Cambiando TimeZone... Actualmente Es UTC ") + (Settings.Timezone >= 0 ? "+" : "") + String(Settings.Timezone));
+      timeClient.setTimeOffset(3600 * Settings.Timezone);
+    }
+  }
+  Serial.println("M8AX - Combrobación De Ajuste De Hora ( TimeZone ), Correcta...");
 }
 
 /**
@@ -495,25 +569,6 @@ std::string obtenerDiaSemana(const std::string &fecha)
   int diaSemana = timeStruct.tm_wday; // 0 = domingo, 1 = lunes, ...
 
   return diasem[diaSemana];
-}
-
-// Funcion para obtener nuestra ip pública
-
-String getPublicIP()
-{
-  HTTPClient http;
-  String publicIP = "";
-
-  http.begin("http://api.ipify.org"); // Servicio que devuelve la IP pública
-  int httpCode = http.GET();
-
-  if (httpCode == HTTP_CODE_OK)
-  {
-    publicIP = http.getString(); // Obtener la respuesta del servidor
-  }
-
-  http.end();
-  return publicIP;
 }
 
 // Función para quitar acentos de una cadena de texto
