@@ -187,14 +187,14 @@ void init_WifiManager()
     {
         strcat(checkboxParams2, " checked");
     }
-    WiFiManagerParameter invertColors("inverColors", "Invert Display Colors (if the colors looks weird)", "T", 2, checkboxParams2, WFM_LABEL_AFTER);
+    WiFiManagerParameter invertColors("inverColors", "Invertir Colores De La Pantalla, ( Si Los Colores Lucen Extraños )<br>", "T", 2, checkboxParams2, WFM_LABEL_AFTER);
     wm.addParameter(&invertColors);
 #endif
 #if defined(ESP32_2432S028R) || defined(ESP32_2432S028_2USB)
     char brightnessConvValue[2];
     sprintf(brightnessConvValue, "%d", Settings.Brightness);
     // Text box (Number) - 3 characters maximum
-    WiFiManagerParameter brightness_text_box_num("Brightness", "Screen backlight Duty Cycle (0-255)", brightnessConvValue, 3);
+    WiFiManagerParameter brightness_text_box_num("Brightness", "Brillo De Fondo De La Pantalla, ( 0 A 255 )", brightnessConvValue, 3);
     wm.addParameter(&brightness_text_box_num);
 #endif
 

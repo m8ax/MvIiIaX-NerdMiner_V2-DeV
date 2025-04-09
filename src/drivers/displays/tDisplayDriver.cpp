@@ -25,12 +25,18 @@
  *   la zona horaria (timezone). Este valor es esencial para inicializar correctamente la lógica de
  *   sincronización y control horario del sistema.
  *
+ *   Esto asegura que, tras la configuración inicial correcta, el sistema mantenga siempre la hora local
+ *   precisa sin necesidad de intervención manual.
+ *
  *   Posteriormente, la zona horaria se actualizará automáticamente mediante la IP pública del dispositivo,
  *   ajustándose de forma dinámica a la ubicación real del usuario, incluyendo también el cambio automático
  *   por horario de verano (si aplica).
  *
- *   Esto asegura que, tras la configuración inicial correcta, el sistema mantenga siempre la hora local
- *   precisa sin necesidad de intervención manual.
+ *   Cuando se ajusta la hora por horario de verano o invierno, el sistema puede tardar en actualizar la hora
+ *   en pantalla un máximo de 5 horas, el tiempo establecido entre sincronizaciones. Esto se debe a que el
+ *   sistema no puede sincronizar la hora de forma continua, ya que esto podría causar problemas de rendimiento.
+ *   Asi que si llega el día de cambio de hora que es de madrugada y no cambia al instante no te preocupes
+ *   que el sistema lo hará automáticamente en la siguiente sincronización.
  *
  *
  *
@@ -43,7 +49,7 @@
  *
  *                              PARA MÁS INFORMACIÓN LEER PDF
  *
- *                     Tmp. De Programación 15H - 6450 Líneas De Código
+ *                     Tmp. De Programación 15H - 6430 Líneas De Código
  *                     ------------------------------------------------
  *
  ********************************************************************************************/
@@ -90,6 +96,7 @@
 // Variables externas que cruzan fronteras en el código para hacer magia
 
 extern TSettings Settings;
+extern nvMemory nvMem;
 
 // Definiciones que configuran el cerebro del sistema
 
@@ -111,20 +118,12 @@ extern TSettings Settings;
 OpenFontRender render;
 TFT_eSPI tft = TFT_eSPI();
 TFT_eSprite background = TFT_eSprite(&tft);
-uint8_t grid[GRIDX][GRIDY];
-uint8_t newgrid[GRIDX][GRIDY];
-uint16_t genCount = 0;
+uint8_t grid[GRIDX][GRIDY], newgrid[GRIDX][GRIDY];
 uint16_t colors[] = {TFT_WHITE, TFT_RED, TFT_GREEN, TFT_BLUE, TFT_YELLOW, TFT_CYAN, TFT_MAGENTA, TFT_ORANGE, TFT_GREENYELLOW, TFT_PINK, TFT_LIGHTGREY, TFT_SKYBLUE, TFT_OLIVE, TFT_GOLD, TFT_SILVER};
-uint16_t coloris[] = {TFT_WHITE, TFT_YELLOW, TFT_CYAN, TFT_GREENYELLOW, TFT_LIGHTGREY, TFT_BLACK, TFT_ORANGE, TFT_GOLD, TFT_SILVER};
-int colorrrr = esp_random() % 9;
-int colorIndex = 0;
-int colorI = 0;
-int columna = 0, secondCounter = 0, random_number = 1, limite = 0, aciertos = 0, fallos = 0, totalci = 0;
-int mirarTiempo = 0, sumatele = 1, abortar = 0, alertatemp = 0, maxtemp = 0, mintemp = 1000, diadecambios, zonilla;
-float anterBTC = 0.0;
-float maxkh = 0.00;
-float minkh = 1000.00;
-float porcentaje = 0.00;
+uint16_t coloris[] = {TFT_WHITE, TFT_YELLOW, TFT_CYAN, TFT_GREENYELLOW, TFT_LIGHTGREY, TFT_BLACK, TFT_ORANGE, TFT_GOLD, TFT_SILVER}, genCount = 0;
+int columna = 0, secondCounter = 0, random_number = 1, limite = 0, aciertos = 0, fallos = 0, totalci = 0, colorIndex = 0, colorI = 0;
+int mirarTiempo = 0, sumatele = 1, abortar = 0, alertatemp = 0, maxtemp = 0, mintemp = 1000, diadecambios, zonilla, colorrrr = esp_random() % 9;
+float anterBTC = 0.0, maxkh = 0.00, minkh = 1000.00, porcentaje = 0.00;
 const char *nombrecillo;
 const char *apiUrl = "http://ip-api.com/json/";
 const char *serverName = "https://favqs.com/api/qotd";
@@ -179,34 +178,14 @@ int zonasHorarias[] = {
 };
 bool mensajeEnviado = false;
 char result[MAX_RESULT_LENGTH];
-String textoFinalm8ax1;
-String textoFinalm8ax2;
-String textoFinalm8ax3;
-String textoFinalm8ax4;
-String cadenanoti = "";
-String ciudad = "";
-String tempciudad = "";
-String BOT_TOKEN;
-String CHAT_ID;
-String subebaja = ". ESPERANDO .";
-uint32_t rndnumero = 0;
-uint32_t rndnumero2 = 0;
-uint32_t actualizarcalen = 0;
-uint32_t actuanot = 0;
-uint32_t actualizarc = 0;
-uint32_t actual = 0;
-uint32_t correccion = 0;
-uint32_t numfrases = 0;
-uint32_t numnotis = 0;
-uint32_t ContadorEspecial = 0;
-uint32_t uncontadormas = 0;
+String textoFinalm8ax1, textoFinalm8ax2, textoFinalm8ax3, textoFinalm8ax4, cadenanoti = "", ciudad = "", tempciudad = "", BOT_TOKEN, CHAT_ID, subebaja = ". ESPERANDO .";
+uint32_t rndnumero = 0, rndnumero2 = 0, actualizarcalen = 0, actuanot = 0, actualizarc = 0, actual = 0, correccion = 0, numfrases = 0, numnotis = 0, ContadorEspecial = 0, uncontadormas = 0;
 WiFiUDP udp;
 HTTPClient http;
 mining_data mineria;
 clock_data relojete;
 coin_data monedilla;
 moonPhase mymoonPhase;
-extern nvMemory nvMem;
 
 unsigned long lastTelegramEpochTime = 0;       // Guarda el tiempo de la última ejecución (en segundos desde Epoch)
 unsigned long startTime = 0;                   // Para guardar Epoch de inicio
@@ -6337,7 +6316,8 @@ void analiCadaSegundo(unsigned long frame)
   if (epochTime - startTime >= minStartupTime && epochTime - lastTelegramEpochTime >= interval)
   {
     // Ajustar la zona horaria si es necesario
-    ajustarZonaHoraria();
+    if ((mes == 3 || mes == 4 || mes == 10 || mes == 11) && horita >= 0 && horita <= 5)
+      ajustarZonaHoraria();
     // Verificar si los datos de Telegram están configurados
     if (BOT_TOKEN != "NO CONFIGURADO" && CHAT_ID != "NO CONFIGURADO")
     {

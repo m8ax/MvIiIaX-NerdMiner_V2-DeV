@@ -1,4 +1,4 @@
-/********************************************************************************************
+/****************************************************************************************************************
  *
  *   Escrito por: M8AX
  *
@@ -25,12 +25,29 @@
  *   la zona horaria (timezone). Este valor es esencial para inicializar correctamente la lógica de
  *   sincronización y control horario del sistema.
  *
+ *   Esto asegura que, tras la configuración inicial correcta, el sistema mantenga siempre la hora local
+ *   precisa sin necesidad de intervención manual.
+ *
  *   Posteriormente, la zona horaria se actualizará automáticamente mediante la IP pública del dispositivo,
  *   ajustándose de forma dinámica a la ubicación real del usuario, incluyendo también el cambio automático
  *   por horario de verano (si aplica).
  *
- *   Esto asegura que, tras la configuración inicial correcta, el sistema mantenga siempre la hora local
- *   precisa sin necesidad de intervención manual.
+ *   Cuando se ajusta la hora por horario de verano o invierno, el sistema puede tardar en actualizar la hora
+ *   en pantalla un máximo de 5 horas, el tiempo establecido entre sincronizaciones. Esto se debe a que el
+ *   sistema no puede sincronizar la hora de forma continua, ya que esto podría causar problemas de rendimiento.
+ *   Asi que si llega el día de cambio de hora que es de madrugada y no cambia al instante no te preocupes
+ *   que el sistema lo hará automáticamente en la siguiente sincronización.
+ *
+ *   1. **Cuando el hash rate es mayor de 300 kH/s**:
+ *      - Los LEDs **rojo**, **verde** y **azul** parpadean en alternancia.
+ *
+ *   2. **Cuando el hash rate es mayor de 0 kH/s pero menor o igual a 300 kH/s**:
+ *      - El LED **azul** está encendido de forma constante.
+ *      - Los LEDs **rojo** y **verde** parpadean a la vez.
+ *
+ *   3. **Cuando el hash rate es 0**:
+ *      - El LED **azul** está encendido de forma constante.
+ *      - El LED **rojo** parpadea.
  *
  *
  *
@@ -41,10 +58,10 @@
  *
  *
  *
- *                     Tmp. De Programación 3H - 3465 Líneas De Código
+ *                     Tmp. De Programación 3H - 3750 Líneas De Código
  *                     ------------------------------------------------
  *
- ********************************************************************************************/
+ ****************************************************************************************************************/
 
 // Invocando las poderosas librerías que hacen posible esta obra maestra del minado nerd
 
@@ -74,7 +91,7 @@
 #include "drivers/storage/nvMemory.h"
 #include "drivers/storage/storage.h"
 
-#define WIDTH 130 // 320
+#define WIDTH 130
 #define HEIGHT 170
 #define MAX_RESULT_LENGTH 500
 
@@ -94,12 +111,13 @@ TFT_eTouch<TFT_eSPI> touch(tft, ETOUCH_CS, 0xFF, hSPI);
 
 int colorI = 0, colorIndex = 0, maxtemp = 0, mintemp = 1000, limite = 0, zonilla, solounavez = 0, solouna = 0, sumatele = 1;
 uint16_t colors[] = {TFT_WHITE, TFT_RED, TFT_GREEN, TFT_BLUE, TFT_YELLOW, TFT_CYAN, TFT_MAGENTA, TFT_ORANGE, TFT_GREENYELLOW, TFT_PINK, TFT_LIGHTGREY, TFT_SKYBLUE, TFT_OLIVE, TFT_GOLD, TFT_SILVER};
-uint32_t rndnumero, uncontadormas = 0, refresca = 0, cuentita = 0, numnotis = 0, numfrases = 0;
+uint32_t rndnumero, uncontadormas = 0, refresca = 0, cuentita = 0, numnotis = 0, numfrases = 0, detectar = 0, detectar2 = 0;
 unsigned long lastTelegramEpochTime = 0;       // Guarda el tiempo de la última ejecución (en segundos desde Epoch)
 unsigned long startTime = 0;                   // Para guardar Epoch de inicio
 const unsigned long interval = 60 * 2 * 60;    // 2 horas en segundos (2 horas * 60 minutos * 60 segundos)
 const unsigned long minStartupTime = interval; // Segundos para que no envíe mensaje a telegram si esta configurado, nada más arrancar
-float maxkh = 0.00, minkh = 1000.00;
+float maxkh = 0.00;
+float minkh = 1000.00;
 char result[MAX_RESULT_LENGTH];
 const char *serverName = "https://favqs.com/api/qotd";
 const char *urlsm8ax[] = {
@@ -118,10 +136,10 @@ String urls[] = {
     "https://es.cointelegraph.com/rss/tag/ethereum",
     "https://es.cointelegraph.com/rss/category/top-10-cryptocurrencies",
     "https://es.cointelegraph.com/rss/category/market-analysis"};
+String BOT_TOKEN, CHAT_ID, cadenanoti = "";
+String prebitco = "";
+String alturabloque = "";
 std::pair<String, String> Tresultado;
-String BOT_TOKEN;
-String CHAT_ID;
-String cadenanoti = "";
 mining_data mineria;
 moonPhase mymoonPhase;
 
@@ -140,6 +158,90 @@ void getChipInfo(void)
   Serial.print("M8AX - Frecuencia De CPU: ");
   Serial.print(ESP.getCpuFreqMHz());
   Serial.println("MHz\n");
+}
+
+String alturab()
+{
+  WiFiClientSecure client;
+  client.setInsecure(); // Desactiva la verificación SSL para facilitar la conexión
+  HTTPClient https;
+  const char *url = "https://blockstream.info/api/blocks/tip/height";
+  if (https.begin(client, url))
+  {
+    int httpCode = https.GET();
+    if (httpCode == 200)
+    {
+      String payload = https.getString();
+      https.end();
+      return payload; // Devuelve directamente el string con la altura del bloque
+    }
+    else
+    {
+      Serial.printf("M8AX - Error HTTP: %d\n", httpCode);
+    }
+    https.end();
+  }
+  else
+  {
+    Serial.println("M8AX - Conexión HTTPS fallida");
+  }
+  return "ERROR"; // Devuelve "error" si algo falla
+}
+
+String preciob(void)
+{
+  String bitcoin_price = "";
+  if (WiFi.status() != WL_CONNECTED)
+    return String("https://api.coinbase.com/v2/prices/BTC-USD/spot") + "$";
+  HTTPClient http;
+  try
+  {
+    http.begin(getBTCAPI);
+    int httpCode = http.GET();
+    if (httpCode == HTTP_CODE_OK)
+    {
+      String payload = http.getString();
+      DynamicJsonDocument doc(1024);
+      deserializeJson(doc, payload);
+      if (doc.containsKey("data") && doc["data"].containsKey("amount"))
+        bitcoin_price = String(doc["data"]["amount"].as<const char *>());
+      doc.clear();
+    }
+    http.end();
+  }
+  catch (...)
+  {
+    http.end();
+  }
+  return String((int)bitcoin_price.toFloat()) + "$";
+}
+
+void manejandoLeds(float currentHashRate)
+{
+  // Si el hash rate es mayor que 300
+  if (currentHashRate > 300)
+  {
+    digitalWrite(LED_PIN, !digitalRead(LED_PIN));     // Toggle el LED
+    digitalWrite(LED_PIN_B, !digitalRead(LED_PIN_B)); // Toggle otro LED
+    digitalWrite(LED_PIN_G, !digitalRead(LED_PIN_G)); // Toggle otro LED
+  }
+  // Si el hash rate es mayor que 0 y menor o igual a 300
+  else if (currentHashRate > 0 && currentHashRate <= 300)
+  {
+    digitalWrite(LED_PIN, LOW);
+    digitalWrite(LED_PIN_G, LOW);
+    vTaskDelay(pdMS_TO_TICKS((cuentita % 2 == 0) ? 25 : 50)); // Delay según si cuentita es par o impar
+    digitalWrite(LED_PIN, HIGH);                              // Enciende el LED
+    digitalWrite(LED_PIN_G, HIGH);                            // Enciende el otro LED
+  }
+  // Si el hash rate es 0 o menor
+  else
+  {
+    digitalWrite(LED_PIN, HIGH);   // Enciende el LED
+    digitalWrite(LED_PIN_G, HIGH); // Enciende el otro LED
+    digitalWrite(LED_PIN_B, HIGH); // Enciende otro LED
+    digitalWrite(LED_PIN, LOW);    // Apaga el LED
+  }
 }
 
 String capitalizar(String palabra)
@@ -782,7 +884,9 @@ void relojAnalogicoM8AX(int hours, int minutes, int seconds)
   tft.fillRect(clockAreaX, clockAreaY, clockWidth, clockHeight, TFT_BLACK);
 
   // Dibujar círculos del reloj
-  tft.drawCircle(centerX, centerY, clockRadius, TFT_WHITE);
+  colorI = esp_random() % (sizeof(colors) / sizeof(colors[0]));
+  tft.drawCircle(centerX, centerY, clockRadius, colors[colorI]);
+  colorIndex = esp_random() % (sizeof(colors) / sizeof(colors[0]));
   tft.drawCircle(centerX, centerY, clockRadius * 0.4, colors[colorIndex]);
 
   // Dibujar marcas de horas (12)
@@ -935,12 +1039,12 @@ void television()
 
   if (colorI % 2 == 0)
   {
-    tft.setCursor(66, 100);
+    tft.setCursor(80, 90);
     (numeroSaludo % 2 == 0) ? tft.print("HOLA") : tft.print("EYEY");
   }
   else
   {
-    tft.setCursor(55, 100);
+    tft.setCursor(60, 90);
     (numeroSaludo % 2 == 0) ? tft.print("HELLO") : tft.print("KAIXO");
   }
 
@@ -1130,8 +1234,8 @@ void animacionInicio()
 void nevar()
 {
   tft.fillScreen(TFT_BLACK); // Fondo negro (puedes cambiarlo)
-
-  const int NUM_COPOS = 100;      // Número de copos de nieve en pantalla
+  colorI = esp_random() % (sizeof(colors) / sizeof(colors[0]));
+  const int NUM_COPOS = 400;      // Número de copos de nieve en pantalla
   int x[NUM_COPOS], y[NUM_COPOS]; // Coordenadas de los copos
   // Inicializa copos en posiciones aleatorias
   for (int i = 0; i < NUM_COPOS; i++)
@@ -1148,8 +1252,8 @@ void nevar()
 
     for (int i = 0; i < NUM_COPOS; i++)
     {
-      tft.drawPixel(x[i], y[i], TFT_WHITE); // Dibuja copo de nieve
-      y[i] += (esp_random() % 4) + 1;       // Baja la posición del copo
+      tft.drawPixel(x[i], y[i], colors[colorI]); // Dibuja copo de nieve
+      y[i] += (esp_random() % 4) + 1;            // Baja la posición del copo
 
       if (y[i] > 240)
       { // Si sale de la pantalla, reaparece arriba
@@ -1161,14 +1265,12 @@ void nevar()
     delay(35); // Controla la velocidad de la animación
   }
 
-  // Muestra "FELIZ NAVIDAD" al final
-
   tft.fillScreen(TFT_BLACK);
   colorI = esp_random() % (sizeof(colors) / sizeof(colors[0]));
   tft.setTextColor(colors[colorI], TFT_BLACK);
   tft.setTextDatum(MC_DATUM);                // Centra el texto
   tft.setFreeFont(FSB18);                    // Fuente grande (cambia si es necesario)
-  tft.drawString("FELIZ NAVIDAD", 160, 100); // Texto en el centro
+  tft.drawString("VAMOS A MINAR", 159, 100); // Texto en el centro
   delay(1500);
   tft.setFreeFont(NULL);
 }
@@ -1176,8 +1278,8 @@ void nevar()
 void nevar2()
 {
   tft.fillScreen(TFT_BLACK); // Fondo negro (puedes cambiarlo)
-
-  const int NUM_COPOS = 200;      // Número de copos de nieve en pantalla
+  colorI = esp_random() % (sizeof(colors) / sizeof(colors[0]));
+  const int NUM_COPOS = 600;      // Número de copos de nieve en pantalla
   int x[NUM_COPOS], y[NUM_COPOS]; // Coordenadas de los copos
 
   // Inicializa copos en posiciones aleatorias
@@ -1195,8 +1297,8 @@ void nevar2()
 
     for (int i = 0; i < NUM_COPOS; i++)
     {
-      tft.drawPixel(x[i], y[i], TFT_WHITE); // Dibuja copo de nieve
-      y[i] += (esp_random() % 5) + 1;       // Baja Posición Del Copo
+      tft.drawPixel(x[i], y[i], colors[colorI]); // Dibuja copo de nieve
+      y[i] += (esp_random() % 5) + 1;            // Baja Posición Del Copo
       if (y[i] > 240)
       { // Si sale de la pantalla, reaparece arriba
         y[i] = 0;
@@ -1207,13 +1309,12 @@ void nevar2()
     delay(25); // Controla la velocidad de la animación
   }
 
-  // Muestra "FELIZ --- AÑO" al final
   tft.fillScreen(TFT_BLACK);
   colorI = esp_random() % (sizeof(colors) / sizeof(colors[0]));
   tft.setTextColor(colors[colorI], TFT_BLACK);
-  tft.setTextDatum(MC_DATUM);                 // Centra el texto
-  tft.setFreeFont(FSB18);                     // Fuente grande (cambia si es necesario)
-  tft.drawString("HAPPY NEW YEAR", 160, 100); // Texto en el centro
+  tft.setTextDatum(MC_DATUM);                  // Centra el texto
+  tft.setFreeFont(FSB18);                      // Fuente grande (cambia si es necesario)
+  tft.drawString("LIBERTY BITCOIN", 159, 100); // Texto en el centro
   delay(1500);
   tft.setFreeFont(NULL);
 }
@@ -1302,8 +1403,7 @@ void mostrarCalendario(int dia, int mes, int anio, int h1, int h2, int m1, int m
   for (int i = 0; i < 7; i++)
   {
     tft.setCursor(20 + (i * 40), 10);
-    colorIndex = esp_random() % (sizeof(colors) / sizeof(colors[0]));
-    tft.setTextColor(colors[colorIndex]);
+    tft.setTextColor(TFT_WHITE);
     tft.setTextSize(1);
     tft.print(diasSemana[i]);
   }
@@ -1340,21 +1440,25 @@ void mostrarCalendario(int dia, int mes, int anio, int h1, int h2, int m1, int m
       x = 0;
       y += 20;
     }
+    colorIndex = esp_random() % (sizeof(colors) / sizeof(colors[0]));
     String mesecillo = String(obtenerNombreMes(mes));
     tft.setTextColor(colors[colorIndex]);
     tft.setTextSize(3);
     tft.setCursor(5, 145);
     tft.print(mesecillo + " " + String(anio));
-    tft.setCursor(290, 14);
+    tft.setCursor(290, 11);
     tft.print(String(h1));
-    tft.setCursor(290, 44);
+    tft.setCursor(290, 41);
     tft.print(String(h2));
-    tft.setCursor(290, 74);
+    tft.setCursor(290, 71);
     tft.print("-");
-    tft.setCursor(290, 104);
+    tft.setCursor(290, 101);
     tft.print(String(m1));
-    tft.setCursor(290, 134);
+    tft.setCursor(290, 131);
     tft.print(String(m2));
+    tft.setCursor(280, 158);
+    tft.setTextSize(1);
+    tft.print(mineria.currentHashRate);
   }
 }
 
@@ -1620,6 +1724,19 @@ void recopilaTelegram()
   char fechaFormateada[11];
   sprintf(fechaFormateada, "%02d/%02d/%04d", dia, mes, anio);
   String LUNAP = lunitaporc(fechaFormateada, horaFormateada);
+  prebitco = preciob().c_str();
+  alturabloque = alturab().c_str();
+  int altura = 1;
+  int bloquesPorHalving = 210000;
+  int bloquesCompletados = 1;
+  int bloquesRestantes = 1;
+  float porcentaje = 0.00;
+  if (alturabloque.length() > 0)
+  {
+    altura = alturabloque.toInt();
+    bloquesCompletados = altura % bloquesPorHalving;
+    porcentaje = (bloquesCompletados * 100.0) / bloquesPorHalving;
+  }
   // Extraer los últimos 4 dígitos de la mac
   uint8_t mac[6];
   WiFi.macAddress(mac);
@@ -1666,6 +1783,12 @@ void recopilaTelegram()
   cadenaEnvio += "Pool De Minería - " + Settings.PoolAddress + "\n";
   cadenaEnvio += "Puerto Del Pool - " + String(Settings.PoolPort) + "\n";
   cadenaEnvio += "Tu Wallet De BTC - " + String(Settings.BtcWallet) + "\n";
+  cadenaEnvio += "Precio De BTC - " + String(prebitco) + "\n";
+  cadenaEnvio += "Bloques Minados - " + String(alturabloque) + "\n";
+  bloquesCompletados = altura % bloquesPorHalving;
+  bloquesRestantes = bloquesPorHalving - bloquesCompletados;
+  cadenaEnvio += "Bloques Restantes Para Halving - " + String(bloquesRestantes) + "\n";
+  cadenaEnvio += "Progreso Hacia El Halving - " + String(210000 - bloquesRestantes) + " Bloques | " + String(porcentaje, 2) + "% Completado\n";
   cadenaEnvio += "Tu IP - " + getPublicIP() + "\n";
   cadenaEnvio += "WiFi RSSI " + String(WiFi.RSSI()) + " | Señal 1 A 6 - " + evaluarRSSI(String(WiFi.RSSI())) + "\n";
   cadenaEnvio += urlsm8ax[indice];
@@ -1681,6 +1804,10 @@ void recopilaTelegram()
   cadenaEnvio += F("------------------------------------------------------------------------------------------------\n");
   cadenaEnvio += F("---------------------------------- M8AX - DATOS NERD - M8AX ------------------------------------\n");
   cadenaEnvio += F("------------------------------------------------------------------------------------------------\n");
+  rndnumero = esp_random();
+  cadenaEnvio += "Factorización De Número - " + String(rndnumero) + " -> " + factorize(rndnumero) + "\n";
+  rndnumero = esp_random();
+  cadenaEnvio += "Factorización De Número - " + String(rndnumero) + " -> " + factorize(rndnumero) + "\n";
   rndnumero = esp_random();
   cadenaEnvio += "Factorización De Número - " + String(rndnumero) + " -> " + factorize(rndnumero) + "\n";
   cadenaEnvio += "------------------------------------------------------------------------------------------------\n                                       By M8AX Corp. " + convertirARomanos(anio);
@@ -1944,6 +2071,9 @@ void printPoolData()
 void esp32_2432S028R_MinerScreen(unsigned long mElapsed)
 {
   mineria = getMiningData(mElapsed);
+  detectar = 0;
+  tft.setTextFont(1);
+  tft.setTextSize(1);
   printPoolData();
   if (hasChangedScreen)
     tft.pushImage(0, 0, initWidth, initHeight, MinerScreen);
@@ -2007,6 +2137,7 @@ void esp32_2432S028R_MinerScreen(unsigned long mElapsed)
     ajustarZonaHoraria();
     obtenerLocYTemp();
   }
+  manejandoLeds(mineria.currentHashRate.toFloat());
 #ifdef DEBUG_MEMORY
   // Print heap
   printheap();
@@ -2015,12 +2146,38 @@ void esp32_2432S028R_MinerScreen(unsigned long mElapsed)
 
 void esp32_2432S028R_ClockScreen(unsigned long mElapsed)
 {
+  mineria = getMiningData(mElapsed);
+  unsigned long epochTime = timeClient.getEpochTime(); // Obtener segundos desde 1970
+  time_t epoch = (time_t)epochTime;                    // Convertir a time_t
+  struct tm *timeinfo = localtime(&epoch);             // Convertir a una estructura de tiempo local
+  int dia = timeinfo->tm_mday;                         // Día del mes (1 a 31)
+  int mes = timeinfo->tm_mon + 1;                      // Mes (1 a 12)
+  int anio = timeinfo->tm_year + 1900;                 // Año (por defecto es desde 1900)
+  int horita = timeinfo->tm_hour;                      // Hora
+  int minutitos = timeinfo->tm_min;                    // Minutos
+  int segundos = timeinfo->tm_sec;                     // Segundos
+  // Formatear la hora en "00:00:00"
+  char horaFormateada[9];
+  sprintf(horaFormateada, "%02d:%02d:%02d", horita, minutitos, segundos);
+  // Formatear la fecha en "dia/mes/año"
+  char fechaFormateada[11];
+  sprintf(fechaFormateada, "%02d/%02d/%04d", dia, mes, anio);
   if (hasChangedScreen)
     tft.pushImage(0, 0, minerClockWidth, minerClockHeight, minerClockScreen);
+  detectar = 0;
   printPoolData();
+  if (detectar2 == 0)
+  {
+    prebitco = preciob().c_str();
+    alturabloque = alturab().c_str();
+  }
+  detectar2++;
+  if (detectar2 % 60 == 0)
+  {
+    prebitco = preciob().c_str();
+    alturabloque = alturab().c_str();
+  }
   hasChangedScreen = false;
-  clock_data data = getClockData(mElapsed);
-  mineria = getMiningData(mElapsed);
   // Create background sprite to print data at once
   createBackgroundSprite(270, 36);
   // Print background screen
@@ -2031,7 +2188,7 @@ void esp32_2432S028R_ClockScreen(unsigned long mElapsed)
   render.rdrawString(mineria.currentHashRate.c_str(), 95, 0, TFT_BLACK);
   // Print BlockHeight
   render.setFontSize(18);
-  render.rdrawString(data.blockHeight.c_str(), 254, 9, TFT_BLACK);
+  render.rdrawString(alturabloque.c_str(), 254, 9, TFT_BLACK);
   // Push prepared background to screen
   background.pushSprite(0, 130);
   // Delete sprite to free the memory heap
@@ -2044,12 +2201,13 @@ void esp32_2432S028R_ClockScreen(unsigned long mElapsed)
   background.setTextSize(1);
   background.setTextDatum(TL_DATUM);
   background.setTextColor(TFT_BLACK);
-  background.drawString(data.btcPrice.c_str(), 202 - 130, 0, GFXFF);
+  background.drawString(prebitco, 202 - 130, 0, GFXFF);
   // Print Hour
   background.setFreeFont(FF23);
-  background.setTextSize(2);
+  background.setTextSize(1);
   background.setTextColor(TFT_WHITE);
-  background.drawString(mineria.currentTime, 0, 50, GFXFF);
+  background.drawString(horaFormateada, 15, 39, GFXFF);
+  background.drawString(fechaFormateada, -1, 77, GFXFF);
   // Push prepared background to screen
   background.pushSprite(130, 3);
   // Delete sprite to free the memory heap
@@ -2062,6 +2220,7 @@ void esp32_2432S028R_ClockScreen(unsigned long mElapsed)
     ajustarZonaHoraria();
     obtenerLocYTemp();
   }
+  manejandoLeds(mineria.currentHashRate.toFloat());
 #ifdef DEBUG_MEMORY
   // Print heap
   printheap();
@@ -2070,22 +2229,34 @@ void esp32_2432S028R_ClockScreen(unsigned long mElapsed)
 
 void esp32_2432S028R_m8axScreen2(unsigned long mElapsed)
 {
-  clock_data data = getClockData(mElapsed);
   mineria = getMiningData(mElapsed);
-  int dia = data.currentDate.substring(0, 2).toInt();
-  int mes = data.currentDate.substring(3, 5).toInt();
-  int anio = data.currentDate.substring(6, 10).toInt();
-  int num1 = data.currentTime.charAt(0) - '0'; // Primer dígito de la hora
-  int num2 = data.currentTime.charAt(1) - '0'; // Segundo dígito de la hora
-  int num3 = data.currentTime.charAt(3) - '0'; // Primer dígito de los minutos
-  int num4 = data.currentTime.charAt(4) - '0'; // Segundo dígito de los minutos
+  unsigned long epochTime = timeClient.getEpochTime(); // Obtener segundos desde 1970
+  time_t epoch = (time_t)epochTime;                    // Convertir a time_t
+  struct tm *timeinfo = localtime(&epoch);             // Convertir a estructura de tiempo local
+  int dia = timeinfo->tm_mday;                         // Día del mes (1 a 31)
+  int mes = timeinfo->tm_mon + 1;                      // Mes (0 a 11) -> +1
+  int anio = timeinfo->tm_year + 1900;                 // Año desde 1900
+  int horita = timeinfo->tm_hour;                      // Hora
+  int minutitos = timeinfo->tm_min;                    // Minutos
+  // Formatear fecha dd/mm/aaaa
+  char fecha[11]; // "dd/mm/aaaa" + null terminator
+  sprintf(fecha, "%02d/%02d/%04d", dia, mes, anio);
+  // Formatear hora hh:mm
+  char hora[6]; // "hh:mm" + null terminator
+  sprintf(hora, "%02d:%02d", horita, minutitos);
+  // Obtener dígitos individuales de hora y minutos
+  int num1 = horita / 10;
+  int num2 = horita % 10;
+  int num3 = minutitos / 10;
+  int num4 = minutitos % 10;
   if (hasChangedScreen)
-    tft.pushImage(0, 0, initWidth, initHeight, ImagenM8AX);
+    tft.pushImage(0, 0, initWidth, initHeight, M8AXQuote1);
   printPoolData();
   refresca++;
   if (refresca > 4)
   {
-    tft.pushImage(0, 0, initWidth, initHeight, ImagenM8AX);
+    tft.pushImage(0, 0, initWidth, initHeight, M8AXQuote1);
+    mostrarCalendario(dia, mes, anio, num1, num2, num3, num4);
     refresca = 0;
   }
   hasChangedScreen = false;
@@ -2093,8 +2264,7 @@ void esp32_2432S028R_m8axScreen2(unsigned long mElapsed)
   // Recreate sprite to the right side of the screen
   createBackgroundSprite(WIDTH - 5, HEIGHT - 7);
   // Print background screen
-  background.pushImage(-190, 0, ImagenM8AXWidth, ImagenM8AXHeight, ImagenM8AX);
-  mostrarCalendario(dia, mes, anio, num1, num2, num3, num4);
+  background.pushImage(-190, 0, ImagenM8AXWidth, ImagenM8AXHeight, M8AXQuote1);
   Serial.printf("M8AX - %s >>> Completados %s Share(s), %s Khashes, Prom. Hashrate %s KH/s %s°\n",
                 mineria.currentTime, mineria.completedShares.c_str(), mineria.totalKHashes.c_str(), mineria.currentHashRate.c_str(), mineria.temp.c_str());
   cuentita++;
@@ -2103,6 +2273,7 @@ void esp32_2432S028R_m8axScreen2(unsigned long mElapsed)
     ajustarZonaHoraria();
     obtenerLocYTemp();
   }
+  manejandoLeds(mineria.currentHashRate.toFloat());
 #ifdef DEBUG_MEMORY
   // Print heap
   printheap();
@@ -2111,25 +2282,34 @@ void esp32_2432S028R_m8axScreen2(unsigned long mElapsed)
 
 void RelojDeNumeros(unsigned long mElapsed)
 {
-  clock_data data = getClockData(mElapsed);
   mineria = getMiningData(mElapsed);
+  unsigned long epochTime = timeClient.getEpochTime(); // Obtener segundos desde 1970
+  time_t epoch = (time_t)epochTime;                    // Convertir a time_t
+  struct tm *timeinfo = localtime(&epoch);             // Convertir a estructura de tiempo local
+  int dia = timeinfo->tm_mday;                         // Día del mes (1 a 31)
+  int mes = timeinfo->tm_mon + 1;                      // Mes (0 a 11) -> +1
+  int anio = timeinfo->tm_year + 1900;                 // Año desde 1900
+  int horas = timeinfo->tm_hour;                       // Hora
+  int minutos = timeinfo->tm_min;                      // Minutos
+  int segundos = timeinfo->tm_sec;                     // Segundos
+  detectar2 = 0;
+  // Formatear fecha dd/mm/aaaa
+  char fecha[11]; // "dd/mm/aaaa" + null terminator
+  sprintf(fecha, "%02d/%02d/%04d", dia, mes, anio);
+  // Formatear hora hh:mm
+  char hora[6]; // "hh:mm" + null terminator
+  sprintf(hora, "%02d:%02d", horas, minutos);
+  // Obtener dígitos individuales de hora y minutos
   int millonario = atoi(mineria.valids.c_str());
-  unsigned long segundo = timeClient.getSeconds();
-  int horas = mineria.currentTime.substring(0, 2).toInt();
-  int minutos = mineria.currentTime.substring(3, 5).toInt();
-  int segundos = segundo % 60;
   int horis1 = horas / 10;       // Primer dígito de las horas
   int horis2 = horas % 10;       // Segundo dígito de las horas
   int minutis1 = minutos / 10;   // Primer dígito de los minutos
   int minutis2 = minutos % 10;   // Segundo dígito de los minutos
   int segundis1 = segundos / 10; // Primer dígito de los segundos
   int segundis2 = segundos % 10; // Segundo dígito de los segundos
-  std::string quediase = obtenerDiaSemana(std::string(data.currentDate.c_str()));
-  int dia = data.currentDate.substring(0, 2).toInt();
-  int mes = data.currentDate.substring(3, 5).toInt();
-  int anio = data.currentDate.substring(6, 10).toInt();
-  int horis = mineria.currentTime.substring(0, 2).toInt();
-  int mins = mineria.currentTime.substring(3, 5).toInt();
+  std::string quediase = obtenerDiaSemana(std::string(fecha));
+  int horis = horas;
+  int mins = minutos;
   int segundosDelDia = (horis * 3600) + (mins * 60) + segundos;
   String hRoman1 = numeroAEscrito(horis1);
   hRoman1.toUpperCase();
@@ -2277,6 +2457,7 @@ void RelojDeNumeros(unsigned long mElapsed)
     ajustarZonaHoraria();
     obtenerLocYTemp();
   }
+  manejandoLeds(mineria.currentHashRate.toFloat());
 #ifdef DEBUG_MEMORY
   // Print heap
   printheap();
@@ -2285,33 +2466,26 @@ void RelojDeNumeros(unsigned long mElapsed)
 
 void esp32_2432S028R_m8axScreen1(unsigned long mElapsed)
 {
-  clock_data data = getClockData(mElapsed);
   mineria = getMiningData(mElapsed);
+  unsigned long epochTime = timeClient.getEpochTime(); // Obtener segundos desde 1970
+  time_t epoch = (time_t)epochTime;                    // Convertir a time_t
+  struct tm *timeinfo = localtime(&epoch);             // Convertir a estructura de tiempo local
+  int dia = timeinfo->tm_mday;
+  int mes = timeinfo->tm_mon + 1;
+  int anio = timeinfo->tm_year + 1900;
+  int hora = timeinfo->tm_hour;
+  int minuto = timeinfo->tm_min;
+  int segundo = timeinfo->tm_sec;
   moonData_t moon;
-  int dia = data.currentDate.substring(0, 2).toInt();
-  int mes = data.currentDate.substring(3, 5).toInt();
-  int anio = data.currentDate.substring(6, 10).toInt();
-  int hora = data.currentTime.substring(0, 2).toInt();
-  int minuto = data.currentTime.substring(3, 5).toInt();
-  unsigned long segundo = timeClient.getSeconds();
-  struct tm timeinfo;
-  timeinfo.tm_year = anio - 1900; // Año desde 1900
-  timeinfo.tm_mon = mes - 1;      // Mes (0 = enero)
-  timeinfo.tm_mday = dia;         // Día del mes
-  timeinfo.tm_hour = hora;        // Hora
-  timeinfo.tm_min = minuto;       // Minutos
-  timeinfo.tm_sec = segundo;      // Segundos
-  timeinfo.tm_isdst = -1;         // Determina si es horario de verano (automático)
-  // Convertir a time_t
-  time_t cadenaDeTiempo = mktime(&timeinfo);
+  time_t cadenaDeTiempo = mktime(timeinfo);
   moon = mymoonPhase.getPhase(cadenaDeTiempo);
   double porcentajeIluminado = moon.percentLit * 100;
   char porcentajeTexto[10];
   snprintf(porcentajeTexto, sizeof(porcentajeTexto), "%.2f%%", porcentajeIluminado);
   String textoFinal = String(porcentajeTexto);
-  int horis = timeClient.getHours();
-  int minutis = timeClient.getMinutes();
-  int secondis = timeClient.getSeconds();
+  int horis = hora;
+  int minutis = minuto;
+  int secondis = segundo;
   if (hasChangedScreen)
     tft.fillRect(0, 0, 320, 170, TFT_BLACK);
   printPoolData();
@@ -2395,6 +2569,7 @@ void esp32_2432S028R_m8axScreen1(unsigned long mElapsed)
   {
     obtenerLocYTemp();
   }
+  manejandoLeds(mineria.currentHashRate.toFloat());
 #ifdef DEBUG_MEMORY
   // Print heap
   printheap();
@@ -2453,6 +2628,7 @@ void tDisplay_m8axScreen4(unsigned long mElapsed)
     ajustarZonaHoraria();
     obtenerLocYTemp();
   }
+  manejandoLeds(mineria.currentHashRate.toFloat());
 #ifdef DEBUG_MEMORY
   // Print heap
   printheap();
@@ -2461,8 +2637,21 @@ void tDisplay_m8axScreen4(unsigned long mElapsed)
 
 void tDisplay_m8axScreen5(unsigned long mElapsed)
 {
-  clock_data data = getClockData(mElapsed);
   mineria = getMiningData(mElapsed);
+  unsigned long epochTime = timeClient.getEpochTime(); // Obtener segundos desde 1970
+  time_t epoch = (time_t)epochTime;                    // Convertir a time_t
+  struct tm *timeinfo = localtime(&epoch);             // Convertir a estructura de tiempo local
+  int dia = timeinfo->tm_mday;                         // Día del mes (1 a 31)
+  int mes = timeinfo->tm_mon + 1;                      // Mes (0 a 11) -> +1
+  int anio = timeinfo->tm_year + 1900;                 // Año desde 1900
+  int horita = timeinfo->tm_hour;                      // Hora
+  int minutitos = timeinfo->tm_min;                    // Minutos
+  // Formatear fecha dd/mm/aaaa
+  char fecha[11]; // "dd/mm/aaaa" + null terminator
+  sprintf(fecha, "%02d/%02d/%04d", dia, mes, anio);
+  // Formatear hora hh:mm
+  char hora[6]; // "hh:mm" + null terminator
+  sprintf(hora, "%02d:%02d", horita, minutitos);
   solouna = 0;
   Serial.printf("M8AX - %s >>> Completados %s Share(s), %s Khashes, Prom. Hashrate %s KH/s %s°\n",
                 mineria.currentTime, mineria.completedShares.c_str(), mineria.totalKHashes.c_str(), mineria.currentHashRate.c_str(), mineria.temp.c_str());
@@ -2492,11 +2681,11 @@ void tDisplay_m8axScreen5(unsigned long mElapsed)
     int millonario = atoi(mineria.valids.c_str());
     if (millonario == 0)
     {
-      tft.print(mineria.currentTime + " - " + data.currentDate + " - " + mineria.currentHashRate + " KH/s - " + mineria.temp + " Grados." + " NO RICO");
+      tft.print(String(hora) + " - " + String(fecha) + " - " + mineria.currentHashRate + " KH/s - " + mineria.temp + " Grados." + " NO RICO");
     }
     else
     {
-      tft.print(mineria.currentTime + " - " + data.currentDate + " - " + mineria.currentHashRate + " KH/s - " + mineria.temp + " Grados." + " SI RICO");
+      tft.print(String(hora) + " - " + String(fecha) + " - " + mineria.currentHashRate + " KH/s - " + mineria.temp + " Grados." + " SI RICO");
     }
   }
   if (refresca > 60)
@@ -2516,11 +2705,11 @@ void tDisplay_m8axScreen5(unsigned long mElapsed)
     int millonario = atoi(mineria.valids.c_str());
     if (millonario == 0)
     {
-      tft.print(mineria.currentTime + " - " + data.currentDate + " - " + mineria.currentHashRate + " KH/s - " + mineria.temp + " Grados." + " NO RICO");
+      tft.print(String(hora) + " - " + String(fecha) + " - " + mineria.currentHashRate + " KH/s - " + mineria.temp + " Grados." + " NO RICO");
     }
     else
     {
-      tft.print(mineria.currentTime + " - " + data.currentDate + " - " + mineria.currentHashRate + " KH/s - " + mineria.temp + " Grados." + " SI RICO");
+      tft.print(String(hora) + " - " + String(fecha) + " - " + mineria.currentHashRate + " KH/s - " + mineria.temp + " Grados." + " SI RICO");
     }
   }
   cuentita++;
@@ -2529,6 +2718,7 @@ void tDisplay_m8axScreen5(unsigned long mElapsed)
     ajustarZonaHoraria();
     obtenerLocYTemp();
   }
+  manejandoLeds(mineria.currentHashRate.toFloat());
 #ifdef DEBUG_MEMORY
   // Print heap
   printheap();
@@ -2537,8 +2727,16 @@ void tDisplay_m8axScreen5(unsigned long mElapsed)
 
 void tDisplay_m8axScreen6(unsigned long mElapsed)
 {
-  clock_data data = getClockData(mElapsed);
   mineria = getMiningData(mElapsed);
+  unsigned long epochTime = timeClient.getEpochTime(); // Obtener segundos desde 1970
+  time_t epoch = (time_t)epochTime;                    // Convertir a time_t
+  struct tm *timeinfo = localtime(&epoch);             // Convertir a estructura de tiempo local
+  int dia = timeinfo->tm_mday;                         // Día del mes (1 a 31)
+  int mes = timeinfo->tm_mon + 1;                      // Mes (0 a 11) -> +1
+  int anio = timeinfo->tm_year + 1900;                 // Año desde 1900
+  // Formatear fecha dd/mm/aaaa
+  char fecha[11]; // "dd/mm/aaaa" + null terminator
+  sprintf(fecha, "%02d/%02d/%04d", dia, mes, anio);
   solounavez = 0;
   Serial.printf("M8AX - %s >>> Completados %s Share(s), %s Khashes, Prom. Hashrate %s KH/s %s°\n",
                 mineria.currentTime, mineria.completedShares.c_str(), mineria.totalKHashes.c_str(), mineria.currentHashRate.c_str(), mineria.temp.c_str());
@@ -2571,11 +2769,11 @@ void tDisplay_m8axScreen6(unsigned long mElapsed)
     int millonario = atoi(mineria.valids.c_str());
     if (millonario == 0)
     {
-      tft.print(mineria.currentTime + " - " + data.currentDate + " - " + mineria.currentHashRate + " KH/s - " + mineria.temp + " Grados." + " NO RICO");
+      tft.print(mineria.currentTime + " - " + String(fecha) + " - " + mineria.currentHashRate + " KH/s - " + mineria.temp + " Grados." + " NO RICO");
     }
     else
     {
-      tft.print(mineria.currentTime + " - " + data.currentDate + " - " + mineria.currentHashRate + " KH/s - " + mineria.temp + " Grados." + " SI RICO");
+      tft.print(mineria.currentTime + " - " + String(fecha) + " - " + mineria.currentHashRate + " KH/s - " + mineria.temp + " Grados." + " SI RICO");
     }
   }
   if (refresca > 10)
@@ -2598,11 +2796,11 @@ void tDisplay_m8axScreen6(unsigned long mElapsed)
     int millonario = atoi(mineria.valids.c_str());
     if (millonario == 0)
     {
-      tft.print(mineria.currentTime + " - " + data.currentDate + " - " + mineria.currentHashRate + " KH/s - " + mineria.temp + " Grados." + " NO RICO");
+      tft.print(mineria.currentTime + " - " + String(fecha) + " - " + mineria.currentHashRate + " KH/s - " + mineria.temp + " Grados." + " NO RICO");
     }
     else
     {
-      tft.print(mineria.currentTime + " - " + data.currentDate + " - " + mineria.currentHashRate + " KH/s - " + mineria.temp + " Grados." + " SI RICO");
+      tft.print(mineria.currentTime + " - " + String(fecha) + " - " + mineria.currentHashRate + " KH/s - " + mineria.temp + " Grados." + " SI RICO");
     }
   }
   cuentita++;
@@ -2611,6 +2809,7 @@ void tDisplay_m8axScreen6(unsigned long mElapsed)
     ajustarZonaHoraria();
     obtenerLocYTemp();
   }
+  manejandoLeds(mineria.currentHashRate.toFloat());
 #ifdef DEBUG_MEMORY
   // Print heap
   printheap();
@@ -2620,7 +2819,15 @@ void tDisplay_m8axScreen6(unsigned long mElapsed)
 void tDisplay_m8axScreen7(unsigned long mElapsed)
 {
   mineria = getMiningData(mElapsed);
-  clock_data data = getClockData(mElapsed);
+  unsigned long epochTime = timeClient.getEpochTime(); // Obtener segundos desde 1970
+  time_t epoch = (time_t)epochTime;                    // Convertir a time_t
+  struct tm *timeinfo = localtime(&epoch);             // Convertir a estructura de tiempo local
+  int dia = timeinfo->tm_mday;                         // Día del mes (1 a 31)
+  int mes = timeinfo->tm_mon + 1;                      // Mes (0 a 11) -> +1
+  int anio = timeinfo->tm_year + 1900;                 // Año desde 1900
+  int horita = timeinfo->tm_hour;                      // Hora
+  int minutitos = timeinfo->tm_min;                    // Minutos
+  int segundos = timeinfo->tm_sec;                     // Segundos
   Serial.printf("M8AX - %s >>> Completados %s Share(s), %s Khashes, Prom. Hashrate %s KH/s %s°\n",
                 mineria.currentTime, mineria.completedShares.c_str(), mineria.totalKHashes.c_str(), mineria.currentHashRate.c_str(), mineria.temp.c_str());
   if (hasChangedScreen)
@@ -2636,10 +2843,6 @@ void tDisplay_m8axScreen7(unsigned long mElapsed)
     refresca = 0;
     tft.fillRect(0, 0, 320, 170, TFT_BLACK);
   }
-  int horita = data.currentTime.substring(0, 2).toInt();
-  int minutitos = data.currentTime.substring(3, 5).toInt();
-  unsigned long segundo = timeClient.getSeconds();
-  int segundos = segundo % 60;
   uint16_t colorss[] = {TFT_WHITE, TFT_YELLOW, TFT_CYAN, TFT_GREENYELLOW, TFT_LIGHTGREY, TFT_SILVER}; // Array de colores
   int colorrr = esp_random() % 6;
   dibujaQR(String(horita), 0, 0, 98, colorss[colorrr]); // Dibuja el QR centrado en la pantalla 320x170
@@ -2869,6 +3072,7 @@ void tDisplay_m8axScreen7(unsigned long mElapsed)
     ajustarZonaHoraria();
     obtenerLocYTemp();
   }
+  manejandoLeds(mineria.currentHashRate.toFloat());
 #ifdef DEBUG_MEMORY
   // Print heap
   printheap();
@@ -2973,6 +3177,7 @@ void tDisplay_m8axScreen3(unsigned long mElapsed)
     ajustarZonaHoraria();
     obtenerLocYTemp();
   }
+  manejandoLeds(mineria.currentHashRate.toFloat());
 #ifdef DEBUG_MEMORY
   // Print heap
   printheap();
@@ -2981,13 +3186,22 @@ void tDisplay_m8axScreen3(unsigned long mElapsed)
 
 void tDisplay_m8axScreenMegaNerd(unsigned long mElapsed)
 {
-  clock_data data = getClockData(mElapsed);
   mineria = getMiningData(mElapsed);
-  unsigned long segundo = timeClient.getSeconds();
+  unsigned long epochTime = timeClient.getEpochTime(); // Obtener segundos desde 1970
+  time_t epoch = (time_t)epochTime;                    // Convertir a time_t
+  struct tm *timeinfo = localtime(&epoch);             // Convertir a estructura de tiempo local
+  int dia = timeinfo->tm_mday;                         // Día del mes (1 a 31)
+  int mes = timeinfo->tm_mon + 1;                      // Mes (0 a 11) -> +1
+  int anio = timeinfo->tm_year + 1900;                 // Año desde 1900
+  int horita = timeinfo->tm_hour;                      // Hora
+  int minutitos = timeinfo->tm_min;                    // Minutos
+  int segundos = timeinfo->tm_sec;                     // Segundos
+  // Formatear fecha dd/mm/aaaa
+  char fecha[11]; // "dd/mm/aaaa" + null terminator
+  sprintf(fecha, "%02d/%02d/%04d", dia, mes, anio);
   solounavez = 0;
-  int segundos = segundo % 60;
-  int horas = data.currentTime.substring(0, 2).toInt();
-  int minutos = data.currentTime.substring(3, 5).toInt();
+  int horas = horita;
+  int minutos = minutitos;
   colorI = esp_random() % (sizeof(colors) / sizeof(colors[0]));
   Serial.printf("M8AX - %s >>> Completados %s Share(s), %s Khashes, Prom. Hashrate %s KH/s %s°\n",
                 mineria.currentTime, mineria.completedShares.c_str(), mineria.totalKHashes.c_str(), mineria.currentHashRate.c_str(), mineria.temp.c_str());
@@ -3006,8 +3220,8 @@ void tDisplay_m8axScreenMegaNerd(unsigned long mElapsed)
   createBackgroundSprite(WIDTH - 5, HEIGHT - 7);
   // Print background screen
   background.pushImage(-190, 0, ImagenM8AXWidth, ImagenM8AXHeight, M8AXRelojLunar);
-  const char *hashRateStr = data.currentHashRate.c_str(); // Obtener la cadena
-  float hashRa = atof(hashRateStr);                       // Convertirla a flotante (float)
+  const char *hashRateStr = mineria.currentHashRate.c_str(); // Obtener la cadena
+  float hashRa = atof(hashRateStr);                          // Convertirla a flotante (float)
   dibujaAnalogKH(hashRa);
   tft.setTextColor(TFT_WHITE);
   tft.setTextSize(1);
@@ -3026,11 +3240,11 @@ void tDisplay_m8axScreenMegaNerd(unsigned long mElapsed)
   int millonario = atoi(mineria.valids.c_str());
   if (millonario == 0)
   {
-    tft.print(mineria.currentTime + " - " + data.currentDate + " - " + mineria.currentHashRate + " KH/s - " + mineria.temp + " Grados." + " NO RICO");
+    tft.print(mineria.currentTime + " - " + String(fecha) + " - " + mineria.currentHashRate + " KH/s - " + mineria.temp + " Grados." + " NO RICO");
   }
   else
   {
-    tft.print(mineria.currentTime + " - " + data.currentDate + " - " + mineria.currentHashRate + " KH/s - " + mineria.temp + " Grados." + " SI RICO");
+    tft.print(mineria.currentTime + " - " + String(fecha) + " - " + mineria.currentHashRate + " KH/s - " + mineria.temp + " Grados." + " SI RICO");
   }
   tft.setCursor(4, 23);
   tft.setTextSize(1);
@@ -3109,7 +3323,7 @@ void tDisplay_m8axScreenMegaNerd(unsigned long mElapsed)
   tft.print("o");
   tft.setCursor(208, 138);
   tft.print("HMS");
-  std::string quediase = obtenerDiaSemana(std::string(data.currentDate.c_str()));
+  std::string quediase = obtenerDiaSemana(std::string(fecha));
   tft.setCursor(153, 68);
   tft.setTextColor(colors[colorI]);
   tft.print(quediase.c_str());
@@ -3135,6 +3349,7 @@ void tDisplay_m8axScreenMegaNerd(unsigned long mElapsed)
     ajustarZonaHoraria();
     obtenerLocYTemp();
   }
+  manejandoLeds(mineria.currentHashRate.toFloat());
 #ifdef DEBUG_MEMORY
   // Print heap
   printheap();
@@ -3143,14 +3358,36 @@ void tDisplay_m8axScreenMegaNerd(unsigned long mElapsed)
 
 void esp32_2432S028R_BTCprice(unsigned long mElapsed)
 {
-  clock_data data = getClockData(mElapsed);
   mineria = getMiningData(mElapsed);
-  int hora = timeClient.getHours();
-  int minuto = timeClient.getMinutes();
-  int segundo = timeClient.getSeconds();
+  unsigned long epochTime = timeClient.getEpochTime(); // Obtener segundos desde 1970
+  time_t epoch = (time_t)epochTime;                    // Convertir a time_t
+  struct tm *timeinfo = localtime(&epoch);             // Convertir a estructura de tiempo local
+  int dia = timeinfo->tm_mday;                         // Día del mes (1 a 31)
+  int mes = timeinfo->tm_mon + 1;                      // Mes (0 a 11) -> +1
+  int anio = timeinfo->tm_year + 1900;                 // Año desde 1900
+  int hora = timeinfo->tm_hour;                        // Hora
+  int minuto = timeinfo->tm_min;                       // Minutos
+  int segundo = timeinfo->tm_sec;                      // Segundos
+  detectar2 = 0;
+  tft.setTextFont(1);
+  tft.setTextSize(1);
+  if (detectar == 0)
+  {
+    prebitco = preciob().c_str();
+    alturabloque = alturab().c_str();
+  }
+  detectar++;
+  if (detectar % 60 == 0)
+  {
+    prebitco = preciob().c_str();
+    alturabloque = alturab().c_str();
+  }
   // Formatear la hora
   char hora_formateada[9]; // "HH:MM:SS" + null
   snprintf(hora_formateada, sizeof(hora_formateada), "%02d:%02d:%02d", hora, minuto, segundo);
+  // Formatear fecha dd/mm/aaaa
+  char fecha[11]; // "dd/mm/aaaa" + null terminator
+  sprintf(fecha, "%02d/%02d/%04d", dia, mes, anio);
   if (hasChangedScreen)
     tft.pushImage(0, 0, priceScreenWidth, priceScreenHeight, priceScreen);
   printPoolData();
@@ -3165,7 +3402,7 @@ void esp32_2432S028R_BTCprice(unsigned long mElapsed)
   render.rdrawString(mineria.currentHashRate.c_str(), 95, 0, TFT_BLACK);
   // Print BlockHeight
   render.setFontSize(18);
-  render.rdrawString(data.blockHeight.c_str(), 254, 9, TFT_WHITE);
+  render.rdrawString(alturabloque.c_str(), 254, 9, TFT_WHITE);
   // Push prepared background to screen
   background.pushSprite(0, 130);
   // Delete sprite to free the memory heap
@@ -3178,13 +3415,15 @@ void esp32_2432S028R_BTCprice(unsigned long mElapsed)
   background.setTextSize(1);
   background.setTextDatum(TL_DATUM);
   background.setTextColor(TFT_BLACK);
-  background.drawString(hora_formateada, 202 - 135, 0, GFXFF);
+  background.drawString(fecha, 202 - 147, 0, GFXFF);
   // Print BTC Price
-  background.setFreeFont(FF24);
+  background.setFreeFont(FF23);
   background.setTextDatum(TL_DATUM);
-  background.setTextSize(1);
   background.setTextColor(TFT_WHITE);
-  background.drawString(data.btcPrice.c_str(), 0, 50, GFXFF);
+  background.drawString(prebitco, 0, 40, GFXFF);
+  background.setTextDatum(TL_DATUM);
+  background.setTextColor(TFT_WHITE);
+  background.drawString(hora_formateada, 0, 78, GFXFF);
   // Push prepared background to screen
   background.pushSprite(130, 3);
   // Delete sprite to free the memory heap
@@ -3197,6 +3436,76 @@ void esp32_2432S028R_BTCprice(unsigned long mElapsed)
     ajustarZonaHoraria();
     obtenerLocYTemp();
   }
+  manejandoLeds(mineria.currentHashRate.toFloat());
+#ifdef DEBUG_MEMORY
+  // Print heap
+  printheap();
+#endif
+}
+
+void tDisplay_granHash(unsigned long mElapsed)
+{
+  mineria = getMiningData(mElapsed);
+  unsigned long epochTime = timeClient.getEpochTime(); // Obtener segundos desde 1970
+  time_t epoch = (time_t)epochTime;                    // Convertir a time_t
+  struct tm *timeinfo = localtime(&epoch);             // Convertir a estructura de tiempo local
+  int dia = timeinfo->tm_mday;                         // Día del mes (1 a 31)
+  int mes = timeinfo->tm_mon + 1;                      // Mes (0 a 11) -> +1
+  int anio = timeinfo->tm_year + 1900;                 // Año desde 1900
+  int hora = timeinfo->tm_hour;                        // Hora
+  int minuto = timeinfo->tm_min;                       // Minutos
+  int segundo = timeinfo->tm_sec;                      // Segundos
+  // Formatear la hora
+  char hora_formateada[9]; // "HH:MM:SS" + null
+  snprintf(hora_formateada, sizeof(hora_formateada), "%02d:%02d:%02d", hora, minuto, segundo);
+  // Formatear fecha dd/mm/aaaa
+  char fecha[11]; // "dd/mm/aaaa" + null terminator
+  sprintf(fecha, "%02d/%02d/%04d", dia, mes, anio);
+  detectar = 0;
+  Serial.printf("M8AX - %s >>> Completados %s Share(s), %s Khashes, Prom. Hashrate %s KH/s %s°\n",
+                mineria.currentTime, mineria.completedShares.c_str(), mineria.totalKHashes.c_str(), mineria.currentHashRate.c_str(), mineria.temp.c_str());
+  if (hasChangedScreen)
+    tft.pushImage(0, 0, initWidth, initHeight, M8AXQuote2);
+  printPoolData();
+  refresca++;
+  if (refresca > 0)
+  {
+    tft.pushImage(0, 0, initWidth, initHeight, M8AXQuote2);
+    refresca = 0;
+  }
+  hasChangedScreen = false;
+  int wdtOffset = 190;
+  // Recreate sprite to the right side of the screen
+  createBackgroundSprite(WIDTH - 5, HEIGHT - 7);
+  // Print background screen
+  background.pushImage(-190, 0, ImagenM8AXWidth, ImagenM8AXHeight, M8AXQuote2);
+  tft.setFreeFont(FF24);
+  tft.setTextSize(2);
+  tft.setCursor(18, 117);
+  colorI = esp_random() % (sizeof(colors) / sizeof(colors[0]));
+  tft.setTextColor(colors[colorI]);
+  tft.print(mineria.currentHashRate);
+  tft.setTextFont(2);
+  tft.setTextSize(2);
+  tft.setCursor(10, 1);
+  colorI = esp_random() % (sizeof(colors) / sizeof(colors[0]));
+  tft.setTextColor(colors[colorI]);
+  tft.print(String(hora_formateada) + " - " + fecha);
+  tft.setCursor(107, 136);
+  tft.print(String(prebitco));
+  tft.setTextFont(1);
+  tft.setTextSize(1);
+  cuentita++;
+  if (cuentita == 15)
+  {
+    ajustarZonaHoraria();
+    obtenerLocYTemp();
+  }
+  if (cuentita % 60 == 0)
+  {
+    prebitco = preciob().c_str();
+  }
+  manejandoLeds(mineria.currentHashRate.toFloat());
 #ifdef DEBUG_MEMORY
   // Print heap
   printheap();
@@ -3205,7 +3514,7 @@ void esp32_2432S028R_BTCprice(unsigned long mElapsed)
 
 void esp32_2432S028R_LoadingScreen(void)
 {
-  int effect = esp_random() % 8;
+  int effect = esp_random() % 10;
   switch (effect)
   {
   case 0:
@@ -3232,11 +3541,17 @@ void esp32_2432S028R_LoadingScreen(void)
   case 7:
     M8AXTicker5();
     break;
+  case 8:
+    nevar();
+    break;
+  case 9:
+    nevar2();
+    break;
   }
   tft.fillScreen(TFT_BLACK);
   tft.pushImage(0, 33, initWidth, initHeight, initScreen);
   tft.setTextColor(TFT_BLACK);
-  tft.drawString(CURRENT_VERSION, 24, 184, FONT2);
+  tft.drawString(CURRENT_VERSION, 24, 182, FONT2);
   // delay(2000);
   // tft.fillScreen(TFT_BLACK);
   // tft.pushImage(0, 0, initWidth, initHeight, MinerScreen);
@@ -3259,38 +3574,6 @@ void analiCadaSegundo(unsigned long frame)
   int horita = timeinfo->tm_hour;                      // Hora
   int minutitos = timeinfo->tm_min;                    // Minutos
   int segundos = timeinfo->tm_sec;                     // Segundos
-
-  if (uncontadormas % 30 == 0 && mineria.temp.toInt() > 80)
-  {
-    Serial.println("M8AX - ¡ Temperatura Muy Alta ! 80°C Superados. Entrando En Deep Sleep Por 10 Minutos Para Enfriar La CPU...");
-    esp_sleep_enable_timer_wakeup(600e6);
-    esp_deep_sleep_start();
-  }
-
-  // Felicitar La Navidad O El Año Nuevo
-
-  if (((mes == 12 && dia >= 20) || (mes == 1 && dia <= 6)) && anio != 1970)
-  {
-    if (minutitos == 30 && ((horita >= 8 && horita <= 15) || (horita >= 19 && horita <= 23) || (horita >= 0 && horita <= 2)) && (horita % 2 == 0))
-    {
-      if (segundos == 0 && dia % 2 == 0)
-      {
-        if (mes == 12)
-        {
-          nevar();
-          Serial.println("M8AX - Felicitando La Navidad...");
-          uncontadormas = 50;
-        }
-        else if (mes == 1)
-        {
-          nevar2();
-          Serial.println("M8AX - Felicitando El Año Nuevo...");
-          uncontadormas = 50;
-        }
-        return;
-      }
-    }
-  }
 
   if (startTime == 0)
   {
@@ -3324,11 +3607,13 @@ void analiCadaSegundo(unsigned long frame)
       mintemp = currentTemp; // Actualiza el mínimo de temperatura
     }
   }
+
   // Si ya ha pasado el tiempo de arranque mínimo (por ejemplo, 10 minutos) y han pasado 2 horas desde el último mensaje de Telegram
   if (epochTime - startTime >= minStartupTime && epochTime - lastTelegramEpochTime >= interval)
   {
     // Ajustar la zona horaria si es necesario
-    ajustarZonaHoraria();
+    if ((mes == 3 || mes == 4 || mes == 10 || mes == 11) && horita >= 0 && horita <= 5)
+      ajustarZonaHoraria();
     obtenerLocYTemp();
     // Verificar si los datos de Telegram están configurados
     if (BOT_TOKEN != "NO CONFIGURADO" && CHAT_ID != "NO CONFIGURADO")
@@ -3423,7 +3708,7 @@ void esp32_2432S028R_DoLedStuff(unsigned long frame)
   }
 }
 
-CyclicScreenFunction esp32_2432S028RCyclicScreens[] = {esp32_2432S028R_MinerScreen, esp32_2432S028R_BTCprice, esp32_2432S028R_ClockScreen, RelojDeNumeros, tDisplay_m8axScreen7, esp32_2432S028R_m8axScreen1, esp32_2432S028R_m8axScreen2, tDisplay_m8axScreenMegaNerd, tDisplay_m8axScreen5, tDisplay_m8axScreen6, tDisplay_m8axScreen3, tDisplay_m8axScreen4};
+CyclicScreenFunction esp32_2432S028RCyclicScreens[] = {esp32_2432S028R_MinerScreen, tDisplay_granHash, esp32_2432S028R_BTCprice, esp32_2432S028R_ClockScreen, RelojDeNumeros, tDisplay_m8axScreen7, esp32_2432S028R_m8axScreen1, esp32_2432S028R_m8axScreen2, tDisplay_m8axScreenMegaNerd, tDisplay_m8axScreen5, tDisplay_m8axScreen6, tDisplay_m8axScreen3, tDisplay_m8axScreen4};
 
 DisplayDriver esp32_2432S028RDriver = {
     esp32_2432S028R_Init,

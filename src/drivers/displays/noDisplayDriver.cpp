@@ -12,12 +12,18 @@
  *   la zona horaria (timezone). Este valor es esencial para inicializar correctamente la lógica de
  *   sincronización y control horario del sistema.
  *
+ *   Esto asegura que, tras la configuración inicial correcta, el sistema mantenga siempre la hora local
+ *   precisa sin necesidad de intervención manual.
+ *
  *   Posteriormente, la zona horaria se actualizará automáticamente mediante la IP pública del dispositivo,
  *   ajustándose de forma dinámica a la ubicación real del usuario, incluyendo también el cambio automático
  *   por horario de verano (si aplica).
  *
- *   Esto asegura que, tras la configuración inicial correcta, el sistema mantenga siempre la hora local
- *   precisa sin necesidad de intervención manual.
+ *   Cuando se ajusta la hora por horario de verano o invierno, el sistema puede tardar en actualizar la hora
+ *   en pantalla un máximo de 5 horas, el tiempo establecido entre sincronizaciones. Esto se debe a que el
+ *   sistema no puede sincronizar la hora de forma continua, ya que esto podría causar problemas de rendimiento.
+ *   Asi que si llega el día de cambio de hora que es de madrugada y no cambia al instante no te preocupes
+ *   que el sistema lo hará automáticamente en la siguiente sincronización.
  *
  *   Comportamiento del LED:
  *   -----------------------
@@ -65,7 +71,7 @@
  *
  *
  *
- *              ///\\\ --- Minimizando código, maximizando funcionalidad. Solo 2035 líneas de código en 6h --- ///\\\
+ *              ///\\\ --- Minimizando código, maximizando funcionalidad. Solo 2010 líneas de código en 6h --- ///\\\
  *
  *                                                     .M8AX Corp. - ¡A Minar!
  *
@@ -113,6 +119,7 @@
 #define pasoskm 0.0007
 
 extern TSettings Settings;
+extern nvMemory nvMem;
 
 const char *urlsm8ax[] = {
     "YT - https://youtube.com/m8ax",
@@ -121,8 +128,7 @@ const char *urlsm8ax[] = {
     "FW - https://m8ax.github.io/MvIiIaX-NerdMiner_V2-DeV/",
     "GH - https://github.com/m8ax"};
 const char *meses[] = {
-    "ENERITO", "FEBRERITO", "MARZITO", "ABRILITO", "MAYITO", "JUNITO",
-    "JULITO", "AGOSTITO", "SEPTIEMBRITO", "OCTUBRITO", "NOVIEMBRITO", "DICIEMBRITO"};
+    "ENERITO", "FEBRERITO", "MARZITO", "ABRILITO", "MAYITO", "JUNITO", "JULITO", "AGOSTITO", "SEPTIEMBRITO", "OCTUBRITO", "NOVIEMBRITO", "DICIEMBRITO"};
 const char *morse[] = {
     "....",  // H
     "---",   // O
@@ -145,52 +151,18 @@ const char *digitosAscii[] = {
     " 888 \n8   8\n 888 \n8   8\n 888 ", // 8
     " 999 \n9   9\n 9999\n    9\n 999 "  // 9
 };
-char result[MAX_RESULT_LENGTH];
-char porcentajeTexto[10];
-String BOT_TOKEN;
-String CHAT_ID;
-String enviados;
-String ipPublica = "";
-String subebaja = "... ESPERANDO ...", subebaja2 = "... ESPERANDO ...";
-String salidaypuesta;
+char result[MAX_RESULT_LENGTH], porcentajeTexto[10];
+String BOT_TOKEN, CHAT_ID, enviados, ipPublica = "", subebaja = "... ESPERANDO ...", subebaja2 = "... ESPERANDO ...", salidaypuesta;
 std::pair<String, String> Tresultado;
 const int morseLength = sizeof(morse) / sizeof(morse[0]);
-int sumatele = 1;
-int maxtemp = 0;
-int mintemp = 1000;
-int sumacalen = 0;
-int fallos = 0, aciertos = 0;
-int totalci = 0, cambioDeDia = 0;
-int solouna = 0, zonilla;
-uint32_t nominando = 0;
-uint32_t cuenta = 0;
-uint32_t rndnumero = 0;
-uint32_t alertatemp = 0;
-uint32_t totalparpadeosled = 0;
-float maxkh = 0.00;
-float minkh = 1000.00;
-float porcentaje = 0.00;
-float eficiencia = 0.00;
-float consumo = 1.18;
-float costo_mensual = 0.00;
-float distanciaLuna = 384400;
-float distanciaSol = 149600000;
-float distanciadiamsol = 1390900;
-float circumluna = 10921;
-float precioDeBTC = 0.0;
-float anterBTC = 0.0;
-float anterBTC2 = 0.0;
+int sumatele = 1, maxtemp = 0, mintemp = 1000, sumacalen = 0, fallos = 0, aciertos = 0, totalci = 0, cambioDeDia = 0, solouna = 0, zonilla;
+uint32_t nominando = 0, cuenta = 0, rndnumero = 0, alertatemp = 0, totalparpadeosled = 0;
+float maxkh = 0.00, minkh = 1000.00, porcentaje = 0.00, eficiencia = 0.00, consumo = 1.18, costo_mensual = 0.00, distanciaLuna = 384400, distanciaSol = 149600000, distanciadiamsol = 1390900, circumluna = 10921, precioDeBTC = 0.0, anterBTC = 0.0, anterBTC2 = 0.0;
 double parpadeosPorSegundo = 1.0;
-const unsigned long interval = 60 * 2 * 60;
-const unsigned long minStartupTime = interval;
-unsigned long lastTelegramEpochTime = 0;
-unsigned long startTime = 0;
-unsigned long epochTime;
-unsigned long tiempoInicio;
-unsigned long tiempoTranscurrido;
+const unsigned long interval = 60 * 2 * 60, minStartupTime = interval;
+unsigned long lastTelegramEpochTime = 0, startTime = 0, epochTime, tiempoInicio, tiempoTranscurrido;
 mining_data data;
 moonPhase mymoonPhase;
-extern nvMemory nvMem;
 
 typedef struct
 {
@@ -1896,8 +1868,11 @@ void noDisplay_NoScreen(unsigned long mElapsed)
   {
     ipPublica = getPublicIP();
     vTaskDelay(pdMS_TO_TICKS(250));
-    sincronizarTiempo();
-    vTaskDelay(pdMS_TO_TICKS(250));
+    if ((mes == 3 || mes == 4 || mes == 10 || mes == 11) && horas >= 0 && horas <= 5)
+    {
+      sincronizarTiempo();
+      vTaskDelay(pdMS_TO_TICKS(250));
+    }
     precioDeBTC = getPrecioBTC();
     vTaskDelay(pdMS_TO_TICKS(250));
     Tresultado = obtenerCiudadYTemperatura(ipPublica);
