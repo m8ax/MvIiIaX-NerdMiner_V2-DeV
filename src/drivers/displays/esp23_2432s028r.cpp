@@ -50,16 +50,14 @@
  *      - El LED **rojo** parpadea.
  *
  *
- *
  *           Un minero de Bitcoin es un dispositivo o software que realiza cálculos
  *           matemáticos complejos para verificar y validar transacciones en la red.
  *           Los mineros compiten para resolver estos problemas y añadir un bloque
  *           a la cadena. A cambio, reciben bitcoins recién creados como recompensa.
  *
  *
- *
- *                     Tmp. De Programación 3H - 3750 Líneas De Código
- *                     ------------------------------------------------
+ *                     Tmp. De Programación 3H - 3865 Líneas De Código
+ *                     -----------------------------------------------
  *
  ****************************************************************************************************************/
 
@@ -116,10 +114,9 @@ unsigned long lastTelegramEpochTime = 0;       // Guarda el tiempo de la última
 unsigned long startTime = 0;                   // Para guardar Epoch de inicio
 const unsigned long interval = 60 * 2 * 60;    // 2 horas en segundos (2 horas * 60 minutos * 60 segundos)
 const unsigned long minStartupTime = interval; // Segundos para que no envíe mensaje a telegram si esta configurado, nada más arrancar
-float maxkh = 0.00;
-float minkh = 1000.00;
+float maxkh = 0.00, minkh = 1000.00;
 char result[MAX_RESULT_LENGTH];
-const char *serverName = "https://favqs.com/api/qotd";
+const char *apiURL = "https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids=bitcoin&price_change_percentage=24h,7d", *serverName = "https://favqs.com/api/qotd";
 const char *urlsm8ax[] = {
     "YT - https://youtube.com/m8ax",
     "OS - https://opensea.io/es/m8ax",
@@ -136,9 +133,7 @@ String urls[] = {
     "https://es.cointelegraph.com/rss/tag/ethereum",
     "https://es.cointelegraph.com/rss/category/top-10-cryptocurrencies",
     "https://es.cointelegraph.com/rss/category/market-analysis"};
-String BOT_TOKEN, CHAT_ID, cadenanoti = "";
-String prebitco = "";
-String alturabloque = "";
+String BOT_TOKEN, CHAT_ID, cadenanoti = "", prebitco = "", alturabloque = "", variacion1dia, variacion1semana;
 std::pair<String, String> Tresultado;
 mining_data mineria;
 moonPhase mymoonPhase;
@@ -158,6 +153,43 @@ void getChipInfo(void)
   Serial.print("M8AX - Frecuencia De CPU: ");
   Serial.print(ESP.getCpuFreqMHz());
   Serial.println("MHz\n");
+}
+
+bool esBisiesto(int anio)
+{
+  return ((anio % 4 == 0) && (anio % 100 != 0)) || (anio % 400 == 0);
+}
+
+bool obtenerVariacionesBTC(String &variacion1dia, String &variacion1semana)
+{
+  HTTPClient http;
+  http.begin(apiURL);
+  int httpCode = http.GET();
+  if (httpCode > 0)
+  {
+    String payload = http.getString();
+    DynamicJsonDocument doc(2048);
+    DeserializationError error = deserializeJson(doc, payload);
+    if (!error)
+    {
+      float cambio24h = doc[0]["price_change_percentage_24h_in_currency"];
+      float cambio7d = doc[0]["price_change_percentage_7d_in_currency"];
+      variacion1dia = String(cambio24h, 2) + "%";
+      variacion1semana = String(cambio7d, 2) + "%";
+      http.end();
+      return true;
+    }
+    else
+    {
+      Serial.println("M8AX - Error Al Parsear JSON.");
+    }
+  }
+  else
+  {
+    Serial.println("M8AX - Error Al Hacer La Petición HTTP.");
+  }
+  http.end();
+  return false;
 }
 
 String alturab()
@@ -256,7 +288,7 @@ String capitalizar(String palabra)
 String numeroAEscrito(int num, bool esDecimal = false)
 {
   if (num < 0 || num > 9999)
-    return "Número Fuera De Rango";
+    return "- Número Fuera De Rango -";
 
   String unidades[] = {"cero", "uno", "dos", "tres", "cuatro", "cinco", "seis", "siete", "ocho", "nueve"};
   String especiales[] = {"Diez", "Once", "Doce", "Trece", "Catorce", "Quince",
@@ -337,12 +369,12 @@ String numeroAEscrito(int num, bool esDecimal = false)
       resultado += capitalizar(unidades[num]); // Unidades solas
     }
   }
-
   return resultado;
 }
 
 String quitarAcentos(String str)
 {
+  // Sustituir Letra De Izquierda Por Letra Derecha
   str.replace("á", "a");
   str.replace("é", "e");
   str.replace("í", "i");
@@ -646,10 +678,8 @@ String getPublicIP()
 
 std::pair<String, String> obtenerCiudadYTemperatura(const String &ip)
 {
-  String ciudad = "ERROR";
-  String temperatura = "ERROR";
-  String latitud = "";
-  String longitud = "";
+  String ciudad = "ERROR", temperatura = "ERROR";
+  String latitud = "", longitud = "";
   HTTPClient http;
   String urlGeo = "http://ip-api.com/json/" + ip + "?fields=city,lat,lon";
   http.begin(urlGeo);
@@ -766,8 +796,7 @@ void dibujaAnalogKH(float khs)
   float radianes = angle * DEG_TO_RAD;
 
   // Coordenadas de la punta de la aguja (calculada a partir del ángulo)
-  int agujaX = centerX + radius * cos(radianes);
-  int agujaY = centerY + radius * sin(radianes);
+  int agujaX = centerX + radius * cos(radianes), agujaY = centerY + radius * sin(radianes);
 
   // Dibujar la aguja
   colorI = esp_random() % (sizeof(colors) / sizeof(colors[0]));
@@ -1898,31 +1927,32 @@ void esp32_2432S028R_Init(void)
   {
     // Serial.print("Invert Colors: ");
     // Serial.println(Settings.invertColors);
+    // invertColors= false; Si Pantallas Raras...
+    // invertColors = Settings.invertColors; Si Pantallas Normales...
     invertColors = Settings.invertColors;
   }
   tft.invertDisplay(invertColors);
   tft.setRotation(1);
-  tft.setSwapBytes(true); // Swap the colour byte order when rendering
+  // Swap the colour byte order when rendering
+  tft.setSwapBytes(true);
   if (invertColors)
   {
     tft.writecommand(ILI9341_GAMMASET);
     tft.writedata(2);
     delay(120);
-    tft.writecommand(ILI9341_GAMMASET); // Gamma curve selected
+    // Gamma curve selected
+    tft.writecommand(ILI9341_GAMMASET);
     tft.writedata(1);
   }
   hSPI.begin(TOUCH_CLK, TOUCH_MISO, TOUCH_MOSI, ETOUCH_CS);
   touch.init();
-
   TFT_eTouchBase::Calibation calibation = {233, 3785, 3731, 120, 2};
   touch.setCalibration(calibation);
-
   // Configuring screen backlight brightness using ledcontrol channel 0.
   // Using 5000Hz in 8bit resolution, which gives 0-255 possible duty cycle setting.
   ledcSetup(0, 5000, 8);
   ledcAttachPin(TFT_BL, 0);
   ledcWrite(0, Settings.Brightness);
-
   // background.createSprite(WIDTH, HEIGHT); // Background Sprite
   // background.setSwapBytes(true);
   // render.setDrawer(background);  // Link drawing object to background instance (so font will be rendered on background)
@@ -2072,6 +2102,16 @@ void esp32_2432S028R_MinerScreen(unsigned long mElapsed)
 {
   mineria = getMiningData(mElapsed);
   detectar = 0;
+  unsigned long epochTime = timeClient.getEpochTime(); // Obtener segundos desde 1970
+  time_t epoch = (time_t)epochTime;                    // Convertir a time_t
+  struct tm *timeinfo = localtime(&epoch);             // Convertir a una estructura de tiempo local
+  int dia = timeinfo->tm_mday;                         // Día del mes (1 a 31)
+  int mes = timeinfo->tm_mon + 1;                      // Mes (1 a 12)
+  int anio = timeinfo->tm_year + 1900;                 // Año (por defecto es desde 1900)
+  int horita = timeinfo->tm_hour;                      // Hora
+  int minutitos = timeinfo->tm_min;                    // Minutos
+  int segundos = timeinfo->tm_sec;                     // Segundos
+  int segundosDelDia = horita * 3600 + minutitos * 60 + segundos;
   tft.setTextFont(1);
   tft.setTextSize(1);
   printPoolData();
@@ -2096,8 +2136,8 @@ void esp32_2432S028R_MinerScreen(unsigned long mElapsed)
   render.setFontSize(18);
   render.drawString(mineria.completedShares.c_str(), 189 - wdtOffset, 76, 0xDEDB);
   // Hores
-  render.setFontSize(14);
-  render.rdrawString(mineria.timeMining.c_str(), 315 - wdtOffset, 104, 0xDEDB);
+  render.setFontSize(12);
+  render.rdrawString(mineria.timeMining.c_str(), 310 - wdtOffset, 106, 0xDEDB);
   // Valid Blocks
   render.setFontSize(24);
   render.setAlignment(Align::TopCenter);
@@ -2136,7 +2176,24 @@ void esp32_2432S028R_MinerScreen(unsigned long mElapsed)
   {
     ajustarZonaHoraria();
     obtenerLocYTemp();
+    obtenerVariacionesBTC(variacion1dia, variacion1semana);
   }
+  int X_INICIO = 155;
+  int X_FINAL = 310;
+  int Y_POS = 104;
+  int longitud_total = X_FINAL - X_INICIO;
+  int longitud_pintada = (longitud_total * segundosDelDia) / 86400;
+  colorI = esp_random() % (sizeof(colors) / sizeof(colors[0]));
+  tft.fillRect(X_INICIO, Y_POS - 1, longitud_total + 1, 3, TFT_DARKGREY);
+  tft.drawLine(X_INICIO, Y_POS, X_INICIO + longitud_pintada, Y_POS, colors[colorI]);
+  X_INICIO = 155;
+  X_FINAL = 310;
+  Y_POS = 124;
+  longitud_total = X_FINAL - X_INICIO;
+  longitud_pintada = (longitud_total * segundos) / 59;
+  colorI = esp_random() % (sizeof(colors) / sizeof(colors[0]));
+  tft.fillRect(X_INICIO, Y_POS - 1, longitud_total + 1, 3, TFT_DARKGREY);
+  tft.drawLine(X_INICIO, Y_POS, X_INICIO + longitud_pintada, Y_POS, colors[colorI]);
   manejandoLeds(mineria.currentHashRate.toFloat());
 #ifdef DEBUG_MEMORY
   // Print heap
@@ -2219,6 +2276,7 @@ void esp32_2432S028R_ClockScreen(unsigned long mElapsed)
   {
     ajustarZonaHoraria();
     obtenerLocYTemp();
+    obtenerVariacionesBTC(variacion1dia, variacion1semana);
   }
   manejandoLeds(mineria.currentHashRate.toFloat());
 #ifdef DEBUG_MEMORY
@@ -2272,6 +2330,7 @@ void esp32_2432S028R_m8axScreen2(unsigned long mElapsed)
   {
     ajustarZonaHoraria();
     obtenerLocYTemp();
+    obtenerVariacionesBTC(variacion1dia, variacion1semana);
   }
   manejandoLeds(mineria.currentHashRate.toFloat());
 #ifdef DEBUG_MEMORY
@@ -2456,6 +2515,7 @@ void RelojDeNumeros(unsigned long mElapsed)
   {
     ajustarZonaHoraria();
     obtenerLocYTemp();
+    obtenerVariacionesBTC(variacion1dia, variacion1semana);
   }
   manejandoLeds(mineria.currentHashRate.toFloat());
 #ifdef DEBUG_MEMORY
@@ -2564,6 +2624,7 @@ void esp32_2432S028R_m8axScreen1(unsigned long mElapsed)
   {
     ajustarZonaHoraria();
     obtenerLocYTemp();
+    obtenerVariacionesBTC(variacion1dia, variacion1semana);
   }
   if (cuentita % 1800 == 0)
   {
@@ -2598,11 +2659,11 @@ void tDisplay_m8axScreen4(unsigned long mElapsed)
   colorI = esp_random() % (sizeof(colors) / sizeof(colors[0]));
   if (colorI % 2 == 0)
   {
-    limite = esp_random() % 15000; // Rango: 0 a 54400
+    limite = esp_random() % 15000; // Rango: 0 a 14999
   }
   else
   {
-    limite = esp_random() % 5000; // Rango: 0 a 54400
+    limite = esp_random() % 5000; // Rango: 0 a 4999
   }
   tft.setCursor(30, 60);
   colorI = esp_random() % (sizeof(colors) / sizeof(colors[0]));
@@ -2627,6 +2688,7 @@ void tDisplay_m8axScreen4(unsigned long mElapsed)
   {
     ajustarZonaHoraria();
     obtenerLocYTemp();
+    obtenerVariacionesBTC(variacion1dia, variacion1semana);
   }
   manejandoLeds(mineria.currentHashRate.toFloat());
 #ifdef DEBUG_MEMORY
@@ -2717,6 +2779,7 @@ void tDisplay_m8axScreen5(unsigned long mElapsed)
   {
     ajustarZonaHoraria();
     obtenerLocYTemp();
+    obtenerVariacionesBTC(variacion1dia, variacion1semana);
   }
   manejandoLeds(mineria.currentHashRate.toFloat());
 #ifdef DEBUG_MEMORY
@@ -2808,6 +2871,7 @@ void tDisplay_m8axScreen6(unsigned long mElapsed)
   {
     ajustarZonaHoraria();
     obtenerLocYTemp();
+    obtenerVariacionesBTC(variacion1dia, variacion1semana);
   }
   manejandoLeds(mineria.currentHashRate.toFloat());
 #ifdef DEBUG_MEMORY
@@ -3071,6 +3135,7 @@ void tDisplay_m8axScreen7(unsigned long mElapsed)
   {
     ajustarZonaHoraria();
     obtenerLocYTemp();
+    obtenerVariacionesBTC(variacion1dia, variacion1semana);
   }
   manejandoLeds(mineria.currentHashRate.toFloat());
 #ifdef DEBUG_MEMORY
@@ -3176,6 +3241,7 @@ void tDisplay_m8axScreen3(unsigned long mElapsed)
   {
     ajustarZonaHoraria();
     obtenerLocYTemp();
+    obtenerVariacionesBTC(variacion1dia, variacion1semana);
   }
   manejandoLeds(mineria.currentHashRate.toFloat());
 #ifdef DEBUG_MEMORY
@@ -3200,8 +3266,7 @@ void tDisplay_m8axScreenMegaNerd(unsigned long mElapsed)
   char fecha[11]; // "dd/mm/aaaa" + null terminator
   sprintf(fecha, "%02d/%02d/%04d", dia, mes, anio);
   solounavez = 0;
-  int horas = horita;
-  int minutos = minutitos;
+  int horas = horita, minutos = minutitos;
   colorI = esp_random() % (sizeof(colors) / sizeof(colors[0]));
   Serial.printf("M8AX - %s >>> Completados %s Share(s), %s Khashes, Prom. Hashrate %s KH/s %s°\n",
                 mineria.currentTime, mineria.completedShares.c_str(), mineria.totalKHashes.c_str(), mineria.currentHashRate.c_str(), mineria.temp.c_str());
@@ -3348,6 +3413,7 @@ void tDisplay_m8axScreenMegaNerd(unsigned long mElapsed)
   {
     ajustarZonaHoraria();
     obtenerLocYTemp();
+    obtenerVariacionesBTC(variacion1dia, variacion1semana);
   }
   manejandoLeds(mineria.currentHashRate.toFloat());
 #ifdef DEBUG_MEMORY
@@ -3435,6 +3501,7 @@ void esp32_2432S028R_BTCprice(unsigned long mElapsed)
   {
     ajustarZonaHoraria();
     obtenerLocYTemp();
+    obtenerVariacionesBTC(variacion1dia, variacion1semana);
   }
   manejandoLeds(mineria.currentHashRate.toFloat());
 #ifdef DEBUG_MEMORY
@@ -3451,10 +3518,13 @@ void tDisplay_granHash(unsigned long mElapsed)
   struct tm *timeinfo = localtime(&epoch);             // Convertir a estructura de tiempo local
   int dia = timeinfo->tm_mday;                         // Día del mes (1 a 31)
   int mes = timeinfo->tm_mon + 1;                      // Mes (0 a 11) -> +1
+  int diaDelAno = timeinfo->tm_yday;                   // 0-365
   int anio = timeinfo->tm_year + 1900;                 // Año desde 1900
   int hora = timeinfo->tm_hour;                        // Hora
   int minuto = timeinfo->tm_min;                       // Minutos
   int segundo = timeinfo->tm_sec;                      // Segundos
+  int segundosDelDia = hora * 3600 + minuto * 60 + segundo;
+  uint32_t segundosDelAno = diaDelAno * 86400 + segundosDelDia, segundosTotalesDelAno = esBisiesto(anio) ? 366 * 86400 : 365 * 86400;
   // Formatear la hora
   char hora_formateada[9]; // "HH:MM:SS" + null
   snprintf(hora_formateada, sizeof(hora_formateada), "%02d:%02d:%02d", hora, minuto, segundo);
@@ -3491,20 +3561,64 @@ void tDisplay_granHash(unsigned long mElapsed)
   colorI = esp_random() % (sizeof(colors) / sizeof(colors[0]));
   tft.setTextColor(colors[colorI]);
   tft.print(String(hora_formateada) + " - " + fecha);
-  tft.setCursor(107, 136);
+  tft.setCursor(107, 138);
   tft.print(String(prebitco));
   tft.setTextFont(1);
   tft.setTextSize(1);
+  tft.setCursor(1, 125);
+  tft.print("PRECIO 1 DIA");
+  tft.setCursor(210, 125);
+  tft.print("   PRECIO 1 SEMANA");
+  tft.setCursor(23, 149);
+  tft.print(variacion1dia);
+  tft.setCursor(255, 149);
+  tft.print(variacion1semana);
+  tft.setCursor(28, 125);
+  tft.print("          BARRA DE HASH/S 0-400");
   cuentita++;
   if (cuentita == 15)
   {
     ajustarZonaHoraria();
     obtenerLocYTemp();
+    obtenerVariacionesBTC(variacion1dia, variacion1semana);
   }
   if (cuentita % 60 == 0)
   {
     prebitco = preciob().c_str();
+    obtenerVariacionesBTC(variacion1dia, variacion1semana);
   }
+  int X_INICIO = 228;
+  int X_FINAL = 316;
+  int Y_POS = 135;
+  int longitud_total = X_FINAL - X_INICIO;
+  int longitud_pintada = (longitud_total * segundosDelDia) / 86400;
+  colorI = esp_random() % (sizeof(colors) / sizeof(colors[0]));
+  tft.fillRect(X_INICIO, Y_POS - 1, longitud_total + 1, 3, TFT_DARKGREY);
+  tft.drawLine(X_INICIO, Y_POS, X_INICIO + longitud_pintada, Y_POS, colors[colorI]);
+  X_INICIO = 1;
+  X_FINAL = 72;
+  Y_POS = 135;
+  longitud_total = X_FINAL - X_INICIO;
+  longitud_pintada = (longitud_total * segundo) / 59;
+  colorI = esp_random() % (sizeof(colors) / sizeof(colors[0]));
+  tft.fillRect(X_INICIO, Y_POS - 1, longitud_total + 1, 3, TFT_DARKGREY);
+  tft.drawLine(X_INICIO, Y_POS, X_INICIO + longitud_pintada, Y_POS, colors[colorI]);
+  X_INICIO = 10;
+  X_FINAL = 308;
+  Y_POS = 39;
+  longitud_total = X_FINAL - X_INICIO;
+  longitud_pintada = (longitud_total * segundosDelAno) / segundosTotalesDelAno;
+  colorI = esp_random() % (sizeof(colors) / sizeof(colors[0]));
+  tft.fillRect(X_INICIO, Y_POS - 1, longitud_total + 1, 3, TFT_DARKGREY);
+  tft.drawLine(X_INICIO, Y_POS, X_INICIO + longitud_pintada, Y_POS, colors[colorI]);
+  X_INICIO = 80;
+  X_FINAL = 220;
+  Y_POS = 135;
+  longitud_total = X_FINAL - X_INICIO;
+  longitud_pintada = (longitud_total * mineria.currentHashRate.toDouble()) / 400.00;
+  colorI = esp_random() % (sizeof(colors) / sizeof(colors[0]));
+  tft.fillRect(X_INICIO, Y_POS - 1, longitud_total + 1, 3, TFT_DARKGREY);
+  tft.drawLine(X_INICIO, Y_POS, X_INICIO + longitud_pintada, Y_POS, colors[colorI]);
   manejandoLeds(mineria.currentHashRate.toFloat());
 #ifdef DEBUG_MEMORY
   // Print heap
@@ -3615,6 +3729,7 @@ void analiCadaSegundo(unsigned long frame)
     if ((mes == 3 || mes == 4 || mes == 10 || mes == 11) && horita >= 0 && horita <= 5)
       ajustarZonaHoraria();
     obtenerLocYTemp();
+    obtenerVariacionesBTC(variacion1dia, variacion1semana);
     // Verificar si los datos de Telegram están configurados
     if (BOT_TOKEN != "NO CONFIGURADO" && CHAT_ID != "NO CONFIGURADO")
     {
@@ -3644,7 +3759,7 @@ char currentScreen = 0;
 void esp32_2432S028R_DoLedStuff(unsigned long frame)
 {
   unsigned long currentMillis = millis();
-  // / Check the touch coordinates 110x185 210x240
+  // Check the touch coordinates 110x185 210x240
   if (currentMillis - previousTouchMillis >= 500)
   {
     int16_t t_x, t_y; // To store the touch coordinates

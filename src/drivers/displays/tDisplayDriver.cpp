@@ -49,7 +49,7 @@
  *
  *                              PARA MÁS INFORMACIÓN LEER PDF
  *
- *                     Tmp. De Programación 15H - 6430 Líneas De Código
+ *                     Tmp. De Programación 15H - 6435 Líneas De Código
  *                     ------------------------------------------------
  *
  ********************************************************************************************/
@@ -983,7 +983,7 @@ void datosPantallaTextoPlano()
   cadenaEnvio2 += ". WiFi RSSI " + String(WiFi.RSSI());
   cadenaEnvio2 += ". Tiempo Minando - " + (mineria.timeMining.substring(0, mineria.timeMining.indexOf(" ")).length() == 1 ? "0" + mineria.timeMining.substring(0, mineria.timeMining.indexOf(" ")) : mineria.timeMining.substring(0, mineria.timeMining.indexOf(" "))) + " Días" + mineria.timeMining.substring(mineria.timeMining.indexOf(" ") + 1);
   cadenaEnvio2 += ". HR Actual - " + mineria.currentHashRate + " KH/s ( MAX - " + String(maxkh) + " | MIN - " + String(minkh) + " )";
-  cadenaEnvio2 += ". Temp. De CPU - " + mineria.temp + "g ( MAX - " + String(maxtemp) + "g | MIN - " + String(mintemp) + "g | TMP>70° - " + String(alertatemp) + " )";
+  cadenaEnvio2 += ". Temp. De CPU - " + mineria.temp + "g ( MAX - " + String(maxtemp) + "g | MIN - " + String(mintemp) + "g | TMP>70g - " + String(alertatemp) + " )";
   cadenaEnvio2 += ". Plantillas De Bloque - " + mineria.templates;
   cadenaEnvio2 += ". Shares Enviados A La Pool - " + mineria.completedShares;
   cadenaEnvio2 += ". Mejor Dificultad Alcanzada - " + mineria.bestDiff;
@@ -2542,7 +2542,8 @@ int calcularPrimerDia(int dia, int mes, int anio)
   Función: mostrarCalendario
   Propósito: Esta función dibuja un calendario en una pantalla TFT con el mes y año especificados,
   mostrando los días de la semana y resaltando el día actual. Además, muestra la hora en formato
-  de 24 horas y el mes y año en la parte inferior del calendario.
+  de 24 horas y el mes y año en la parte inferior del calendario. Abajo a la derecha, se mostrará
+  el hashrate actualizado cada 5 segundos.
 
   Parámetros:
     - dia: El día actual del mes (1 a 31).
@@ -2550,11 +2551,12 @@ int calcularPrimerDia(int dia, int mes, int anio)
     - anio: El año del calendario (por ejemplo, 2025).
     - h1, h2: Las dos partes de la hora actual (por ejemplo, 14 para las 2 PM).
     - m1, m2: Las dos partes de los minutos actuales (por ejemplo, 30 para los 30 minutos).
+    - mineria.currentHashRate: (el hashrate actualizado cada 5 segundos.)
 
   La función calcula el primer día del mes y muestra los días de la semana en la parte superior.
   Luego, llena el calendario con los días correspondientes, comenzando desde el día correcto.
   Resalta el día actual y marca los fines de semana con un color distinto.
-  También muestra la hora actual y el mes/año en la parte inferior del calendario.
+  También muestra la hora actual, el mes/año en la parte inferior del calendario y el hashrate.
 */
 
 void mostrarCalendario(int dia, int mes, int anio, int h1, int h2, int m1, int m2)
@@ -2624,16 +2626,19 @@ void mostrarCalendario(int dia, int mes, int anio, int h1, int h2, int m1, int m
     tft.setTextSize(3);
     tft.setCursor(5, 145);
     tft.print(mesecillo + " " + String(anio));
-    tft.setCursor(290, 14);
+    tft.setCursor(290, 11);
     tft.print(String(h1));
-    tft.setCursor(290, 44);
+    tft.setCursor(290, 41);
     tft.print(String(h2));
-    tft.setCursor(290, 74);
+    tft.setCursor(290, 71);
     tft.print("-");
-    tft.setCursor(290, 104);
+    tft.setCursor(290, 101);
     tft.print(String(m1));
-    tft.setCursor(290, 134);
+    tft.setCursor(290, 131);
     tft.print(String(m2));
+    tft.setCursor(280, 158);
+    tft.setTextSize(1);
+    tft.print(mineria.currentHashRate);
   }
 }
 
@@ -3069,7 +3074,7 @@ void tDisplay_MinerScreen(unsigned long mElapsed)
   render.drawString(data.completedShares.c_str(), 186, 74, 0xDEDB);
   // Hores
   render.setFontSize(14);
-  render.rdrawString(data.timeMining.c_str(), 315, 104, 0xDEDB);
+  render.rdrawString(data.timeMining.c_str(), 319, 104, 0xDEDB);
   // By M8AX
   if (lastTwoInt % 30 == 0)
   {
@@ -6316,7 +6321,7 @@ void analiCadaSegundo(unsigned long frame)
   if (epochTime - startTime >= minStartupTime && epochTime - lastTelegramEpochTime >= interval)
   {
     // Ajustar la zona horaria si es necesario
-    if ((mes == 3 || mes == 4 || mes == 10 || mes == 11) && horita >= 0 && horita <= 5)
+    if (horita >= 0 && horita <= 5)
       ajustarZonaHoraria();
     // Verificar si los datos de Telegram están configurados
     if (BOT_TOKEN != "NO CONFIGURADO" && CHAT_ID != "NO CONFIGURADO")
