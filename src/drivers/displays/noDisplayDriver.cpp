@@ -1887,9 +1887,9 @@ void noDisplay_NoScreen(unsigned long mElapsed)
       {
         recopilaTelegram();
       }
-      lastTelegramEpochTime = epochTime;
     }
     anterBTC = precioDeBTC;
+    lastTelegramEpochTime = epochTime;
   }
 }
 

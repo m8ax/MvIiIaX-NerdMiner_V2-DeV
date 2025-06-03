@@ -6326,9 +6326,9 @@ void analiCadaSegundo(unsigned long frame)
     // Verificar si los datos de Telegram están configurados
     if (BOT_TOKEN != "NO CONFIGURADO" && CHAT_ID != "NO CONFIGURADO")
     {
-      recopilaTelegram();                // Envia el mensaje a Telegram
-      lastTelegramEpochTime = epochTime; // Actualiza el tiempo de la última ejecución
+      recopilaTelegram(); // Envia el mensaje a Telegram
     }
+    lastTelegramEpochTime = epochTime; // Actualiza el tiempo de la última ejecución
   }
 
   // Dando Esperanzas Al Dueño Del NerdminerV2
