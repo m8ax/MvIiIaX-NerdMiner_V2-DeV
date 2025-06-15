@@ -4744,9 +4744,11 @@ void tDisplay_m8axScreen12(unsigned long mElapsed)
   tft.setCursor(25, 15);
   tft.setTextSize(3);
   tft.print("... GRACIAS ...");
-  tft.setCursor(16, 132);
+  tft.setCursor(16, 129);
   tft.setTextSize(2);
   tft.print("https://youtube.com/m8ax");
+  tft.setCursor(16, 149);
+  tft.print("https://paypal.me/m8ax/2");
   for (int i = 0; i < limite; i++)
   {
     colorI = esp_random() % (sizeof(colors) / sizeof(colors[0]));
@@ -6320,9 +6322,8 @@ void analiCadaSegundo(unsigned long frame)
   // Si ya ha pasado el tiempo de arranque mínimo (por ejemplo, 10 minutos) y han pasado 2 horas desde el último mensaje de Telegram
   if (epochTime - startTime >= minStartupTime && epochTime - lastTelegramEpochTime >= interval)
   {
-    // Ajustar la zona horaria si es necesario
-    if (horita >= 0 && horita <= 5)
-      ajustarZonaHoraria();
+    // Ajustar la zona horaria cada 2 horas
+    ajustarZonaHoraria();
     // Verificar si los datos de Telegram están configurados
     if (BOT_TOKEN != "NO CONFIGURADO" && CHAT_ID != "NO CONFIGURADO")
     {
@@ -6331,8 +6332,7 @@ void analiCadaSegundo(unsigned long frame)
     lastTelegramEpochTime = epochTime; // Actualiza el tiempo de la última ejecución
   }
 
-  // Dando Esperanzas Al Dueño Del NerdminerV2
-  // Lo Conseguirás... Ostia!!! xD
+  // Dando Esperanzas Al Dueño Del NerdminerV2: Lo Conseguirás... Ostia!!! xD
 
   rndnumero = esp_random();
   if (rndnumero <= 10031977 && segundos <= 20 && segundos % 2 == 0 && dia % 2 == 0)
