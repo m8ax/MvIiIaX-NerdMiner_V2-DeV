@@ -56,7 +56,7 @@
  *           a la cadena. A cambio, reciben bitcoins recién creados como recompensa.
  *
  *
- *                     Tmp. De Programación 3H - 3960 Líneas De Código
+ *                     Tmp. De Programación 3H - 3965 Líneas De Código
  *                     -----------------------------------------------
  *
  ****************************************************************************************************************/
@@ -1850,56 +1850,61 @@ int obtenHoraPorIP(const String &ip)
 {
   if (WiFi.status() != WL_CONNECTED)
   {
-    Serial.println("M8AX - Error: No Hay Conexión WiFi Para Obtener La Zona Horaria");
+    Serial.println("M8AX - Error: No Hay Conexión WiFi Para Obtener La Zona Horaria\n");
     return 1000;
   }
-  String ipapi_url = "https://ipapi.co/" + ip + "/json/";
-  HTTPClient http;
-  http.begin(ipapi_url);
-  int httpCode = http.GET();
-  if (httpCode == 200)
+  String api_url = "http://ipwho.is/" + ip;
+  int offset = Settings.Timezone;
+  bool success = false;
+  for (int intento = 1; intento <= 5; intento++)
   {
-    String payload = http.getString();
-    DynamicJsonDocument doc(1024);
-    DeserializationError error = deserializeJson(doc, payload);
-    if (error)
+    HTTPClient http;
+    http.setTimeout(2000);
+    http.begin(api_url);
+    int httpCode = http.GET();
+    if (httpCode == 200)
     {
-      Serial.println("M8AX - Error Al Parsear El JSON, Para Obtener La Zona Horaria");
+      StaticJsonDocument<64> filter;
+      filter["timezone"]["utc"] = true;
+      StaticJsonDocument<128> doc;
+      auto error = deserializeJson(doc, http.getStream(), DeserializationOption::Filter(filter));
       http.end();
-      payload.clear();
-      doc.clear();
-      return 1000;
+      if (error)
+      {
+        Serial.printf("M8AX - Error Al Parsear El JSON ( Intento %d )\n", intento);
+        delay(1000 * intento);
+        continue;
+      }
+      const char *utc_offset = doc["timezone"]["utc"];
+      if (!utc_offset)
+      {
+        Serial.printf("M8AX - UTC No Encontrado ( Intento %d )\n", intento);
+        delay(1000 * intento);
+        continue;
+      }
+      if ((utc_offset[0] == '+' || utc_offset[0] == '-') &&
+          utc_offset[1] >= '0' && utc_offset[1] <= '9' &&
+          utc_offset[2] >= '0' && utc_offset[2] <= '9')
+      {
+        int hours = (utc_offset[1] - '0') * 10 + (utc_offset[2] - '0');
+        if (utc_offset[0] == '-')
+          hours = -hours;
+        offset = hours;
+      }
+      Serial.printf("M8AX - Zona Horaria Obtenida Correctamente ( Intento %d ): UTC %+d\n", intento, offset);
+      success = true;
+      break;
     }
-    const char *utc_offset = doc["utc_offset"];
-    if (utc_offset == nullptr)
+    else
     {
-      Serial.println("M8AX - utc_offset No Encontrado En La Respuesta JSON");
+      Serial.printf("M8AX - Error HTTP ( %d ) En ( Intento %d )\n", httpCode, intento);
       http.end();
-      payload.clear();
-      doc.clear();
-      return 1000;
+      delay(1000 * intento);
     }
-    int offset = Settings.Timezone;
-    if (utc_offset[0] == '+')
-    {
-      offset = (utc_offset[1] - '0') * 10 + (utc_offset[2] - '0');
-    }
-    else if (utc_offset[0] == '-')
-    {
-      offset = -((utc_offset[1] - '0') * 10 + (utc_offset[2] - '0'));
-    }
-    http.end();
-    payload.clear();
-    doc.clear();
-    Serial.println(String("M8AX - Zona Horaria Obtenida Correctamente Mediante IP: UTC ") + (offset >= 0 ? "+" : "") + String(offset));
-    return offset;
   }
-  else
-  {
-    Serial.println("M8AX - Error En La Solicitud HTTP");
-    http.end();
-    return 1000;
-  }
+  if (!success)
+    Serial.println("M8AX - No Se Pudo Obtener La Zona Horaria Tras ( 5 Intentos )\n");
+  return offset;
 }
 
 void ajustarZonaHoraria()

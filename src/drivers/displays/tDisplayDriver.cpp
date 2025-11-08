@@ -37,19 +37,17 @@
  *   sistema no puede sincronizar la hora de forma continua, ya que esto podría causar problemas de rendimiento.
  *   Asi que si llega el día de cambio de hora que es de madrugada y no cambia al instante no te preocupes
  *   que el sistema lo hará automáticamente en la siguiente sincronización.
- *
- *
- *
+ * 
+ * 
  *           Un minero de Bitcoin es un dispositivo o software que realiza cálculos
  *           matemáticos complejos para verificar y validar transacciones en la red.
  *           Los mineros compiten para resolver estos problemas y añadir un bloque
  *           a la cadena. A cambio, reciben bitcoins recién creados como recompensa.
  *
- *
- *
+ * 
  *                              PARA MÁS INFORMACIÓN LEER PDF
  *
- *                     Tmp. De Programación 15H - 6435 Líneas De Código
+ *                     Tmp. De Programación 15H - 6445 Líneas De Código
  *                     ------------------------------------------------
  *
  ********************************************************************************************/
@@ -273,70 +271,82 @@ String getPublicIP()
 }
 
 /**
- * Obtiene el desfase horario (UTC offset) de una dirección IP utilizando el servicio ipapi.co.
- * Realiza una solicitud HTTP GET a la API pública para recuperar información de geolocalización
- * basada en IP y extrae el campo "utc_offset" del JSON recibido. Devuelve el offset horario como
- * entero en horas (positivo o negativo). En caso de error en la conexión WiFi, en la solicitud HTTP,
- * o en el análisis del JSON, retorna 1000 como código de error.
+ * Obtiene el desfase horario (UTC offset) de una dirección IP utilizando la API pública ipwho.is.
+ * Realiza una solicitud HTTP GET a la URL "http://ipwho.is/[IP]" para recuperar información de
+ * geolocalización y extrae el campo "timezone.utc" del JSON devuelto. Devuelve el offset horario
+ * como un entero que representa únicamente las horas completas de diferencia respecto a UTC
+ * (valores positivos o negativos, sin minutos).
  *
- * @param ip Dirección IP en formato de cadena para la cual se desea obtener la zona horaria.
- * @return Entero representando el desfase horario respecto a UTC. Retorna 1000 si ocurre un error.
+ * Si la conexión WiFi no está disponible, la solicitud HTTP falla o el JSON no puede analizarse,
+ * el proceso se reintenta hasta cinco veces con una espera incremental entre intentos.
+ *
+ * Si tras los cinco intentos no se obtiene un resultado válido, la función devuelve 1000 como
+ * código de error. En caso contrario, devuelve el offset horario obtenido y actualiza la variable
+ * temporal `offset` partiendo del valor `Settings.Timezone`.
+ *
+ * @param ip Dirección IP en formato de cadena para la cual se desea determinar la zona horaria.
+ * @return Entero representando el desfase horario en horas respecto a UTC, o 1000 si ocurre un error.
  */
 
 int obtenHoraPorIP(const String &ip)
 {
   if (WiFi.status() != WL_CONNECTED)
   {
-    Serial.println("M8AX - Error: No Hay Conexión WiFi Para Obtener La Zona Horaria");
+    Serial.println("M8AX - Error: No Hay Conexión WiFi Para Obtener La Zona Horaria\n");
     return 1000;
   }
-  String ipapi_url = "https://ipapi.co/" + ip + "/json/";
-  HTTPClient http;
-  http.begin(ipapi_url);
-  int httpCode = http.GET();
-  if (httpCode == 200)
+  String api_url = "http://ipwho.is/" + ip;
+  int offset = Settings.Timezone;
+  bool success = false;
+  for (int intento = 1; intento <= 5; intento++)
   {
-    String payload = http.getString();
-    DynamicJsonDocument doc(1024);
-    DeserializationError error = deserializeJson(doc, payload);
-    if (error)
+    HTTPClient http;
+    http.setTimeout(2000);
+    http.begin(api_url);
+    int httpCode = http.GET();
+    if (httpCode == 200)
     {
-      Serial.println("M8AX - Error Al Parsear El JSON, Para Obtener La Zona Horaria");
+      StaticJsonDocument<64> filter;
+      filter["timezone"]["utc"] = true;
+      StaticJsonDocument<128> doc;
+      auto error = deserializeJson(doc, http.getStream(), DeserializationOption::Filter(filter));
       http.end();
-      payload.clear();
-      doc.clear();
-      return 1000;
+      if (error)
+      {
+        Serial.printf("M8AX - Error Al Parsear El JSON ( Intento %d )\n", intento);
+        delay(1000 * intento);
+        continue;
+      }
+      const char *utc_offset = doc["timezone"]["utc"];
+      if (!utc_offset)
+      {
+        Serial.printf("M8AX - UTC No Encontrado ( Intento %d )\n", intento);
+        delay(1000 * intento);
+        continue;
+      }
+      if ((utc_offset[0] == '+' || utc_offset[0] == '-') &&
+          utc_offset[1] >= '0' && utc_offset[1] <= '9' &&
+          utc_offset[2] >= '0' && utc_offset[2] <= '9')
+      {
+        int hours = (utc_offset[1] - '0') * 10 + (utc_offset[2] - '0');
+        if (utc_offset[0] == '-')
+          hours = -hours;
+        offset = hours;
+      }
+      Serial.printf("M8AX - Zona Horaria Obtenida Correctamente ( Intento %d ): UTC %+d\n", intento, offset);
+      success = true;
+      break;
     }
-    const char *utc_offset = doc["utc_offset"];
-    if (utc_offset == nullptr)
+    else
     {
-      Serial.println("M8AX - utc_offset No Encontrado En La Respuesta JSON");
+      Serial.printf("M8AX - Error HTTP ( %d ) En ( Intento %d )\n", httpCode, intento);
       http.end();
-      payload.clear();
-      doc.clear();
-      return 1000;
+      delay(1000 * intento);
     }
-    int offset = Settings.Timezone;
-    if (utc_offset[0] == '+')
-    {
-      offset = (utc_offset[1] - '0') * 10 + (utc_offset[2] - '0');
-    }
-    else if (utc_offset[0] == '-')
-    {
-      offset = -((utc_offset[1] - '0') * 10 + (utc_offset[2] - '0'));
-    }
-    http.end();
-    payload.clear();
-    doc.clear();
-    Serial.println(String("M8AX - Zona Horaria Obtenida Correctamente Mediante IP: UTC ") + (offset >= 0 ? "+" : "") + String(offset));
-    return offset;
   }
-  else
-  {
-    Serial.println("M8AX - Error En La Solicitud HTTP");
-    http.end();
-    return 1000;
-  }
+  if (!success)
+    Serial.println("M8AX - No Se Pudo Obtener La Zona Horaria Tras ( 5 Intentos )\n");
+  return offset;
 }
 
 /**
@@ -882,9 +892,9 @@ void recopilaTelegram()
   int segundos = timeinfo->tm_sec;                     // Segundos
   int indice = esp_random() % 5;
 
-  // Formatear la hora en "00:00:00"
-  char horaFormateada[9];
-  sprintf(horaFormateada, "%02d:%02d:%02d", horita, minutitos, segundos);
+  // Formatear la hora en "00:00:00 - UTC+/-X"
+  char horaFormateada[23];
+  sprintf(horaFormateada, "%02d:%02d:%02d - UTC %s%d", horita, minutitos, segundos, (zonilla >= 0 ? "+" : ""), zonilla);
 
   // Formatear la fecha en "dia/mes/año"
   char fechaFormateada[11];
@@ -903,7 +913,7 @@ void recopilaTelegram()
   cadenaEnvio = "";
   cadenaEnvio = F("------------------------------------------------------------------------------------------------\n");
   cadenaEnvio += "------------------------ M8AX - NerdMinerV2-" + String(u4digits) + " DATOS DE MINERÍA - M8AX -----------------------\n";
-  cadenaEnvio += "----------------------------------- " + String(fechaFormateada) + " " + quediase.c_str() + " - " + horaFormateada + " ----------------------------------\n";
+  cadenaEnvio += "------------------------------ " + String(fechaFormateada) + " " + quediase.c_str() + " - " + horaFormateada + " ------------------------------\n";
   cadenaEnvio += F("------------------------------------------------------------------------------------------------\n");
   quediase.clear();
   quediase.shrink_to_fit();
@@ -979,7 +989,7 @@ void datosPantallaTextoPlano()
   String cadenaEnvio2;
   cadenaEnvio2.reserve(5000);
   cadenaEnvio2 = "";
-  cadenaEnvio2 += relojete.currentDate + " - " + relojete.currentTime;
+  cadenaEnvio2 += relojete.currentDate + " - " + relojete.currentTime + " - UTC " + ((zonilla >= 0) ? "+" : "") + String(zonilla);
   cadenaEnvio2 += ". WiFi RSSI " + String(WiFi.RSSI());
   cadenaEnvio2 += ". Tiempo Minando - " + (mineria.timeMining.substring(0, mineria.timeMining.indexOf(" ")).length() == 1 ? "0" + mineria.timeMining.substring(0, mineria.timeMining.indexOf(" ")) : mineria.timeMining.substring(0, mineria.timeMining.indexOf(" "))) + " Días" + mineria.timeMining.substring(mineria.timeMining.indexOf(" ") + 1);
   cadenaEnvio2 += ". HR Actual - " + mineria.currentHashRate + " KH/s ( MAX - " + String(maxkh) + " | MIN - " + String(minkh) + " )";

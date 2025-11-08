@@ -1,81 +1,81 @@
 /***********************************************************************************************************************************
  *
- *   Escrito por: M8AX
+ *   Escrito Por: M8AX
  *
  *   Descripción:
  *   ------------
  *
- *   Versión para placas WROOM ESP32D, optimizada para minar a 395 KH/s sin pantalla.
- *   Utilizaremos el LED para indicar estados importantes.
+ *   Versión Para Placas WROOM ESP32D, Optimizada Para Minar A 395 KH/s Sin Pantalla.
+ *   Utilizaremos El LED Para Indicar Estados Importantes.
  *
- *   Es **necesario** que durante la **primera configuración del minero** se introduzca correctamente
- *   la zona horaria (timezone). Este valor es esencial para inicializar correctamente la lógica de
- *   sincronización y control horario del sistema.
+ *   Es **Necesario** Que Durante La **Primera Configuración Del Minero** Se Introduzca Correctamente
+ *   La Zona Horaria ( Timezone ). Este Valor Es Esencial Para Inicializar Correctamente La Lógica De
+ *   Sincronización Y Control Horario Del Sistema.
  *
- *   Esto asegura que, tras la configuración inicial correcta, el sistema mantenga siempre la hora local
- *   precisa sin necesidad de intervención manual.
+ *   Esto Asegura Que, Tras La Configuración Inicial Correcta, El Sistema Mantenga Siempre La Hora Local
+ *   Precisa Sin Necesidad De Intervención Manual.
  *
- *   Posteriormente, la zona horaria se actualizará automáticamente mediante la IP pública del dispositivo,
- *   ajustándose de forma dinámica a la ubicación real del usuario, incluyendo también el cambio automático
- *   por horario de verano (si aplica).
+ *   Posteriormente, La Zona Horaria Se Actualizará Automáticamente Mediante La IP Pública Del Dispositivo,
+ *   Ajustándose De Forma Dinámica A La Ubicación Real Del Usuario, Incluyendo También El Cambio Automático
+ *   Por Horario De Verano ( Si Aplica ).
  *
- *   Cuando se ajusta la hora por horario de verano o invierno, el sistema puede tardar en actualizar la hora
- *   en pantalla un máximo de 5 horas, el tiempo establecido entre sincronizaciones. Esto se debe a que el
- *   sistema no puede sincronizar la hora de forma continua, ya que esto podría causar problemas de rendimiento.
- *   Asi que si llega el día de cambio de hora que es de madrugada y no cambia al instante no te preocupes
- *   que el sistema lo hará automáticamente en la siguiente sincronización.
+ *   Cuando Se Ajusta La Hora Por Horario De Verano O Invierno, El Sistema Puede Tardar En Actualizar La Hora
+ *   En Pantalla Un Máximo De 5 Horas, El Tiempo Establecido Entre Sincronizaciones. Esto Se Debe A Que El
+ *   Sistema No Puede Sincronizar La Hora De Forma Continua, Ya Que Esto Podría Causar Problemas De Rendimiento.
+ *   Así Que Si Llega El Día De Cambio De Hora Que Es De Madrugada Y No Cambia Al Instante No Te Preocupes
+ *   Que El Sistema Lo Hará Automáticamente En La Siguiente Sincronización.
  *
- *   Comportamiento del LED:
+ *   Comportamiento Del LED:
  *   -----------------------
  *
- *   I     - **Al arrancar** → "Hola M8AX" en código Morse con el LED.
- *   II    - **Led encendido constante tras ligeros parpadeos rápidos** → Modo Configuración
- *   III   - **Sincronización de hora exitosa al arrancar** → Parpadeo super rápido del LED.
- *   IV    - **Parpadeo fuerte 2 ticks + 2 ticks** → Minando a más de 350 KH/s - ( de 8h a 19h )
- *   V     - **Parpadeo tenue 2 ticks + 2 ticks** → Minando a más de 350 KH/s - ( de 20h a 7h )
- *   VI    - **Parpadeo fuerte tick medio largo y uno más corto** → Minando a menos de 350 KH/s.
- *   VII   - **Sin LED azul** → No está minando.
- *   VIII  - **LED encendiéndose y apagándose a lo loco no simétricos** → ¡Has minado un bloque! ¡ERES RICO!
- *   IX    - **Parpadeo estilo "pi pi" de reloj Casio** → Es una hora en punto.
- *   X     - **Encendido corto "pi"** → Son y media.
- *   XI    - **Encendido largo (~2s)** → Enviando mensaje a Telegram con estadísticas y datos Nerd. ( si está configurado )
- *   XII   - **Parpadeo rápido corto después de enviar mensaje a Telegram** → Mensaje enviado correctamente.
- *   XIII  - **Parpadeo rápido corto + pausa 2s + parpadeo rápido corto después de enviar mensaje a Telegram** → Error En Envío :(
- *   XIV   - **Parpadeos largos** → Temperatura superior a 75°C.
- *   XV    - **Share enviado a la pool** → 5 ticks rapidos del LED.
- *   XVI   - NOTA - Si La Temperatura Pasa De 80°C, El Dispositivo Entrará En Deep Sleep 10Min, Pasados Los 10Min, Rearrancará.
- *   XVII  - ESPERO QUE OS GUSTE Y MINEIS UN BLOQUE Y SI ES ASÍ ¡ DADME ALGO COÑO !
- *   XVIII - ¡ A MINAR !
+ *   I                     - **Al Arrancar** → "Hola M8AX" En Código Morse Con El LED.
+ *   II                    - **LED Encendido Constante Tras Ligeros Parpadeos Rápidos** → Modo Configuración.
+ *   III                   - **Sincronización De Hora Exitosa Al Arrancar** → Parpadeo Súper Rápido Del LED.
+ *   IV                    - **Parpadeo Fuerte 2 Ticks + 2 Ticks** → Minando A Más De 350 KH/s - ( De 8h A 19h ).
+ *   V                     - **Parpadeo Tenue 2 Ticks + 2 Ticks** → Minando A Más De 350 KH/s - ( De 20h A 7h ).
+ *   NOTA SOBRE ( IV Y V ) - **Fin De Semana ( Vie / Sáb / Dom ) - Parpadeo 3 Ticks + 3 Ticks** → Misma Condición Horaria Y De Minado ( > 350 KH/s ).
+ *   VI                    - **Parpadeo Fuerte Tick Medio Largo Y Uno Más Corto** → Minando A Menos De 350 KH/s.
+ *   VII                   - **Sin LED Azul** → No Está Minando.
+ *   VIII                  - **LED Encendiéndose Y Apagándose A Lo Loco No Simétricos** → ¡Has Minado Un Bloque! ¡Eres Rico!
+ *   IX                    - **Parpadeo Estilo "Pi Pi" De Reloj Casio** → Es Una Hora En Punto.
+ *   X                     - **Encendido Corto "Pi"** → Son Y Media.
+ *   XI                    - **Encendido Largo (~2s)** → Enviando Mensaje A Telegram Con Estadísticas Y Datos Nerd ( Si Está Configurado ).
+ *   XII                   - **Parpadeo Rápido Corto Después De Enviar Mensaje A Telegram** → Mensaje Enviado Correctamente.
+ *   XIII                  - **Parpadeo Rápido Corto + Pausa 2s + Parpadeo Rápido Corto Después De Enviar Mensaje A Telegram** → Error En Envío :(
+ *   XIV                   - **Parpadeos Largos** → Temperatura Superior A 75°C.
+ *   XV                    - **Share Enviado A La Pool** → 5 Ticks Rápidos Del LED.
+ *   XVI                   - NOTA - Si La Temperatura Pasa De 80°C, El Dispositivo Entrará En Deep Sleep 10 Min, Pasados Los 10 Min, Rearrancará.
+ *   XVII                  - Espero Que Os Guste Y Minéis Un Bloque Y Si Es Así ¡Dadme Algo Coño!
+ *   XVIII                 - ¡A Minar!
  *
  *
- *
- *   Blockchain es una base de datos descentralizada que almacena registros de transacciones en bloques enlazados.
- *   Cada bloque tiene información sobre las transacciones, un hash único y el hash del bloque anterior.
- *   La blockchain es pública y transparente, permitiendo a cualquier persona verificar las transacciones.
- *   Los bloques son añadidos mediante un proceso llamado minería, que asegura la integridad de la cadena.
- *   Minería es el proceso de resolver complejas ecuaciones matemáticas mediante poder computacional.
- *   Hashrate es la medida de la capacidad de procesamiento de un minero, cuántos intentos de hash puede hacer por segundo.
- *   Un minero de Bitcoin es un dispositivo o programa que participa en la minería de Bitcoin.
- *   Los mineros validan y agrupan transacciones en bloques, resolviendo un problema matemático complejo.
- *   El primer minero en resolver el problema obtiene una recompensa en bitcoins por su trabajo.
- *   Bitcoin mining se basa en el algoritmo SHA-256 para resolver estos problemas de hash.
- *   Los mineros también validan que las transacciones sean legítimas antes de añadirlas a la blockchain.
- *   El proceso de minería es competitivo, ya que varios mineros intentan resolver el problema al mismo tiempo.
- *   Cuanto mayor sea el hashrate, más probabilidades tiene un minero de ganar la recompensa.
- *   Los mineros ayudan a mantener la seguridad y el funcionamiento descentralizado de la red de Bitcoin.
- *   1 - "Bitcoin es la mejor reserva de valor del siglo XXI." – Michael Saylor, CEO de MicroStrategy.
- *   2 - "Creo que Bitcoin es un refugio seguro contra la inflación y un activo para el futuro." – Tim Draper, inversionista.
- *   3 - "La tecnología de Bitcoin es una revolución que cambiará el sistema financiero global." – Jack Dorsey, CEO de Block.
- *   4 - "Bitcoin es la libertad financiera que todos esperaban." – Winklevoss Twins, fundadores de Gemini.
- *   5 - "Forma de almacenar valor que no depende de gobiernos ni instituciones." – Barry Silbert, CEO de Digital Currency Group.
- *
+ *   Blockchain Es Una Base De Datos Descentralizada Que Almacena Registros De Transacciones En Bloques Enlazados.
+ *   Cada Bloque Tiene Información Sobre Las Transacciones, Un Hash Único Y El Hash Del Bloque Anterior.
+ *   La Blockchain Es Pública Y Transparente, Permitiendo A Cualquier Persona Verificar Las Transacciones.
+ *   Los Bloques Son Añadidos Mediante Un Proceso Llamado Minería, Que Asegura La Integridad De La Cadena.
+ *   Minería Es El Proceso De Resolver Complejas Ecuaciones Matemáticas Mediante Poder Computacional.
+ *   Hashrate Es La Medida De La Capacidad De Procesamiento De Un Minero, Cuántos Intentos De Hash Puede Hacer Por Segundo.
+ *   Un Minero De Bitcoin Es Un Dispositivo O Programa Que Participa En La Minería De Bitcoin.
+ *   Los Mineros Validan Y Agrupan Transacciones En Bloques, Resolviendo Un Problema Matemático Complejo.
+ *   El Primer Minero En Resolver El Problema Obtiene Una Recompensa En Bitcoins Por Su Trabajo.
+ *   Bitcoin Mining Se Basa En El Algoritmo SHA-256 Para Resolver Estos Problemas De Hash.
+ *   Los Mineros También Validan Que Las Transacciones Sean Legítimas Antes De Añadirlas A La Blockchain.
+ *   El Proceso De Minería Es Competitivo, Ya Que Varios Mineros Intentan Resolver El Problema Al Mismo Tiempo.
+ *   Cuanto Mayor Sea El Hashrate, Más Probabilidades Tiene Un Minero De Ganar La Recompensa.
+ *   Los Mineros Ayudan A Mantener La Seguridad Y El Funcionamiento Descentralizado De La Red De Bitcoin.
+ *   1 - "Bitcoin Es La Mejor Reserva De Valor Del Siglo XXI." – Michael Saylor, CEO De MicroStrategy.
+ *   2 - "Creo Que Bitcoin Es Un Refugio Seguro Contra La Inflación Y Un Activo Para El Futuro." – Tim Draper, Inversionista.
+ *   3 - "La Tecnología De Bitcoin Es Una Revolución Que Cambiará El Sistema Financiero Global." – Jack Dorsey, CEO De Block.
+ *   4 - "Bitcoin Es La Libertad Financiera Que Todos Esperaban." – Winklevoss Twins, Fundadores De Gemini.
+ *   5 - "Forma De Almacenar Valor Que No Depende De Gobiernos Ni Instituciones." – Barry Silbert, CEO De Digital Currency Group.
  *
  *
- *              ///\\\ --- Minimizando código, maximizando funcionalidad. Solo 2010 líneas de código en 6h --- ///\\\
+ *              ///\\\ --- Minimizando Código, Maximizando Funcionalidad. Solo 2100 Líneas De Código En 6h --- ///\\\
  *
  *                                                     .M8AX Corp. - ¡A Minar!
  *
- *                                                            MARZO 2025
+ *                                                            Marzo 2025
+ *
  *
  *                        ===============================================================================
  *                                         ___  ___   _     _   _   _   _       ___  __    __
@@ -182,60 +182,95 @@ void noDisplay_AlternateRotation(void)
 {
 }
 
-int obtenHoraPorIP(String &ip)
+void MostrarComportamientoLED()
+{
+  Serial.println();
+  Serial.println("--------------------------------------------------");
+  Serial.println("  👽 👽 👽  Comportamiento Del LED  👽 👽 👽");
+  Serial.println("--------------------------------------------------");
+  Serial.println();
+  Serial.println(" I                   - Al Arrancar → 'Hola M8AX' En Código Morse Con El LED.");
+  Serial.println(" II                  - LED Encendido Constante Tras Ligeros Parpadeos Rápidos → Modo Configuración.");
+  Serial.println(" III                 - Sincronización De Hora Exitosa Al Arrancar → Parpadeo Súper Rápido Del LED.");
+  Serial.println(" IV                  - Parpadeo Fuerte 2 Ticks + 2 Ticks → Minando A Más De 350 KH/s - ( De 8h A 19h ).");
+  Serial.println(" V                   - Parpadeo Tenue 2 Ticks + 2 Ticks → Minando A Más De 350 KH/s - ( De 20h A 7h ).");
+  Serial.println(" Nota Sobre (IV Y V) - Fin De Semana ( Vie / Sáb / Dom ) - Parpadeo 3 Ticks + 3 Ticks → Misma Condición Horaria Y De Minado ( > 350 KH/s ).");
+  Serial.println(" VI                  - Parpadeo Fuerte Tick Medio Largo Y Uno Más Corto → Minando A Menos De 350 KH/s.");
+  Serial.println(" VII                 - Sin LED Azul → No Está Minando.");
+  Serial.println(" VIII                - LED Encendiéndose Y Apagándose A Lo Loco No Simétricos → ¡Has Minado Un Bloque! ¡Eres Rico!");
+  Serial.println(" IX                  - Parpadeo Estilo 'Pi Pi' De Reloj Casio → Es Una Hora En Punto.");
+  Serial.println(" X                   - Encendido Corto 'Pi' → Son Y Media.");
+  Serial.println(" XI                  - Encendido Largo (~2s) → Enviando Mensaje A Telegram Con Estadísticas Y Datos Nerd ( Si Está Configurado ).");
+  Serial.println(" XII                 - Parpadeo Rápido Corto Después De Enviar Mensaje A Telegram → Mensaje Enviado Correctamente.");
+  Serial.println(" XIII                - Parpadeo Rápido Corto + Pausa 2s + Parpadeo Rápido Corto Después De Enviar Mensaje A Telegram → Error En Envío :(");
+  Serial.println(" XIV                 - Parpadeos Largos → Temperatura Superior A 75°C.");
+  Serial.println(" XV                  - Share Enviado A La Pool → 5 Ticks Rápidos Del LED.");
+  Serial.println(" XVI                 - Nota - Si La Temperatura Pasa De 80°C, El Dispositivo Entrará En Deep Sleep 10 Min. Pasados Los 10 Min, Rearrancará.");
+  Serial.println(" XVII                - Espero Que Os Guste Y Minéis Un Bloque Y Si Es Así ¡Dadme Algo, Coño!");
+  Serial.println(" XVIII               - 👽 👽 👽  ¡A Minar!  👽 👽 👽");
+  Serial.println();
+  Serial.println("--------------------------------------------------");
+}
+
+int obtenHoraPorIP(const String &ip)
 {
   if (WiFi.status() != WL_CONNECTED)
   {
-    Serial.println("M8AX - Error: No Hay Conexión WiFi Para Obtener La Zona Horaria");
+    Serial.println("M8AX - Error: No Hay Conexión WiFi Para Obtener La Zona Horaria\n");
     return 1000;
   }
-  String ipapi_url = "https://ipapi.co/" + ip + "/json/";
-  HTTPClient http;
-  http.begin(ipapi_url);
-  int httpCode = http.GET();
-  if (httpCode == 200)
+  String api_url = "http://ipwho.is/" + ip;
+  int offset = Settings.Timezone;
+  bool success = false;
+  for (int intento = 1; intento <= 5; intento++)
   {
-    String payload = http.getString();
-    DynamicJsonDocument doc(1024);
-    DeserializationError error = deserializeJson(doc, payload);
-    if (error)
+    HTTPClient http;
+    http.setTimeout(2000);
+    http.begin(api_url);
+    int httpCode = http.GET();
+    if (httpCode == 200)
     {
-      Serial.println("M8AX - Error Al Parsear El JSON, Para Obtener La Zona Horaria");
+      StaticJsonDocument<64> filter;
+      filter["timezone"]["utc"] = true;
+      StaticJsonDocument<128> doc;
+      auto error = deserializeJson(doc, http.getStream(), DeserializationOption::Filter(filter));
       http.end();
-      payload.clear();
-      doc.clear();
-      return 1000;
+      if (error)
+      {
+        Serial.printf("M8AX - Error Al Parsear El JSON ( Intento %d )\n", intento);
+        delay(1000 * intento);
+        continue;
+      }
+      const char *utc_offset = doc["timezone"]["utc"];
+      if (!utc_offset)
+      {
+        Serial.printf("M8AX - UTC No Encontrado ( Intento %d )\n", intento);
+        delay(1000 * intento);
+        continue;
+      }
+      if ((utc_offset[0] == '+' || utc_offset[0] == '-') &&
+          utc_offset[1] >= '0' && utc_offset[1] <= '9' &&
+          utc_offset[2] >= '0' && utc_offset[2] <= '9')
+      {
+        int hours = (utc_offset[1] - '0') * 10 + (utc_offset[2] - '0');
+        if (utc_offset[0] == '-')
+          hours = -hours;
+        offset = hours;
+      }
+      Serial.printf("M8AX - Zona Horaria Obtenida Correctamente ( Intento %d ): UTC %+d\n", intento, offset);
+      success = true;
+      break;
     }
-    const char *utc_offset = doc["utc_offset"];
-    if (utc_offset == nullptr)
+    else
     {
-      Serial.println("M8AX - utc_offset No Encontrado En La Respuesta JSON");
+      Serial.printf("M8AX - Error HTTP ( %d ) En ( Intento %d )\n", httpCode, intento);
       http.end();
-      payload.clear();
-      doc.clear();
-      return 1000;
+      delay(1000 * intento);
     }
-    int offset = Settings.Timezone;
-    if (utc_offset[0] == '+')
-    {
-      offset = (utc_offset[1] - '0') * 10 + (utc_offset[2] - '0');
-    }
-    else if (utc_offset[0] == '-')
-    {
-      offset = -((utc_offset[1] - '0') * 10 + (utc_offset[2] - '0'));
-    }
-    http.end();
-    payload.clear();
-    doc.clear();
-    Serial.println(String("M8AX - Zona Horaria Obtenida Correctamente Mediante IP: UTC ") + (offset >= 0 ? "+" : "") + String(offset));
-    return offset;
   }
-  else
-  {
-    Serial.println("M8AX - Error En La Solicitud HTTP");
-    http.end();
-    return 1000;
-  }
+  if (!success)
+    Serial.println("M8AX - No Se Pudo Obtener La Zona Horaria Tras ( 5 Intentos )\n");
+  return offset;
 }
 
 double degToRad(double degrees)
@@ -1446,7 +1481,7 @@ void recopilaTelegram()
   cadenaEnvio += "\nPlantillas De Bloque - " + data.templates + "\n";
   cadenaEnvio += "Shares Enviados A La Pool - " + data.completedShares + "\n";
   cadenaEnvio += "Mejor Dificultad Alcanzada - " + data.bestDiff + "\n";
-  cadenaEnvio += "Cómputo Total - " + data.totalKHashes + " KH - ( " + String(atof(data.totalKHashes.c_str()) / 1000, 3) + " MH )\n";
+  cadenaEnvio += "Cómputo Total - " + String(atof(data.totalKHashes.c_str()), 0) + " KH - ( " + String(atof(data.totalKHashes.c_str()) / 1e3, 3) + " MH | " + String(atof(data.totalKHashes.c_str()) / 1e6, 3) + " GH | " + String(atof(data.totalKHashes.c_str()) / 1e9, 3) + " TH )\n";
   cadenaEnvio += "Pool De Minería - " + Settings.PoolAddress + "\n";
   cadenaEnvio += "Puerto Del Pool - " + String(Settings.PoolPort) + "\n";
   cadenaEnvio += "Tu Wallet De BTC - " + String(Settings.BtcWallet) + "\n";
@@ -1501,7 +1536,7 @@ void recopilaTelegram()
 void noDisplay_NoScreen(unsigned long mElapsed)
 {
   data = getMiningData(mElapsed);
-  int horas, minutos, segundos, dia, mes, anio;
+  int horas, minutos, segundos, dia, mes, anio, diaSemana;
   int temperatura = data.temp.toInt();
   int ganador = data.valids.toInt();
   float hhashrate = data.currentHashRate.toFloat();
@@ -1519,6 +1554,7 @@ void noDisplay_NoScreen(unsigned long mElapsed)
   horas = timeinfo.tm_hour;
   minutos = timeinfo.tm_min;
   segundos = timeinfo.tm_sec;
+  diaSemana = timeinfo.tm_wday;
   dia = timeinfo.tm_mday;
   mes = timeinfo.tm_mon + 1;
   anio = timeinfo.tm_year + 1900;
@@ -1577,25 +1613,65 @@ void noDisplay_NoScreen(unsigned long mElapsed)
         {
           if (horas >= 20 || horas < 8)
           {
-            digitalWrite(m8ax, HIGH);
-            vTaskDelay(pdMS_TO_TICKS((cuenta % 2 == 0) ? 1 : 2));
-            digitalWrite(m8ax, LOW);
-            vTaskDelay(pdMS_TO_TICKS((cuenta % 2 == 0) ? 200 : 100));
-            digitalWrite(m8ax, HIGH);
-            vTaskDelay(pdMS_TO_TICKS((cuenta % 2 == 0) ? 1 : 2));
-            digitalWrite(m8ax, LOW);
-            totalparpadeosled += 2;
+            if (diaSemana >= 1 && diaSemana <= 4)
+            {
+              digitalWrite(m8ax, HIGH);
+              vTaskDelay(pdMS_TO_TICKS((cuenta % 2 == 0) ? 1 : 2));
+              digitalWrite(m8ax, LOW);
+              vTaskDelay(pdMS_TO_TICKS((cuenta % 2 == 0) ? 200 : 100));
+              digitalWrite(m8ax, HIGH);
+              vTaskDelay(pdMS_TO_TICKS((cuenta % 2 == 0) ? 1 : 2));
+              digitalWrite(m8ax, LOW);
+              vTaskDelay(pdMS_TO_TICKS((cuenta % 2 == 0) ? 200 : 100));
+              totalparpadeosled += 2;
+            }
+            else
+            {
+              digitalWrite(m8ax, HIGH);
+              vTaskDelay(pdMS_TO_TICKS((cuenta % 2 == 0) ? 1 : 2));
+              digitalWrite(m8ax, LOW);
+              vTaskDelay(pdMS_TO_TICKS((cuenta % 2 == 0) ? 200 : 100));
+              digitalWrite(m8ax, HIGH);
+              vTaskDelay(pdMS_TO_TICKS((cuenta % 2 == 0) ? 1 : 2));
+              digitalWrite(m8ax, LOW);
+              vTaskDelay(pdMS_TO_TICKS((cuenta % 2 == 0) ? 200 : 100));
+              digitalWrite(m8ax, HIGH);
+              vTaskDelay(pdMS_TO_TICKS((cuenta % 2 == 0) ? 1 : 2));
+              digitalWrite(m8ax, LOW);
+              vTaskDelay(pdMS_TO_TICKS((cuenta % 2 == 0) ? 200 : 100));
+              totalparpadeosled += 3;
+            }
           }
           else
           {
-            digitalWrite(m8ax, HIGH);
-            vTaskDelay(pdMS_TO_TICKS((cuenta % 2 == 0) ? 25 : 50));
-            digitalWrite(m8ax, LOW);
-            vTaskDelay(pdMS_TO_TICKS((cuenta % 2 == 0) ? 200 : 100));
-            digitalWrite(m8ax, HIGH);
-            vTaskDelay(pdMS_TO_TICKS((cuenta % 2 == 0) ? 25 : 50));
-            digitalWrite(m8ax, LOW);
-            totalparpadeosled += 2;
+            if (diaSemana >= 1 && diaSemana <= 4)
+            {
+              digitalWrite(m8ax, HIGH);
+              vTaskDelay(pdMS_TO_TICKS((cuenta % 2 == 0) ? 25 : 50));
+              digitalWrite(m8ax, LOW);
+              vTaskDelay(pdMS_TO_TICKS((cuenta % 2 == 0) ? 200 : 100));
+              digitalWrite(m8ax, HIGH);
+              vTaskDelay(pdMS_TO_TICKS((cuenta % 2 == 0) ? 25 : 50));
+              digitalWrite(m8ax, LOW);
+              vTaskDelay(pdMS_TO_TICKS((cuenta % 2 == 0) ? 200 : 100));
+              totalparpadeosled += 2;
+            }
+            else
+            {
+              digitalWrite(m8ax, HIGH);
+              vTaskDelay(pdMS_TO_TICKS((cuenta % 2 == 0) ? 30 : 50));
+              digitalWrite(m8ax, LOW);
+              vTaskDelay(pdMS_TO_TICKS((cuenta % 2 == 0) ? 200 : 100));
+              digitalWrite(m8ax, HIGH);
+              vTaskDelay(pdMS_TO_TICKS((cuenta % 2 == 0) ? 30 : 50));
+              digitalWrite(m8ax, LOW);
+              vTaskDelay(pdMS_TO_TICKS((cuenta % 2 == 0) ? 200 : 100));
+              digitalWrite(m8ax, HIGH);
+              vTaskDelay(pdMS_TO_TICKS((cuenta % 2 == 0) ? 30 : 50));
+              digitalWrite(m8ax, LOW);
+              vTaskDelay(pdMS_TO_TICKS((cuenta % 2 == 0) ? 200 : 100));
+              totalparpadeosled += 3;
+            }
           }
         }
         else
@@ -1748,7 +1824,20 @@ void noDisplay_NoScreen(unsigned long mElapsed)
     Serial.printf(">>> M8AX - Rango De Temperatura - %d° - %s\n", (int)tempRange, interpretarRangoTemperatura(tempRange));
     Serial.printf(">>> M8AX - Temperatura A Más De 75° - %s Veces\n", String(alertatemp));
     Serial.printf(">>> M8AX - Tiempo De CPU A Más De 75° - %s\n", String(convertirTiempoNoMinando(alertatemp)).c_str());
-    Serial.printf(">>> M8AX - Cómputo Total ( MH ) - %s\n", String(atof(data.totalKHashes.c_str()) / 1000, 3));
+    Serial.printf(">>> M8AX - Cómputo Total - %.0f KH - ( %.3f MH | %.3f GH | %.3f TH )\n", atof(data.totalKHashes.c_str()), atof(data.totalKHashes.c_str()) / 1e3, atof(data.totalKHashes.c_str()) / 1e6, atof(data.totalKHashes.c_str()) / 1e9);
+    Serial.printf(">>> M8AX - Pool De Minería - %s\n", Settings.PoolAddress.c_str());
+    Serial.printf(">>> M8AX - Puerto Del Pool - %d\n", Settings.PoolPort);
+    Serial.printf(">>> M8AX - Wallet De BTC - %s\n", Settings.BtcWallet);
+    int indiceex = esp_random() % 5;
+    Serial.printf(">>> M8AX - URL Aleatoria - %s\n", urlsm8ax[indiceex]);
+    if (data.valids.toInt() == 1)
+    {
+      Serial.printf(">>> M8AX - ¡ BLOQUE MINADO ! ¡ A COBRAR ! :)\n");
+    }
+    else
+    {
+      Serial.printf(">>> M8AX - ¡ SIN PASTA, SIN GLORIA ! ¡ A SEGUIR CON LA HISTORIA !\n");
+    }
     char output[50];
     convertirTiempo(data.timeMining.c_str(), output);
     Serial.printf(">>> M8AX - Tiempo Minando - %s\n", output);
@@ -1896,6 +1985,7 @@ void noDisplay_NoScreen(unsigned long mElapsed)
 void noDisplay_LoadingScreen(void)
 {
   pinMode(m8ax, OUTPUT);
+  MostrarComportamientoLED();
   tiempoInicio = millis();
   Serial.println("\n... M8AX - ARRANCANDO - M8AX ...\n\n... M8AX - SALUDO EN MORSE - M8AX ...\n");
   for (int i = 0; i < morseLength; i++)

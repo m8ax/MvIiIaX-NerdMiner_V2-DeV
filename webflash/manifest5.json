@@ -1,0 +1,15 @@
+{
+  "name": "M8AX - NerdMinerV2 ESP32-2432S028R - ((( VERSION PANTALLA INVERTIDA ))) - M8AX Firmware UPDATE",
+  "new_install_prompt_erase": true,
+  "builds": [
+    {
+      "chipFamily": "ESP32",
+      "parts": [
+        { "path": "PINVERT-ESP32-2432S028R/ota_data_initial.bin", "offset": 57344 },
+        { "path": "PINVERT-ESP32-2432S028R/PINVERT-FirmWare-ESP32-2432S028R.bin", "offset": 65536 },
+        { "path": "PINVERT-ESP32-2432S028R/partition-table.bin", "offset": 32768 },
+        { "path": "PINVERT-ESP32-2432S028R/bootloader.bin", "offset": 4096 }
+      ]
+    }
+  ]
+}

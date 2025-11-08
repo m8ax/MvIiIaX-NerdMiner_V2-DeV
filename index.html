@@ -7,162 +7,196 @@
 	<script type="module" src="https://unpkg.com/esp-web-tools@10.1.0/dist/web/install-button.js?module"></script>
 	<style>
 		.button-container {
-						            display: flex;
-						            gap: 40px; /* Espacio entre botones */
-						            justify-content: center; /* Centra los botones en la página */
-						            align-items: center; /* Alinea verticalmente */
-						            margin-top: -16px; /* Espacio superior */
-						        }
-						h1 {
-						    margin-bottom: 16px; /* Reduce el espacio debajo del título */
-						}
-						
-						p.note {
-						    margin-top: 5px; /* Reduce el espacio arriba del párrafo */
-						}
-								
-				
-		
+			display: flex;
+			gap: 40px;
+			/* Espacio entre botones */
+			justify-content: center;
+			/* Centra los botones en la página */
+			align-items: center;
+			/* Alinea verticalmente */
+			margin-top: -16px;
+			/* Espacio superior */
+		}
+
+		h1 {
+			margin-bottom: 16px;
+			/* Reduce el espacio debajo del título */
+		}
+
+		p.note {
+			margin-top: 5px;
+			/* Reduce el espacio arriba del párrafo */
+		}
 	</style>
 	<style>
 		hr {
-		    border: none; /* Elimina el borde */
-		    border-top: 1px solid #00ff00; /* Añade una línea gris (o cualquier color) */
-		    margin: 1px 0; /* Ajusta el espacio alrededor del <hr> */
-		  }
-		
+			border: none;
+			/* Elimina el borde */
+			border-top: 1px solid #00ff00;
+			/* Añade una línea gris (o cualquier color) */
+			margin: 1px 0;
+			/* Ajusta el espacio alrededor del <hr> */
+		}
 	</style>
 
 	<style>
 		body {
-										            font-family: Arial, sans-serif;
-										            text-align: center;
-										            background-color: #1a1a1a;
-										            display: flex;
-										            flex-direction: column;
-										            justify-content: center;
-										            align-items: center;
-										            height: 100vh;
-										            margin: 0;
-										            overflow: hidden;
-										            position: relative;
-		                                                                            color:white;
-										        }
-										        h1 {
-										            color: #00000;
-										        }
-										        .container {
-										            background: rgba(255, 255, 255, 0.9);
-										            padding: 20px;
-										            border-radius: 10px;
-										            box-shadow: 0px 0px 20px rgba(0, 0, 0, 0.5);
-										            width: 80%;
-										            max-width: 500px;
-										            display: flex;
-										            flex-direction: column;
-										            justify-content: flex-start;
-										            position: relative;
-										            z-index: 1;
-										        }
-										        .note {
-										            color: blue;
-										            font-weight: bold;
-										            margin-bottom: 15px;
-										        }
-										        span {
-										            display: block;
-										            margin-top: 10px;
-										        }
-										        .header-image {
-										            margin-bottom: 20px;
-										            text-align: center;
-										        }
-										        .header-image img {
-										            max-width: 100%;
-										            height: auto;
-										        }
-										        .footer-image {
-										            margin-top: 20px;
-										            text-align: center;
-										        }
-										        .footer-image img {
-										            max-width: 100%;
-										            height: auto;
-										        }
-										        /* Estilos para el fondo de partículas */
-										        #particles-js {
-										            position: absolute;
-										            top: 0;
-										            left: 0;
-										            width: 100%;
-										            height: 100%;
-										            z-index: 0;
-										        }
-										        /* Estilos para la imagen en la esquina inferior izquierda */
-										        .corner-image {
-										            position: fixed;
-										            bottom: 10px;
-										            left: 10px;
-										            width: 100px;
-										            height: 100px;
-										            z-index: 2;
-										            border-radius: 10px;
-										            box-shadow: 0px 0px 10px rgba(0, 0, 0, 0.5);
-										        }
-										        .corner-image img {
-										            width: 100%;
-										            height: 100%;
-										            object-fit: cover;
-										            border-radius: 10px;
-										        }
-										/* Imagen para donaciones BTC */
-										.btc-donation {
-										    position: fixed;
-										    top: 100px;  /* 4 cm lower from the top */
-										    right: 250px;  /* 3 cm more to the left */
-										    width: 150px;
-										    height: 150px;
-										    z-index: 3;
-										    border-radius: 10px;
-										    box-shadow: 0px 0px 10px rgba(0, 0, 0, 0.5);
-										    text-align: center; /* Center the text under the image */
-										}
-										.btc-donation img {
-										    width: 100%;
-										    height: 100%;
-										    object-fit: cover;
-										    border-radius: 5px;
-										}
-										/* Imagen para donaciones BTC */
-										.btcc-donation {
-										    position: fixed;
-										    top: 100px;  /* 4 cm lower from the top */
-										    right: 1500px;  /* 3 cm more to the left */
-										    width: 150px;
-										    height: 150px;
-										    z-index: 3;
-										    border-radius: 10px;
-										    box-shadow: 0px 0px 10px rgba(0, 0, 0, 0.5);
-										    text-align: center; /* Center the text under the image */
-										}
-										.btcc-donation img {
-										    width: 100%;
-										    height: 100%;
-										    object-fit: cover;
-										    border-radius: 5px;
-										}
-										.donation-text {
-										    margin-top: 10px;  /* Space between image and text */
-										    font-size: 12px;  /* Adjust the font size as needed */
-										    color: #fff;  /* White text color */
-										    font-weight: bold;  /* Make the text bold */
-										    text-align: center;  /* Center the text */
-										}
-		
+			font-family: Arial, sans-serif;
+			text-align: center;
+			background-color: #1a1a1a;
+			display: flex;
+			flex-direction: column;
+			justify-content: center;
+			align-items: center;
+			height: 100vh;
+			margin: 0;
+			overflow: hidden;
+			position: relative;
+			color: white;
+		}
+
+		h1 {
+			color: #00000;
+		}
+
+		.container {
+			background: rgba(255, 255, 255, 0.9);
+			padding: 20px;
+			border-radius: 50px;
+			box-shadow: 0px 0px 20px rgba(0, 0, 0, 0.5);
+			width: 80%;
+			max-width: 630px;
+			display: flex;
+			flex-direction: column;
+			justify-content: flex-start;
+			position: relative;
+			z-index: 1;
+		}
+
+		.note {
+			color: blue;
+			font-weight: bold;
+			margin-bottom: 0px;
+		}
+
+		span {
+			display: block;
+			margin-top: 0px;
+		}
+
+		.header-image {
+			margin-bottom: 5px;
+			text-align: center;
+		}
+
+		.header-image img {
+			max-width: 100%;
+			height: auto;
+		}
+
+		.footer-image {
+			margin-top: 5px;
+			text-align: center;
+		}
+
+		.footer-image img {
+			max-width: 100%;
+			height: auto;
+		}
+
+		/* Estilos para el fondo de partículas */
+		#particles-js {
+			position: absolute;
+			top: 0;
+			left: 0;
+			width: 100%;
+			height: 100%;
+			z-index: 0;
+		}
+
+		/* Estilos para la imagen en la esquina inferior izquierda */
+		.corner-image {
+			position: fixed;
+			bottom: 10px;
+			left: 10px;
+			width: 100px;
+			height: 100px;
+			z-index: 2;
+			border-radius: 10px;
+			box-shadow: 0px 0px 10px rgba(0, 0, 0, 0.5);
+		}
+
+		.corner-image img {
+			width: 100%;
+			height: 100%;
+			object-fit: cover;
+			border-radius: 10px;
+		}
+
+		/* Imagen para donaciones BTC */
+		.btc-donation {
+			position: fixed;
+			top: 100px;
+			/* 4 cm lower from the top */
+			right: 250px;
+			/* 3 cm more to the left */
+			width: 150px;
+			height: 150px;
+			z-index: 3;
+			border-radius: 10px;
+			box-shadow: 0px 0px 10px rgba(0, 0, 0, 0.5);
+			text-align: center;
+			/* Center the text under the image */
+		}
+
+		.btc-donation img {
+			width: 100%;
+			height: 100%;
+			object-fit: cover;
+			border-radius: 5px;
+		}
+
+		/* Imagen para donaciones BTC */
+		.btcc-donation {
+			position: fixed;
+			top: 100px;
+			/* 4 cm lower from the top */
+			right: 1500px;
+			/* 3 cm more to the left */
+			width: 150px;
+			height: 150px;
+			z-index: 3;
+			border-radius: 10px;
+			box-shadow: 0px 0px 10px rgba(0, 0, 0, 0.5);
+			text-align: center;
+			/* Center the text under the image */
+		}
+
+		.btcc-donation img {
+			width: 100%;
+			height: 100%;
+			object-fit: cover;
+			border-radius: 5px;
+		}
+
+		.donation-text {
+			margin-top: 10px;
+			/* Space between image and text */
+			font-size: 12px;
+			/* Adjust the font size as needed */
+			color: #fff;
+			/* White text color */
+			font-weight: bold;
+			/* Make the text bold */
+			text-align: center;
+			/* Center the text */
+		}
 	</style>
 </head>
+
 <body>
-	<div id="crypto-ticker" style="background-color: #333; color: white; padding: 10px; text-align: center; font-size: 13px;">
+	<div id="crypto-ticker"
+		style="background-color: #333; color: white; padding: 10px; text-align: center; font-size: 13px;">
 		Cargando Precios...
 	</div>
 	<!-- Fondo de partículas animadas -->
@@ -176,19 +210,23 @@
 	<!-- Imagen de donación BTC -->
 	<div class="btc-donation">
 		<img src="webflash/btcdonation.png" alt="Donación Voluntaria De BTC">
-		<p class="donation-text">DONACION BITCOIN<br>PARA EL CREADOR<br>( VOLUNTARIA )<br><br>ESCANEA PARA <br>OBTENER MI<br>DIRECCIÓN DE<br>BITCOIN<br>
+		<p class="donation-text">DONACION BITCOIN<br>PARA EL CREADOR<br>( VOLUNTARIA )<br><br>ESCANEA PARA <br>OBTENER
+			MI<br>DIRECCIÓN DE<br>BITCOIN<br>
 			<hr><br>DONACIÓN PAYPAL<br>VOLUNTARIA<br>
 			<a href="https://www.paypal.me/m8ax">
-				<font size=3><br><img src="webflash/paypal.png" alt="Donación Voluntaria Mediante PayPal" style="width: 60px; height: 60px;">
+				<font size=3><br><img src="webflash/paypal.png" alt="Donación Voluntaria Mediante PayPal"
+						style="width: 60px; height: 60px;">
 			</a>
 			</font><br><br>
 			<hr><br>
 			<script async src="https://js.stripe.com/v3/buy-button.js">
-				
+
 			</script>
-			<stripe-buy-button buy-button-id="buy_btn_1R9mDLG6Z48hDDbhNF1rOjq9" publishable-key="pk_live_51R9kxCG6Z48hDDbhv2liWJMCmC9CamrzcpawsWZqtyGoXSnZNhvjSCk17AgDkFUVjORwPSiciVTegSVI4MuFLWaI00LV2Z8iaT">
+			<stripe-buy-button buy-button-id="buy_btn_1R9mDLG6Z48hDDbhNF1rOjq9"
+				publishable-key="pk_live_51R9kxCG6Z48hDDbhv2liWJMCmC9CamrzcpawsWZqtyGoXSnZNhvjSCk17AgDkFUVjORwPSiciVTegSVI4MuFLWaI00LV2Z8iaT">
 			</stripe-buy-button><br><br>
-			<hr><br>DONACIÓN VOLUNTARIA<br><br><img src="webflash/satos.jpg" alt="Donación Mediante La Red Lightning Network De Bitcoin" style="width: 200px; height: 200px;">
+			<hr><br>DONACIÓN VOLUNTARIA<br><br><img src="webflash/satos.jpg"
+				alt="Donación Mediante La Red Lightning Network De Bitcoin" style="width: 200px; height: 200px;">
 			</a>
 		</p>
 		<!-- Corrected HTML structure -->
@@ -196,31 +234,39 @@
 	<!-- Imagen de donación BTC -->
 	<div class="btcc-donation">
 		<img src="webflash/btcdonation.png" alt="Donación Voluntaria De BTC">
-		<p class="donation-text">DONACION BITCOIN<br>PARA EL CREADOR<br>( VOLUNTARIA )<br><br>ESCANEA PARA <br>OBTENER MI<br>DIRECCIÓN DE<br>BITCOIN<br>
+		<p class="donation-text">DONACION BITCOIN<br>PARA EL CREADOR<br>( VOLUNTARIA )<br><br>ESCANEA PARA <br>OBTENER
+			MI<br>DIRECCIÓN DE<br>BITCOIN<br>
 			<hr><br>DONACIÓN PAYPAL<br>VOLUNTARIA<br>
 			<a href="https://www.paypal.me/m8ax">
-				<font size=3><br><img src="webflash/paypal.png" alt="Donación Voluntaria Mediante PayPal" style="width: 60px; height: 60px;">
+				<font size=3><br><img src="webflash/paypal.png" alt="Donación Voluntaria Mediante PayPal"
+						style="width: 60px; height: 60px;">
 			</a>
 			</font><br><br>
 			<hr><br>
 			<script async src="https://js.stripe.com/v3/buy-button.js">
-				
+
 			</script>
-			<stripe-buy-button buy-button-id="buy_btn_1R9mDLG6Z48hDDbhNF1rOjq9" publishable-key="pk_live_51R9kxCG6Z48hDDbhv2liWJMCmC9CamrzcpawsWZqtyGoXSnZNhvjSCk17AgDkFUVjORwPSiciVTegSVI4MuFLWaI00LV2Z8iaT">
+			<stripe-buy-button buy-button-id="buy_btn_1R9mDLG6Z48hDDbhNF1rOjq9"
+				publishable-key="pk_live_51R9kxCG6Z48hDDbhv2liWJMCmC9CamrzcpawsWZqtyGoXSnZNhvjSCk17AgDkFUVjORwPSiciVTegSVI4MuFLWaI00LV2Z8iaT">
 			</stripe-buy-button><br><br>
-			<hr><br>DONACIÓN VOLUNTARIA<br><br><img src="webflash/satos.jpg" alt="Donación Mediante La Red Lightning Network De Bitcoin" style="width: 200px; height: 200px;">
+			<hr><br>DONACIÓN VOLUNTARIA<br><br><img src="webflash/satos.jpg"
+				alt="Donación Mediante La Red Lightning Network De Bitcoin" style="width: 200px; height: 200px;">
 			</a>
 		</p>
 		<!-- Corrected HTML structure -->
 	</div>
 	<div class="container">
-		<a href="https://es.web-counter.net" title="contador de visitas"><img src="https://www.web-counter.net/count_20091204.php?c=3K9Vv06jVuI" style="border:0;padding:0;margin:0;" alt="contador de visitas"></a>
+		<a href="https://es.web-counter.net" title="contador de visitas"><img
+				src="https://www.web-counter.net/count_20091204.php?c=3K9Vv06jVuI" style="border:0;padding:0;margin:0;"
+				alt="contador de visitas"></a>
 
 		<div class="header-image">
-			<a href="https://youtu.be/hjlTQvUVsiU" target="_blank" title="Haz Clic Para Para Ver El Video De Mi Versión Del Firmware Del NerdMinerV2.">
-                Pincha Para Ver Video En Cualquier Imágen Ó Aquí Mismo<p>
-                <img src="webflash/pantallas.jpg" alt="Pantallas Del --- M8AX - NerdMinerV2 - M8AX | ( PINCHA PARA VER VIDEO ) |">
-            </a>
+			<a href="https://youtu.be/hjlTQvUVsiU" target="_blank"
+				title="Haz Clic Para Para Ver El Video De Mi Versión Del Firmware Del NerdMinerV2.">
+				Pincha Para Ver Video En Cualquier Imágen Ó Aquí Mismo<p>
+					<img src="webflash/pantallas.jpg"
+						alt="Pantallas Del --- M8AX - NerdMinerV2 - M8AX | ( PINCHA PARA VER VIDEO ) |">
+			</a>
 		</div>
 		<!-- Botón para descargar el manual -->
 		<a id="downloadManual" href="M8AX-NerdMinerV2-M8AX-Manual.pdf" download>
@@ -228,45 +274,63 @@
 		</a>
 		<button id="playButton">Reproducir Canción: M8AX - NerdMinerV2 - M8AX</button>
 		<script>
-			document.getElementById('playButton').addEventListener('click', function() {
-															                const audio = document.getElementById('backgroundAudio');
-															                audio.play();  // Reproducir el audio cuando el usuario haga clic
-															                audio.volume = 0.5;  // Ajustar volumen si es necesario
-															                this.style.display = 'none';  // Ocultar el botón después de hacer clic
-															            });
-						
-			
+			document.getElementById('playButton').addEventListener('click', function () {
+				const audio = document.getElementById('backgroundAudio');
+				audio.play();  // Reproducir el audio cuando el usuario haga clic
+				audio.volume = 0.5;  // Ajustar volumen si es necesario
+				this.style.display = 'none';  // Ocultar el botón después de hacer clic
+			});
 		</script>
-		<h1><a href="https://github.com/m8ax/MvIiIaX-NerdMiner_V2-DeV" target="_blank" title="Haz Clic Para Visitar El Repositorio Del Firmware M8AX NerdMinerV2 En GitHub.">M8AX - Firmware NerdMinerV2</a></h1>
-		<p class="note">Si No Funciona, Activa El Modo Programación: Pulsa El Botón 1 (Abajo), Conéctalo Por USB Y Suéltalo Tras 2 Segundos.
+		<h1><a href="https://github.com/m8ax/MvIiIaX-NerdMiner_V2-DeV" target="_blank"
+				title="Haz Clic Para Visitar El Repositorio Del Firmware M8AX NerdMinerV2 En GitHub.">M8AX - Firmware
+				NerdMinerV2</a></h1>
+		<p class="note">Si No Funciona, Activa El Modo Programación: Pulsa El Botón 1 (Abajo), Conéctalo Por USB Y
+			Suéltalo Tras 2 Segundos.
 			<span style="color: red; font-weight: bold; font-size: 14px;">
-    NOTA: Asegúrate De Cerrar Cualquier Programa Que Esté Usando El Puerto COM De Tu Dispositivo ( Por Ejemplo, El Monitor Serie ).<span style="color: green; display: inline;"><br><br>SSID Config: M8AX-Minero | Clave: MinaTuPasta</span>
+				NOTA: Asegúrate De Cerrar Cualquier Programa Que Esté Usando El Puerto COM De Tu Dispositivo ( Por
+				Ejemplo, El Monitor Serie ).<span style="color: green; display: inline;"><br><br>SSID Config:
+					M8AX-Minero | Clave: MinaTuPasta</span>
 			</span>
 		</p><br>
 		<div class="button-container">
 			<div>
-				<img src="webflash/nmv2.png" alt="NerdMiner V2" title="NerdMiner V2" style="width: 100px; height: 50px; display: block; margin: 0 auto;">
+				<img src="webflash/nmv2.png" alt="NerdMiner V2" title="NerdMiner V2"
+					style="width: 100px; height: 50px; display: block; margin: 0 auto;">
 				<br>
 				<esp-web-install-button manifest="webflash/manifest1.json"></esp-web-install-button>
-                                <strong><span style="font-size: 13px; color: #0000ff;">ESP32-NerdMinerV2</span></strong>
+				<strong><span style="font-size: 12px; color: #0000ff;">ESP32-NerdMinerV2</span></strong>
 			</div>
 			<div>
-				<img src="webflash/pgrande.png" alt="NerdMiner V2 - ESP32-2432S028R" title="NerdMiner V2 - ESP32-2432S028R" style="width: 100px; height: 50px; display: block; margin: 0 auto;">
+				<img src="webflash/pgrande.png" alt="NerdMiner V2 - ESP32-2432S028R"
+					title="NerdMiner V2 - ESP32-2432S028R"
+					style="width: 100px; height: 50px; display: block; margin: 0 auto;">
 				<br>
 				<esp-web-install-button manifest="webflash/manifest2.json"></esp-web-install-button>
-                                <strong><span style="font-size: 13px; color: #0000ff;">ESP32-2432S028R</span></strong>
-			</div>
-                        <div>
-				<img src="webflash/trumpfirm.png" alt="NerdMiner V2 - TRUMP VERSION - ESP32-2432S028R" title="NerdMiner V2 - TRUMP VERSION - ESP32-2432S028R" style="width: 100px; height: 50px; display: block; margin: 0 auto;">
-				<br>
-				<esp-web-install-button manifest="webflash/manifest4.json"></esp-web-install-button>
-                                <strong><span style="font-size: 13px; color: #0000ff;">ESP32-TRUMP-2432S028R</span></strong>
+				<strong><span style="font-size: 12px; color: #0000ff;">ESP32-2432S028R</span></strong>
 			</div>
 			<div>
-				<img src="webflash/placa.jpg" alt="Placas ESP32 WROOM" title="Placas ESP32 WROOM" style="width: 100px; height: 50px; display: block; margin: 0 auto;">
+				<img src="webflash/pgrande.png" alt="NerdMiner V2 - ESP32-2432S028R - Pantalla Invertida"
+					title="NerdMiner V2 - ESP32-2432S028R - Pantalla Invertida"
+					style="width: 100px; height: 50px; display: block; margin: 0 auto;">
+				<br>
+				<esp-web-install-button manifest="webflash/manifest5.json"></esp-web-install-button>
+				<strong><span style="font-size: 12px; color: #0000ff;">ESP32-2432S028R - Pantalla
+						Invertida</span></strong>
+			</div>
+			<div>
+				<img src="webflash/trumpfirm.png" alt="NerdMiner V2 - TRUMP VERSION - ESP32-2432S028R"
+					title="NerdMiner V2 - TRUMP VERSION - ESP32-2432S028R"
+					style="width: 100px; height: 50px; display: block; margin: 0 auto;">
+				<br>
+				<esp-web-install-button manifest="webflash/manifest4.json"></esp-web-install-button>
+				<strong><span style="font-size: 12px; color: #0000ff;">ESP32-2432S028R - TRUMP VERSION</span></strong>
+			</div>
+			<div>
+				<img src="webflash/placa.jpg" alt="Placas ESP32 WROOM" title="Placas ESP32 WROOM"
+					style="width: 100px; height: 50px; display: block; margin: 0 auto;">
 				<br>
 				<esp-web-install-button manifest="webflash/manifest3.json"></esp-web-install-button>
-                                <strong><span style="font-size: 13px; color: #0000ff;">ESP32 WROOM</span></strong>
+				<strong><span style="font-size: 12px; color: #0000ff;">ESP32 WROOM</span></strong>
 			</div>
 		</div>
 		<div id="notSupported" style="display: none;">
@@ -280,127 +344,136 @@
 	<script src="https://cdn.jsdelivr.net/particles.js/2.0.0/particles.min.js"></script>
 	<script>
 		// Función para generar un color hexadecimal aleatorio
-								    function getRandomColor() {
-								        return '#' + Math.floor(Math.random() * 16777215).toString(16);
-								    }
-								
-								    // Configuración del fondo de partículas
-								    particlesJS("particles-js", {
-								        particles: {
-								            number: {
-								                value: 80,
-								                density: {
-								                    enable: true,
-								                    value_area: 800
-								                }
-								            },
-								            color: {
-								                value: "#ffffff"
-								            },
-								            shape: {
-								                type: "circle",
-								                stroke: {
-								                    width: 0,
-								                    color: "#000000"
-								                },
-								                polygon: {
-								                    nb_sides: 5
-								                }
-								            },
-								            opacity: {
-								                value: 0.5,
-								                random: true,
-								                anim: {
-								                    enable: true,
-								                    speed: 1,
-								                    opacity_min: 0.1,
-								                    sync: false
-								                }
-								            },
-								            size: {
-								                value: 3,
-								                random: true,
-								                anim: {
-								                    enable: true,
-								                    speed: 2,
-								                    size_min: 0.1,
-								                    sync: false
-								                }
-								            },
-								            line_linked: {
-								                enable: true,
-								                distance: 150,
-								                color: getRandomColor(), // Asignar color aleatorio
-								                opacity: 0.4,
-								                width: 1
-								            },
-								            move: {
-								                enable: true,
-								                speed: 3,
-								                direction: "none",
-								                random: true,
-								                straight: false,
-								                out_mode: "bounce",
-								                bounce: true,
-								                attract: {
-								                    enable: false,
-								                    rotateX: 600,
-								                    rotateY: 1200
-								                }
-								            }
-								        },
-								        interactivity: {
-								            detect_on: "canvas",
-								            events: {
-								                onhover: {
-								                    enable: true,
-								                    mode: "bubble"
-								                },
-								                onclick: {
-								                    enable: true,
-								                    mode: "push"
-								                },
-								                resize: true
-								            },
-								            modes: {
-								                bubble: {
-								                    distance: 200,
-								                    size: 6,
-								                    duration: 2,
-								                    opacity: 0.8,
-								                    speed: 3
-								                },
-								                push: {
-								                    particles_nb: 4
-								                }
-								            }
-								        },
-								        retina_detect: true
-								    });
-								
-								    // Verificar compatibilidad con la API Web Serial
-								    if (navigator.serial) {
-								        document.getElementById("notSupported").style.display = 'none';
-								        document.getElementById("main").style.display = 'block';
-								    } else {
-								        document.getElementById("notSupported").style.display = 'block';
-								        document.getElementById("main").style.display = 'none';
-								    }
-				
-		
+		function getRandomColor() {
+			return '#' + Math.floor(Math.random() * 16777215).toString(16);
+		}
+
+		// Configuración del fondo de partículas
+		particlesJS("particles-js", {
+			particles: {
+				number: {
+					value: 80,
+					density: {
+						enable: true,
+						value_area: 800
+					}
+				},
+				color: {
+					value: "#ffffff"
+				},
+				shape: {
+					type: "circle",
+					stroke: {
+						width: 0,
+						color: "#000000"
+					},
+					polygon: {
+						nb_sides: 5
+					}
+				},
+				opacity: {
+					value: 0.5,
+					random: true,
+					anim: {
+						enable: true,
+						speed: 1,
+						opacity_min: 0.1,
+						sync: false
+					}
+				},
+				size: {
+					value: 3,
+					random: true,
+					anim: {
+						enable: true,
+						speed: 2,
+						size_min: 0.1,
+						sync: false
+					}
+				},
+				line_linked: {
+					enable: true,
+					distance: 150,
+					color: getRandomColor(), // Asignar color aleatorio
+					opacity: 0.4,
+					width: 1
+				},
+				move: {
+					enable: true,
+					speed: 3,
+					direction: "none",
+					random: true,
+					straight: false,
+					out_mode: "bounce",
+					bounce: true,
+					attract: {
+						enable: false,
+						rotateX: 600,
+						rotateY: 1200
+					}
+				}
+			},
+			interactivity: {
+				detect_on: "canvas",
+				events: {
+					onhover: {
+						enable: true,
+						mode: "bubble"
+					},
+					onclick: {
+						enable: true,
+						mode: "push"
+					},
+					resize: true
+				},
+				modes: {
+					bubble: {
+						distance: 200,
+						size: 6,
+						duration: 2,
+						opacity: 0.8,
+						speed: 3
+					},
+					push: {
+						particles_nb: 4
+					}
+				}
+			},
+			retina_detect: true
+		});
+
+		// Verificar compatibilidad con la API Web Serial
+		if (navigator.serial) {
+			document.getElementById("notSupported").style.display = 'none';
+			document.getElementById("main").style.display = 'block';
+		} else {
+			document.getElementById("notSupported").style.display = 'block';
+			document.getElementById("main").style.display = 'none';
+		}
 	</script>
 	<!-- Audio de fondo que se repite constantemente -->
 	<audio id="backgroundAudio" autoplay loop>
-        <source src="webflash/m8ax.mp3" type="audio/mpeg">
-        Tu navegador no soporta la etiqueta de audio.
-    </audio>
-	<!-- Opcional: Control de volumen con JavaScript -->
+		Tu navegador no soporta la etiqueta de audio.
+	</audio>
+	<!-- Control de volumen y selección aleatoria -->
 	<script>
-		document.getElementById('backgroundAudio').volume = 0.5; // 50% de volumen
-								
-						
-				
-		
+		// Array con tus archivos de audio
+		const audios = [
+			'webflash/m8ax1.opus',
+			'webflash/m8ax2.opus',
+			'webflash/m8ax3.opus',
+			'webflash/m8ax4.opus'
+		];
+		// Elegir uno aleatoriamente
+		const randomIndex = Math.floor(Math.random() * audios.length);
+		const audioElement = document.getElementById('backgroundAudio');
+		audioElement.src = audios[randomIndex];
+		// Ajustar volumen
+		audioElement.volume = 0.5;
+		// Reproducir (en algunos navegadores requiere user interaction para autoplay)
+		audioElement.play().catch(() => {
+			console.log("Autoplay bloqueado, requiere interacción del usuario.");
+		});
 	</script>
 	<div style="position: absolute; right: 0; bottom: 0;">
 		<a href="https://youtube.com/m8ax" target="_blank" title="Pulsa Para Ver Mi Canal De Youtube.">
@@ -409,45 +482,44 @@
 	</div>
 	<script>
 		async function getCryptoPrices() {
-										            const url = "https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids=bitcoin,ethereum,ripple,litecoin,cardano,doge,polkadot,uniswap,binancecoin,solana,chainlink,vechain,shiba,inuyasha,terra,monero,ethereum-classic,stellar,usd-coin,wrapped-bitcoin&order=market_cap_desc&per_page=20&page=1&sparkline=false";
-										            try {
-										                const response = await fetch(url);
-										                const data = await response.json();
-										                let tickerHtml = "Precios De Criptomonedas: ";
-										                data.forEach(crypto => {
-										                    tickerHtml += `${crypto.name}: $${crypto.current_price} | `;
-										                });
-										                // Remove the last " | "
-										                tickerHtml = tickerHtml.slice(0, -3);
-										                document.getElementById('crypto-ticker').innerHTML = tickerHtml;
-										            } catch (error) {
-										                document.getElementById('crypto-ticker').innerHTML = "Error al cargar los precios.";
-										                console.error("Error fetching data: ", error);
-										            }
-										        }
-										        // Llamar a la función para cargar los precios
-										        getCryptoPrices();
-										        // Actualizar cada 60 segundos
-										        setInterval(getCryptoPrices, 60000);
-	
+			const url = "https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids=bitcoin,ethereum,ripple,litecoin,cardano,doge,polkadot,uniswap,binancecoin,solana,chainlink,vechain,shiba,inuyasha,terra,monero,ethereum-classic,stellar,usd-coin,wrapped-bitcoin&order=market_cap_desc&per_page=20&page=1&sparkline=false";
+			try {
+				const response = await fetch(url);
+				const data = await response.json();
+				let tickerHtml = "Precios De Criptomonedas: ";
+				data.forEach(crypto => {
+					tickerHtml += `${crypto.name}: $${crypto.current_price} | `;
+				});
+				// Remove the last " | "
+				tickerHtml = tickerHtml.slice(0, -3);
+				document.getElementById('crypto-ticker').innerHTML = tickerHtml;
+			} catch (error) {
+				document.getElementById('crypto-ticker').innerHTML = "Error al cargar los precios.";
+				console.error("Error fetching data: ", error);
+			}
+		}
+		// Llamar a la función para cargar los precios
+		getCryptoPrices();
+		// Actualizar cada 60 segundos
+		setInterval(getCryptoPrices, 60000);
 	</script>
-        <script>
-          alert("🚀 Actualización De Mineros 🚀\n" +
-          "📅 Compilación: 15/06/2025 Domingo\n\n" +
-          "✅ Mejoras Importantes:\n" +
-          "• Velocidad De Minado Estable ( No Más Ralentizaciones )\n" +
-          "• Corregidos Reinicios Aleatorios\n" +
-          "• Mayor Estabilidad General\n\n" +
-          "¡ Apóyame Con Una Donación !\n\n" +
-          "____________________________________________________________________\n\n" +
-          "🚀 Miners Update 🚀\n" +
-          "📅 Build: 06/15/2025 Sunday\n\n" +
-          "✅ Key Improvements:\n" +
-          "• Stable Mining Speed ( No More Slowdowns )\n" +
-          "• Fixed Random Reboots\n" +
-          "• Enhanced Overall Stability\n\n" +
-          "Support Me With A Donation !\n\n" +
-          "By M8AX | ¡ Gracias ! / Thank You !");
-        </script>
+	<script>
+		alert("🚀 Actualización De Mineros 🚀\n" +
+			"📅 Compilación: 08/11/2025 Sábado\n\n" +
+			"✅ Mejoras Importantes:\n" +
+			"• Velocidad De Minado Estable ( No Más Ralentizaciones )\n" +
+			"• Corregido Bug De Cambio De Hora Automático\n" +
+			"• Mayor Estabilidad General\n\n" +
+			"¡ Apóyame Con Una Donación !\n\n" +
+			"____________________________________________________________________\n\n" +
+			"🚀 Miners Update 🚀\n" +
+			"📅 Build: 11/08/2025 Saturday\n\n" +
+			"✅ Major Improvements:\n" +
+			"• Stable Mining Speed ( No More Slowdowns )\n" +
+			"• Fixed Automatic Time Change Bug\n" +
+			"• Enhanced Overall Stability\n\n" +
+			"Support Me With A Donation !\n\n" +
+			"By M8AX | ¡ Gracias ! / Thank You !");
+	</script>
 </body>
 </html>
