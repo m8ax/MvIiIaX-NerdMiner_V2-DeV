@@ -177,8 +177,18 @@
       </style>
    </head>
    <body>
-      <div id="crypto-ticker"
-         style="background-color: #333; color: white; padding: 10px; text-align: center; font-size: 13px;">
+      <div id="crypto-ticker" style="
+         position: fixed;
+         top: 0;
+         left: 0;
+         width: 100%;
+         background-color: #333;
+         color: white;
+         padding: 10px;
+         text-align: center;
+         font-size: 13px;
+         z-index: 10000;
+         ">
          Cargando Precios...
       </div>
       <!-- Fondo de partículas animadas -->
@@ -192,25 +202,28 @@
       <!-- Imagen de donación BTC -->
       <div class="btc-donation">
          <img src="webflash/btcdonation.png" alt="Donación Voluntaria De BTC">
-         <p class="donation-text">DONACION BITCOIN<br>PARA EL CREADOR<br>( VOLUNTARIA )<br><br>ESCANEA PARA <br>OBTENER
-            MI<br>DIRECCIÓN DE<br>BITCOIN<br>
+         <p class="donation-text">DONACION BITCOIN <br>PARA EL CREADOR <br>( VOLUNTARIA ) <br>
+            <br>ESCANEA PARA <br>OBTENER MI <br>DIRECCIÓN DE <br>BITCOIN <br>
          <hr>
-         <br>DONACIÓN PAYPAL<br>VOLUNTARIA<br>
-         <a href="https://www.paypal.me/m8ax">
-         <font size=3><br><img src="webflash/paypal.png" alt="Donación Voluntaria Mediante PayPal"
-            style="width: 60px; height: 60px;">
+         <br>DONACIÓN PAYPAL <br>VOLUNTARIA <br>
+         <a href="https://www.paypal.me/m8ax" target="_blank">
+         <font size=3>
+         <br>
+         <img src="webflash/paypal.png" alt="Donación Voluntaria Mediante PayPal" style="width: 60px; height: 60px;">
          </a>
-         </font><br><br>
+         </font>
+         <br>
+         <br>
          <hr>
          <br>
          <script async src="https://js.stripe.com/v3/buy-button.js"></script>
-         <stripe-buy-button buy-button-id="buy_btn_1R9mDLG6Z48hDDbhNF1rOjq9"
-            publishable-key="pk_live_51R9kxCG6Z48hDDbhv2liWJMCmC9CamrzcpawsWZqtyGoXSnZNhvjSCk17AgDkFUVjORwPSiciVTegSVI4MuFLWaI00LV2Z8iaT">
-         </stripe-buy-button>
-         <br><br>
+         <stripe-buy-button buy-button-id="buy_btn_1R9mDLG6Z48hDDbhNF1rOjq9" publishable-key="pk_live_51R9kxCG6Z48hDDbhv2liWJMCmC9CamrzcpawsWZqtyGoXSnZNhvjSCk17AgDkFUVjORwPSiciVTegSVI4MuFLWaI00LV2Z8iaT"></stripe-buy-button>
+         <br>
+         <br>
          <hr>
-         <br>DONACIÓN VOLUNTARIA<br><br><img src="webflash/satos.jpg"
-            alt="Donación Mediante La Red Lightning Network De Bitcoin" style="width: 200px; height: 200px;">
+         <br>DONACIÓN VOLUNTARIA <br>
+         <br>
+         <img src="webflash/satos.jpg" alt="Donación Mediante La Red Lightning Network De Bitcoin" style="width: 200px; height: 200px;">
          </a>
          </p>
          <!-- Corrected HTML structure -->
@@ -218,114 +231,117 @@
       <!-- Imagen de donación BTC -->
       <div class="btcc-donation">
          <img src="webflash/btcdonation.png" alt="Donación Voluntaria De BTC">
-         <p class="donation-text">DONACION BITCOIN<br>PARA EL CREADOR<br>( VOLUNTARIA )<br><br>ESCANEA PARA <br>OBTENER
-            MI<br>DIRECCIÓN DE<br>BITCOIN<br>
+         <p class="donation-text">DONACION BITCOIN <br>PARA EL CREADOR <br>( VOLUNTARIA ) <br>
+            <br>ESCANEA PARA <br>OBTENER MI <br>DIRECCIÓN DE <br>BITCOIN <br>
          <hr>
-         <br>DONACIÓN PAYPAL<br>VOLUNTARIA<br>
-         <a href="https://www.paypal.me/m8ax">
-         <font size=3><br><img src="webflash/paypal.png" alt="Donación Voluntaria Mediante PayPal"
-            style="width: 60px; height: 60px;">
+         <br>DONACIÓN PAYPAL <br>VOLUNTARIA <br>
+         <a href="https://www.paypal.me/m8ax" target="_blank">
+         <font size=3>
+         <br>
+         <img src="webflash/paypal.png" alt="Donación Voluntaria Mediante PayPal" style="width: 60px; height: 60px;">
          </a>
-         </font><br><br>
+         </font>
+         <br>
+         <br>
          <hr>
          <br>
          <script async src="https://js.stripe.com/v3/buy-button.js"></script>
-         <stripe-buy-button buy-button-id="buy_btn_1R9mDLG6Z48hDDbhNF1rOjq9"
-            publishable-key="pk_live_51R9kxCG6Z48hDDbhv2liWJMCmC9CamrzcpawsWZqtyGoXSnZNhvjSCk17AgDkFUVjORwPSiciVTegSVI4MuFLWaI00LV2Z8iaT">
-         </stripe-buy-button>
-         <br><br>
+         <stripe-buy-button buy-button-id="buy_btn_1R9mDLG6Z48hDDbhNF1rOjq9" publishable-key="pk_live_51R9kxCG6Z48hDDbhv2liWJMCmC9CamrzcpawsWZqtyGoXSnZNhvjSCk17AgDkFUVjORwPSiciVTegSVI4MuFLWaI00LV2Z8iaT"></stripe-buy-button>
+         <br>
+         <br>
          <hr>
-         <br>DONACIÓN VOLUNTARIA<br><br><img src="webflash/satos.jpg"
-            alt="Donación Mediante La Red Lightning Network De Bitcoin" style="width: 200px; height: 200px;">
+         <br>DONACIÓN VOLUNTARIA <br>
+         <br>
+         <img src="webflash/satos.jpg" alt="Donación Mediante La Red Lightning Network De Bitcoin" style="width: 200px; height: 200px;">
          </a>
          </p>
          <!-- Corrected HTML structure -->
       </div>
       <div class="container">
-         <a href="https://es.web-counter.net" title="contador de visitas"><img
-            src="https://www.web-counter.net/count_20091204.php?c=3K9Vv06jVuI" style="border:0;padding:0;margin:0;"
-            alt="contador de visitas"></a>
+         <a href="https://es.web-counter.net" target="_blank" title="contador de visitas">
+         <img src="https://www.web-counter.net/count_20091204.php?c=3K9Vv06jVuI" style="border:0;padding:0;margin:0;" alt="contador de visitas">
+         </a>
          <div class="header-image">
-            <a href="https://youtu.be/hjlTQvUVsiU" target="_blank"
-               title="Haz Clic Para Para Ver El Video De Mi Versión Del Firmware Del NerdMinerV2.">
-               Pincha Para Ver Video En Cualquier Imágen Ó Aquí Mismo
+            <a href="https://youtu.be/hjlTQvUVsiU" target="_blank" title="Haz Clic Para Para Ver El Video De Mi Versión Del Firmware Del NerdMinerV2.">
+               Pincha Para Ver Video En Cualquier Imágen Ó Aquí Mismo 
                <p>
-                  <img src="webflash/pantallas.jpg"
-                     alt="Pantallas Del --- M8AX - NerdMinerV2 - M8AX | ( PINCHA PARA VER VIDEO ) |">
+                  <img src="webflash/pantallas.jpg" alt="Pantallas Del --- M8AX - NerdMinerV2 - M8AX | ( PINCHA PARA VER VIDEO ) |">
             </a>
          </div>
-         <!-- Botón para descargar el manual -->
-         <a id="downloadManual" href="M8AX-NerdMinerV2-M8AX-Manual.pdf" download>
-         <button>Descargar Manual PDF De M8AX - NerdMinerV2 - M8AX</button></p>
+         <!-- Botón para abrir el manual en nueva pestaña -->
+         <a id="downloadManual" href="M8AX-NerdMinerV2-M8AX-Manual.pdf" target="_blank">
+         <button style="
+            padding: 8px 16px; 
+            font-size: 14px; 
+            border-radius: 6px; 
+            cursor: pointer; 
+            background-color:#00008B;
+            color: white;
+            border: none;
+            font-weight: bold;
+            ">
+         Abrir Manual PDF De M8AX - NerdMinerV2 - M8AX
+         </button>
          </a>
-         <button id="playButton">Reproducir Canción: M8AX - NerdMinerV2 - M8AX</button>
-         <script>
-            document.getElementById('playButton').addEventListener('click', function () {
-            	const audio = document.getElementById('backgroundAudio');
-            	audio.play();  // Reproducir el audio cuando el usuario haga clic
-            	audio.volume = 0.5;  // Ajustar volumen si es necesario
-            	this.style.display = 'none';  // Ocultar el botón después de hacer clic
-            });
-         </script>
-         <h1><a href="https://github.com/m8ax/MvIiIaX-NerdMiner_V2-DeV" target="_blank"
-            title="Haz Clic Para Visitar El Repositorio Del Firmware M8AX NerdMinerV2 En GitHub.">M8AX - Firmware
-            NerdMinerV2</a>
-         </h1>
-         <p class="note">Si No Funciona, Activa El Modo Programación: Pulsa El Botón 1 (Abajo), Conéctalo Por USB Y
-            Suéltalo Tras 2 Segundos.
-            <span style="color: red; font-weight: bold; font-size: 14px;">
-            NOTA: Asegúrate De Cerrar Cualquier Programa Que Esté Usando El Puerto COM De Tu Dispositivo ( Por
-            Ejemplo, El Monitor Serie ).<span style="color: green; display: inline;"><br><br>SSID Config:
-            M8AX-Minero | Clave: MinaTuPasta</span>
+         <!-- Enlace al repositorio -->
+         <div style="margin-top: 8px;">
+            <a href="https://github.com/m8ax/MvIiIaX-NerdMiner_V2-DeV" target="_blank" title="Haz Clic Para Visitar El Repositorio Del Firmware M8AX NerdMinerV2 En GitHub." style="font-size: 32px; font-weight: bold; text-decoration: none; color: #000;"> M8AX - Firmware NerdMinerV2 </a>
+         </div>
+         <p class="note">Si No Funciona, Activa El Modo Programación: Pulsa El Botón 1 (Abajo), Conéctalo Por USB Y Suéltalo Tras 2 Segundos. <span style="color: red; font-weight: bold; font-size: 14px;"> <br>NOTA: Asegúrate De Cerrar Cualquier Programa Que Esté Usando El Puerto COM De Tu Dispositivo ( Por Ejemplo, El Monitor Serie ). <span style="color: green; display: inline;">
+            <br>
+            <br>SSID Config: M8AX-Minero | Clave: MinaTuPasta </span>
             </span>
          </p>
          <br>
          <div class="button-container">
             <div>
-               <img src="webflash/nmv2.png" alt="NerdMiner V2" title="NerdMiner V2"
-                  style="width: 100px; height: 50px; display: block; margin: 0 auto;">
+               <img src="webflash/nmv2.png" alt="NerdMiner V2" title="NerdMiner V2" style="width: 100px; height: 50px; display: block; margin: 0 auto;">
                <br>
                <esp-web-install-button manifest="webflash/manifest1.json"></esp-web-install-button>
-               <strong><span style="font-size: 12px; color: #0000ff;">ESP32-NerdMinerV2</span></strong>
+               <strong>
+               <span style="font-size: 12px; color: #0000ff;">ESP32-NerdMinerV2</span>
+               </strong>
             </div>
             <div>
-               <img src="webflash/pgrande.png" alt="NerdMiner V2 - ESP32-2432S028R"
-                  title="NerdMiner V2 - ESP32-2432S028R"
-                  style="width: 100px; height: 50px; display: block; margin: 0 auto;">
+               <img src="webflash/pgrande.png" alt="NerdMiner V2 - ESP32-2432S028R" title="NerdMiner V2 - ESP32-2432S028R" style="width: 100px; height: 50px; display: block; margin: 0 auto;">
                <br>
                <esp-web-install-button manifest="webflash/manifest2.json"></esp-web-install-button>
-               <strong><span style="font-size: 12px; color: #0000ff;">ESP32-2432S028R</span></strong>
+               <strong>
+               <span style="font-size: 12px; color: #0000ff;">ESP32-2432S028R</span>
+               </strong>
             </div>
             <div>
-               <img src="webflash/pgrande.png" alt="NerdMiner V2 - ESP32-2432S028R - Pantalla Invertida"
-                  title="NerdMiner V2 - ESP32-2432S028R - Pantalla Invertida"
-                  style="width: 100px; height: 50px; display: block; margin: 0 auto;">
+               <img src="webflash/pgrande.png" alt="NerdMiner V2 - ESP32-2432S028R - Pantalla Invertida" title="NerdMiner V2 - ESP32-2432S028R - Pantalla Invertida" style="width: 100px; height: 50px; display: block; margin: 0 auto;">
                <br>
                <esp-web-install-button manifest="webflash/manifest5.json"></esp-web-install-button>
-               <strong><span style="font-size: 12px; color: #0000ff;">ESP32-2432S028R - Pantalla
-               Invertida</span></strong>
+               <strong>
+               <span style="font-size: 12px; color: #0000ff;">ESP32-2432S028R - Pantalla Invertida</span>
+               </strong>
             </div>
             <div>
-               <img src="webflash/trumpfirm.png" alt="NerdMiner V2 - TRUMP VERSION - ESP32-2432S028R"
-                  title="NerdMiner V2 - TRUMP VERSION - ESP32-2432S028R"
-                  style="width: 100px; height: 50px; display: block; margin: 0 auto;">
+               <img src="webflash/trumpfirm.png" alt="NerdMiner V2 - TRUMP VERSION - ESP32-2432S028R" title="NerdMiner V2 - TRUMP VERSION - ESP32-2432S028R" style="width: 100px; height: 50px; display: block; margin: 0 auto;">
                <br>
                <esp-web-install-button manifest="webflash/manifest4.json"></esp-web-install-button>
-               <strong><span style="font-size: 12px; color: #0000ff;">ESP32-2432S028R - TRUMP VERSION</span></strong>
+               <strong>
+               <span style="font-size: 12px; color: #0000ff;">ESP32-2432S028R - TRUMP VERSION</span>
+               </strong>
             </div>
             <div>
-               <img src="webflash/placa.jpg" alt="Placas ESP32 WROOM" title="Placas ESP32 WROOM"
-                  style="width: 100px; height: 50px; display: block; margin: 0 auto;">
+               <img src="webflash/placa.jpg" alt="Placas ESP32 WROOM" title="Placas ESP32 WROOM" style="width: 100px; height: 50px; display: block; margin: 0 auto;">
                <br>
                <esp-web-install-button manifest="webflash/manifest3.json"></esp-web-install-button>
-               <strong><span style="font-size: 12px; color: #0000ff;">ESP32 WROOM</span></strong>
+               <strong>
+               <span style="font-size: 12px; color: #0000ff;">ESP32 WROOM</span>
+               </strong>
             </div>
          </div>
          <div id="notSupported" style="display: none;">
             <p>Tu Navegador No Es Compatible Con La API Web Serial. Prueba Con Chrome.</p>
          </div>
          <div class="footer-image">
+            <a href="https://web.public-pool.io/" target="_blank" title="Visitar Public Pool">
             <img src="webflash/M8AXNMV2.png" alt="M8AX - NerdMinerV2 - M8AX">
+            </a>
          </div>
       </div>
       <!-- Script para el fondo de partículas -->
@@ -333,135 +349,208 @@
       <script>
          // Función para generar un color hexadecimal aleatorio
          function getRandomColor() {
-         	return '#' + Math.floor(Math.random() * 16777215).toString(16);
+           return '#' + Math.floor(Math.random() * 16777215).toString(16);
          }
-         
          // Configuración del fondo de partículas
          particlesJS("particles-js", {
-         	particles: {
-         		number: {
-         			value: 80,
-         			density: {
-         				enable: true,
-         				value_area: 800
-         			}
-         		},
-         		color: {
-         			value: "#ffffff"
-         		},
-         		shape: {
-         			type: "circle",
-         			stroke: {
-         				width: 0,
-         				color: "#000000"
-         			},
-         			polygon: {
-         				nb_sides: 5
-         			}
-         		},
-         		opacity: {
-         			value: 0.5,
-         			random: true,
-         			anim: {
-         				enable: true,
-         				speed: 1,
-         				opacity_min: 0.1,
-         				sync: false
-         			}
-         		},
-         		size: {
-         			value: 3,
-         			random: true,
-         			anim: {
-         				enable: true,
-         				speed: 2,
-         				size_min: 0.1,
-         				sync: false
-         			}
-         		},
-         		line_linked: {
-         			enable: true,
-         			distance: 150,
-         			color: getRandomColor(), // Asignar color aleatorio
-         			opacity: 0.4,
-         			width: 1
-         		},
-         		move: {
-         			enable: true,
-         			speed: 3,
-         			direction: "none",
-         			random: true,
-         			straight: false,
-         			out_mode: "bounce",
-         			bounce: true,
-         			attract: {
-         				enable: false,
-         				rotateX: 600,
-         				rotateY: 1200
-         			}
-         		}
-         	},
-         	interactivity: {
-         		detect_on: "canvas",
-         		events: {
-         			onhover: {
-         				enable: true,
-         				mode: "bubble"
-         			},
-         			onclick: {
-         				enable: true,
-         				mode: "push"
-         			},
-         			resize: true
-         		},
-         		modes: {
-         			bubble: {
-         				distance: 200,
-         				size: 6,
-         				duration: 2,
-         				opacity: 0.8,
-         				speed: 3
-         			},
-         			push: {
-         				particles_nb: 4
-         			}
-         		}
-         	},
-         	retina_detect: true
+           particles: {
+             number: {
+               value: 80,
+               density: {
+                 enable: true,
+                 value_area: 800
+               }
+             },
+             color: {
+               value: "#ffffff"
+             },
+             shape: {
+               type: "circle",
+               stroke: {
+                 width: 0,
+                 color: "#000000"
+               },
+               polygon: {
+                 nb_sides: 5
+               }
+             },
+             opacity: {
+               value: 0.5,
+               random: true,
+               anim: {
+                 enable: true,
+                 speed: 1,
+                 opacity_min: 0.1,
+                 sync: false
+               }
+             },
+             size: {
+               value: 3,
+               random: true,
+               anim: {
+                 enable: true,
+                 speed: 2,
+                 size_min: 0.1,
+                 sync: false
+               }
+             },
+             line_linked: {
+               enable: true,
+               distance: 150,
+               color: getRandomColor(), // Asignar color aleatorio
+               opacity: 0.4,
+               width: 1
+             },
+             move: {
+               enable: true,
+               speed: 3,
+               direction: "none",
+               random: true,
+               straight: false,
+               out_mode: "bounce",
+               bounce: true,
+               attract: {
+                 enable: false,
+                 rotateX: 600,
+                 rotateY: 1200
+               }
+             }
+           },
+           interactivity: {
+             detect_on: "canvas",
+             events: {
+               onhover: {
+                 enable: true,
+                 mode: "bubble"
+               },
+               onclick: {
+                 enable: true,
+                 mode: "push"
+               },
+               resize: true
+             },
+             modes: {
+               bubble: {
+                 distance: 200,
+                 size: 6,
+                 duration: 2,
+                 opacity: 0.8,
+                 speed: 3
+               },
+               push: {
+                 particles_nb: 4
+               }
+             }
+           },
+           retina_detect: true
          });
-         
          // Verificar compatibilidad con la API Web Serial
          if (navigator.serial) {
-         	document.getElementById("notSupported").style.display = 'none';
-         	document.getElementById("main").style.display = 'block';
+           document.getElementById("notSupported").style.display = 'none';
+           document.getElementById("main").style.display = 'block';
          } else {
-         	document.getElementById("notSupported").style.display = 'block';
-         	document.getElementById("main").style.display = 'none';
+           document.getElementById("notSupported").style.display = 'block';
+           document.getElementById("main").style.display = 'none';
          }
       </script>
       <!-- Audio de fondo que se repite constantemente -->
-      <audio id="backgroundAudio" autoplay loop>
-         Tu navegador no soporta la etiqueta de audio.
-      </audio>
-      <!-- Control de volumen y selección aleatoria -->
+      <audio id="backgroundAudio" loop>Tu navegador no soporta la etiqueta de audio.</audio>
+      <!-- Botón rojo -->
+      <button id="playButtonn">- 🔊 Sonido Aleatorio De Fondo -</button>
+      <!-- Audio fijo para el botón rojo -->
+      <audio id="audioRed" loop></audio>
       <script>
-         // Array con tus archivos de audio
+         const audioRed = document.getElementById('audioRed');
+         const audioRandom = document.getElementById('backgroundAudio');
+         const redButton = document.getElementById('playButtonn');
+         
+         // Lista de audios aleatorios para el botón rojo (fondos)
+         const fondos = ['webflash/m8ax-fondo1.opus', 'webflash/m8ax-fondo2.opus'];
+         
+         // Lista de audios aleatorios para el botón azul
          const audios = [
-         	'webflash/m8ax1.opus',
-         	'webflash/m8ax2.opus',
-         	'webflash/m8ax3.opus',
-         	'webflash/m8ax4.opus'
+           'webflash/m8ax1.opus',
+           'webflash/m8ax2.opus',
+           'webflash/m8ax3.opus',
+           'webflash/m8ax4.opus'
          ];
-         // Elegir uno aleatoriamente
-         const randomIndex = Math.floor(Math.random() * audios.length);
-         const audioElement = document.getElementById('backgroundAudio');
-         audioElement.src = audios[randomIndex];
-         // Ajustar volumen
-         audioElement.volume = 0.5;
-         // Reproducir (en algunos navegadores requiere user interaction para autoplay)
-         audioElement.play().catch(() => {
-         	console.log("Autoplay bloqueado, requiere interacción del usuario.");
+         
+         // Función para detener cualquier audio
+         function stopAllAudio() {
+           audioRed.pause();
+           audioRed.currentTime = 0;
+           audioRandom.pause();
+           audioRandom.currentTime = 0;
+         }
+         
+         // Botón rojo → elige aleatoriamente entre los dos fondos
+         redButton.addEventListener('click', () => {
+           stopAllAudio();
+           const randomFondo = fondos[Math.floor(Math.random() * fondos.length)];
+           audioRed.src = randomFondo;
+           audioRed.volume = 0.5;
+           audioRed.play();
          });
+         
+         // Función para reproducir música aleatoria (botón azul)
+         function playRandomAudio() {
+           stopAllAudio();
+           const randomIndex = Math.floor(Math.random() * audios.length);
+           audioRandom.src = audios[randomIndex];
+           audioRandom.volume = 0.5;
+           audioRandom.play().catch(() => {
+             console.log("Autoplay bloqueado, requiere interacción del usuario.");
+           });
+         }
+         
+         // Crear el botón azul dinámicamente
+         const randomButton = document.createElement('button');
+         randomButton.innerText = "- 🎵 Música Aleatoria NerdMiners -";
+         randomButton.id = "playButtonRandom";
+         randomButton.addEventListener('click', playRandomAudio);
+         document.body.appendChild(randomButton);
+      </script>
+      <style>
+         /* Contenedor de botones centrado */
+         #audioButtonsContainer {
+         position: fixed;
+         bottom: 17px;
+         left: 50%;
+         transform: translateX(-50%);
+         display: flex;
+         gap: 12px;
+         z-index: 9999;
+         }
+         #playButtonn,
+         #playButtonRandom {
+         padding: 6px 12px;
+         font-size: 12px;
+         border-radius: 6px;
+         border: none;
+         cursor: pointer;
+         }
+         #playButtonn {
+         background-color: #ff4500;
+         color: white;
+         }
+         #playButtonn:hover {
+         background-color: #ff6347;
+         }
+         #playButtonRandom {
+         background-color: #1e90ff;
+         color: white;
+         }
+         #playButtonRandom:hover {
+         background-color: #3aa0ff;
+         }
+      </style>
+      <script>
+         // Mover los botones al contenedor centrado
+         const container = document.createElement('div');
+         container.id = "audioButtonsContainer";
+         container.appendChild(redButton);
+         container.appendChild(document.getElementById('playButtonRandom'));
+         document.body.appendChild(container);
       </script>
       <div style="position: absolute; right: 0; bottom: 0;">
          <a href="https://youtube.com/m8ax" target="_blank" title="Pulsa Para Ver Mi Canal De Youtube.">
@@ -470,21 +559,21 @@
       </div>
       <script>
          async function getCryptoPrices() {
-         	const url = "https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids=bitcoin,ethereum,ripple,litecoin,cardano,doge,polkadot,uniswap,binancecoin,solana,chainlink,vechain,shiba,inuyasha,terra,monero,ethereum-classic,stellar,usd-coin,wrapped-bitcoin&order=market_cap_desc&per_page=20&page=1&sparkline=false";
-         	try {
-         		const response = await fetch(url);
-         		const data = await response.json();
-         		let tickerHtml = "Precios De Criptomonedas: ";
-         		data.forEach(crypto => {
-         			tickerHtml += `${crypto.name}: $${crypto.current_price} | `;
-         		});
-         		// Remove the last " | "
-         		tickerHtml = tickerHtml.slice(0, -3);
-         		document.getElementById('crypto-ticker').innerHTML = tickerHtml;
-         	} catch (error) {
-         		document.getElementById('crypto-ticker').innerHTML = "Error al cargar los precios.";
-         		console.error("Error fetching data: ", error);
-         	}
+           const url = "https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids=bitcoin,ethereum,ripple,litecoin,cardano,doge,polkadot,uniswap,binancecoin,solana,chainlink,vechain,shiba,inuyasha,terra,monero,ethereum-classic,stellar,usd-coin,wrapped-bitcoin&order=market_cap_desc&per_page=20&page=1&sparkline=false";
+           try {
+             const response = await fetch(url);
+             const data = await response.json();
+             let tickerHtml = "Precios De Criptomonedas: ";
+             data.forEach(crypto => {
+               tickerHtml += `${crypto.name}: $${crypto.current_price} | `;
+             });
+             // Remove the last " | "
+             tickerHtml = tickerHtml.slice(0, -3);
+             document.getElementById('crypto-ticker').innerHTML = tickerHtml;
+           } catch (error) {
+             document.getElementById('crypto-ticker').innerHTML = "Error al cargar los precios.";
+             console.error("Error fetching data: ", error);
+           }
          }
          // Llamar a la función para cargar los precios
          getCryptoPrices();
@@ -499,16 +588,16 @@
          top: 50%;
          left: 50%;
          transform: translate(-50%, -50%);
-         background: rgba(0,0,0,0.95);
+         background: rgba(0, 0, 0, 0.95);
          color: #00ffcc;
-         padding: 25px 35px;
+         padding: 20px 35px;
          border-radius: 20px;
          text-align: center;
          font-family: 'Arial', sans-serif;
          z-index: 9999;
          box-shadow: 0 0 25px #00ffcc;
-         max-width: 500px;
-         animation: popIn 0.3s ease-out;
+         max-width: 650px;
+         animation: popIn 1.3s ease-out;
          }
          #updatePopup h2 {
          font-size: 18px;
@@ -520,7 +609,7 @@
          text-align: left;
          }
          #updatePopup button {
-         margin-top: 15px;
+         margin-top: 5px;
          padding: 8px 16px;
          background: #00ffcc;
          border: none;
@@ -528,14 +617,20 @@
          color: #000;
          font-weight: bold;
          cursor: pointer;
-         transition: background 0.2s;
+         transition: background 0.3s;
          }
          #updatePopup button:hover {
          background: #00bfa6;
          }
          @keyframes popIn {
-         from { transform: translate(-50%, -60%) scale(0.8); opacity: 0; }
-         to { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+         from {
+         transform: translate(-50%, -60%) scale(0.8);
+         opacity: 0;
+         }
+         to {
+         transform: translate(-50%, -50%) scale(1);
+         opacity: 1;
+         }
          }
       </style>
       <div id="updatePopup">
@@ -549,8 +644,9 @@
          <p>• Mayor Estabilidad General</p>
          <hr style="border: none; border-top: 1px solid #00ffcc; margin: 10px 0;">
          <h3>🔗 Otros Recursos:</h3>
-         <p>• <a href="webflash/M8AX-CriptoPrecios/M8AX-CriptoPrecios.html" target="_blank">M8AX - Ticker De CriptoPrecios</a> - Ticker De Precios Cripto Desplazándose Por La Pantalla</p>
-         <p>• <a href="webflash/M8AX-CriptoPrecios/M8AX-SalvaPantallas.zip" target="_blank">Salvapantallas De M8AX - CriptoPrecios</a> — Descarga Este Zip, Descomprímelo En <code>Windows\System32</code>, Luego Abre El Panel De Control De Salvapantallas ( Win+R → Escribe <code>control desk.cpl,,@screensaver</code> ) Y Selecciona <strong>M8AXSALVAPANTALLAS</strong>. Para Cerrar El Salvapantallas, Presiona <strong>Alt+F4</strong>.</p>
+         <p>• <a href="webflash/M8AX-CriptoPrecios/M8AX-CriptoPrecios.html" target="_blank">M8AX - Ticker De CriptoPrecios</a> - Ticker De Precios Cripto Desplazándose Por La Pantalla </p>
+         <p>• <a href="webflash/M8AX-CriptoPrecios/M8AX-SalvaPantallas.zip" target="_blank">Salvapantallas De M8AX - CriptoPrecios</a> — Descarga Este Zip, Descomprímelo En <code>Windows\System32</code>, Luego Abre El Panel De Control De Salvapantallas ( Win+R → Escribe <code>control desk.cpl,,@screensaver</code> ) Y Selecciona <strong>M8AXSALVAPANTALLAS</strong>. Para Cerrar El Salvapantallas, Presiona <strong>Alt+F4</strong>. </p>
+         <button class="closeUpdatePopup">Cerrar Ventana</button>
          <hr style="border: none; border-top: 1px solid #00ffcc; margin: 10px 0;">
          <h2>🚀 Miners Update 🚀</h2>
          <p>📅 Build: 11/08/2025 Saturday</p>
@@ -562,30 +658,29 @@
          <p>• Enhanced Overall Stability</p>
          <hr style="border: none; border-top: 1px solid #00ffcc; margin: 10px 0;">
          <h3>🔗 Other Resources:</h3>
-         <p>• <a href="webflash/M8AX-CriptoPrecios/M8AX-CriptoPrecios.html" target="_blank">M8AX - CryptoPrices Ticker</a> - Crypto Prices Ticker Scrolling Across The Screen</p>
-         <p>• <a href="webflash/M8AX-CriptoPrecios/M8AX-SalvaPantallas.zip" target="_blank">M8AX ScreenSaver - CryptoPrices</a> — Download This Zip, Extract It To <code>Windows\System32</code>, Then Open The Screensaver Control Panel ( Win+R → Type <code>control desk.cpl,,@screensaver</code> ) And Select <strong>M8AXSALVAPANTALLAS</strong>. To Close The Screensaver, Press <strong>Alt+F4</strong>.</p>
-         <hr style="border: none; border-top: 1px solid #00ffcc; margin: 10px 0;">
-         <p>¡ Ayúdame A Seguir Con Una Donación xD !</p>
-         <p>&iexcl; Help Me Keep Going With A Donation xD !</p>
+         <p>• <a href="webflash/M8AX-CriptoPrecios/M8AX-CriptoPrecios.html" target="_blank">M8AX - CryptoPrices Ticker</a> - Crypto Prices Ticker Scrolling Across The Screen </p>
+         <p>• <a href="webflash/M8AX-CriptoPrecios/M8AX-SalvaPantallas.zip" target="_blank">M8AX ScreenSaver - CryptoPrices</a> — Download This Zip, Extract It To <code>Windows\System32</code>, Then Open The Screensaver Control Panel ( Win+R → Type <code>control desk.cpl,,@screensaver</code> ) And Select <strong>M8AXSALVAPANTALLAS</strong>. To Close The Screensaver, Press <strong>Alt+F4</strong>. </p>
          <br>
-         <p>By M8AX | ¡Gracias! / Thank You!</p>
-         <button id="closeUpdatePopup">Cerrar Ventana</button>
+         <p style="text-align: center;">¡ Ayúdame A Seguir Con Una Donación xD !</p>
+         <p style="text-align: center;">&iexcl; Help Me Keep Going With A Donation xD !</p>
+         <p style="text-align: center; font-size: 12px;">
+            <font color="#ffff00"><br>By M8AX ( 2025 ) | ¡Gracias! / Thank You!</font>
+         </p>
       </div>
       <script>
          // Variable para que no vuelva a aparecer en la misma sesión
          let updatePopupClosed = false;
-         
          // Mostrar popup automáticamente al cargar la página
          window.addEventListener("load", function() {
            if (!updatePopupClosed) {
              document.getElementById("updatePopup").style.display = "block";
            }
          });
-         
-         // Botón para cerrar
-         document.getElementById("closeUpdatePopup").addEventListener("click", function() {
-           document.getElementById("updatePopup").style.display = "none";
-           updatePopupClosed = true; // No volverá a aparecer hasta recargar
+         document.querySelectorAll(".closeUpdatePopup").forEach(btn => {
+           btn.addEventListener("click", function() {
+             document.getElementById("updatePopup").style.display = "none";
+             updatePopupClosed = true; // No volverá a aparecer hasta recargar
+           });
          });
       </script>
       <!-- Ventanita de salida personalizada -->
@@ -604,8 +699,8 @@
          font-family: 'Arial', sans-serif;
          z-index: 9999;
          box-shadow: 0 0 25px #00ffcc;
-         max-width: 400px;
-         animation: popIn 0.3s ease-out;
+         max-width: 450px;
+         animation: popIn 1.3s ease-out;
          }
          #exitPopup h2 {
          font-size: 18px;
@@ -639,39 +734,43 @@
          background: #00bfa6;
          }
          @keyframes popIn {
-         from { transform: translate(-50%, -60%) scale(0.8); opacity: 0; }
-         to { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+         from {
+         transform: translate(-50%, -60%) scale(0.8);
+         opacity: 0;
+         }
+         to {
+         transform: translate(-50%, -50%) scale(1);
+         opacity: 1;
+         }
          }
       </style>
       <div id="exitPopup">
          <h2>⚡ Gracias Por Visitar M8AX - NerdMinerV2 ⚡</h2>
-         <p>💬 Si Quieres Un Firmware Con Tu Logo,<br>No Dudes En Contactarme:</p>
-         <p>📧 <a href="mailto:mviiiax.m8ax@gmail.com"><strong>mviiiax.m8ax@gmail.com</strong></a></p>
+         <p>💬 Si Quieres Un Firmware Con Tu Logo, <br>No Dudes En Contactarme: </p>
+         <p>📧 <a href="mailto:mviiiax.m8ax@gmail.com">
+            <strong>mviiiax.m8ax@gmail.com</strong>
+            </a>
+         </p>
          <hr style="border: none; border-top: 1px solid #00ffcc; margin: 10px 0;">
          <h2>⚡ Thanks For Visiting M8AX - NerdMinerV2 ⚡</h2>
-         <p>💬 If You Want A Custom Firmware With Your Own Logo,<br>Feel Free To Contact Me:</p>
-         <p>📧 <a href="mailto:mviiiax.m8ax@gmail.com"><strong>mviiiax.m8ax@gmail.com</strong></a></p>
-         <p style="margin-top: 10px;">
-            👉 <a href="http://youtube.com/m8ax" target="_blank">Suscríbete A Mi Canal De YouTube</a> 👈
+         <p>💬 If You Want A Custom Firmware With Your Own Logo, <br>Feel Free To Contact Me: </p>
+         <p>📧 <a href="mailto:mviiiax.m8ax@gmail.com">
+            <strong>mviiiax.m8ax@gmail.com</strong>
+            </a>
          </p>
-         <p style="margin-top: 5px;">
-            👉 <a href="http://youtube.com/m8ax" target="_blank">Subscribe To My YouTube Channel</a> 👈
-         </p>
+         <p style="margin-top: 10px;"> 👉 <a href="http://youtube.com/m8ax" target="_blank">Suscríbete A Mi Canal De YouTube</a> 👈 </p>
+         <p style="margin-top: 5px;"> 👉 <a href="http://youtube.com/m8ax" target="_blank">Subscribe To My YouTube Channel</a> 👈 </p>
          <br>
          <hr>
          <br>
-         <p style="margin-top: 5px;">
-            👉 <a href="webflash/M8AX-CriptoPrecios/M8AX-CriptoPrecios.html" target="_blank">Ticker Cripto Desplazándose Por La Pantalla</a> 👈
-         </p>
-         <p style="margin-top: 5px;">
-            👉 <a href="webflash/M8AX-CriptoPrecios/M8AX-CriptoPrecios.html" target="_blank">Crypto Ticker Scrolling Across The Screen</a> 👈
-         </p>
+         <p style="margin-top: 5px;"> 👉 <a href="webflash/M8AX-CriptoPrecios/M8AX-CriptoPrecios.html" target="_blank">Ticker Cripto Desplazándose Por La Pantalla</a> 👈 </p>
+         <p style="margin-top: 5px;"> 👉 <a href="webflash/M8AX-CriptoPrecios/M8AX-CriptoPrecios.html" target="_blank">Crypto Ticker Scrolling Across The Screen</a> 👈 </p>
          <button id="closePopup">Cerrar Ventana</button>
       </div>
       <script>
          let popupShown = false;
          let lastTriggerTime = 0;
-         document.addEventListener("mouseout", function (e) {
+         document.addEventListener("mouseout", function(e) {
            // Detectar si el ratón se va hacia la barra de título (parte superior)
            if (!popupShown && e.clientY <= 0) {
              const now = Date.now();
@@ -685,7 +784,7 @@
            }
          });
          // Botón para cerrar el popup
-         document.getElementById("closePopup").addEventListener("click", function () {
+         document.getElementById("closePopup").addEventListener("click", function() {
            document.getElementById("exitPopup").style.display = "none";
          });
       </script>
