@@ -1,248 +1,311 @@
 <!DOCTYPE html>
 <html>
-   <head>
-      <meta charset="utf-8" />
-      <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
-      <title>M8AX - CryptoPrecios LED Ticker - M8AX</title>
-      <style>
-         html,
-         body {
-         margin: 0;
-         padding: 0;
-         height: 100dvh;
-         width: 100dvw;
-         background: #000;
-         overflow: hidden;
-         }
-         /* --- Reloj fijo arriba centrado --- */
-         #clock {
-         position: fixed;
-         top: 1%;
-         left: 50%;
-         transform: translateX(-50%);
-         font-family: "Segoe UI", Roboto, Arial, sans-serif;
-         font-weight: 700;
-         font-size: clamp(135px, 8vw, 135px); /* Escala con la pantalla */
-         color: #0ff;
-         white-space: nowrap;
-         text-transform: uppercase;
-         text-align: center;
-         z-index: 9999; /* asegura que el div esté encima de todo */
-         }
-         /* --- Ticker principal --- */
-         #marquee {
-         position: absolute;
-         top: 207%; /* Mantiene el valor original para móviles */
-         left: 50%;
-         transform: translate(-50%, -50%);
-         white-space: nowrap;
-         font-family: "Segoe UI", Roboto, Arial, sans-serif;
-         font-weight: 900;
-         color: #0ff;
-         text-align: center;
-         font-size: clamp(80px, 20vw, 180px);
-         }
-         /* --- Ajuste solo para pantallas grandes (PC) --- */
-         @media (min-width: 1025px) {
-         #marquee {
-         top: 46%; /* Visible en PC */
-         font-size: clamp(80px, 15vw, 180px);
-         }
-         }
-         /* --- Footer (BY M8AX abajo centrado) --- */
-         #footer {
-         position: fixed;
-         bottom: 1%;
-         left: 50%;
-         transform: translateX(-50%);
-         width: 100%;
-         text-align: center;
-         color: #0ff;
-         font-family: "Segoe UI", Roboto, Arial, sans-serif;
-         font-weight: 700;
-         font-size: clamp(135px, 8vw, 135px);
-         }
-      </style>
-   </head>
-   <body>
-      <div id="clock"></div>
-      <div id="marquee"><span id="marquee-text">... M8AX CORP ...</span></div>
-      <div id="footer">
-         --- 
-         <a href="https://youtube.com/m8ax" target="_blank" 
-            style="color: inherit; text-decoration: none;" 
-            title="--- Pincha Para Visitar Mi Canal De YouTube Y Suscribirte xD ---">
-         BY M8AX
-         </a> 
-         ---
-      </div>
-      <script>
-         const SYMBOLS = [
-             "BTCUSDT",
-             "ETHUSDT",
-             "BNBUSDT",
-             "XRPUSDT",
-             "SOLUSDT",
-             "ADAUSDT",
-             "DOGEUSDT",
-             "DOTUSDT",
-             "MATICUSDT",
-             "LTCUSDT",
-             "UNIUSDT",
-             "LINKUSDT",
-             "AVAXUSDT",
-             "TRXUSDT",
-             "SHIBUSDT",
-             "NEARUSDT",
-             "ATOMUSDT",
-             "XLMUSDT",
-             "ETCUSDT",
-             "FILUSDT",
-             "WBTCUSDT",
-             "ICPUSDT",
-             "AAVEUSDT",
-             "EOSUSDT",
-             "ALGOUSDT",
-             "APTUSDT",
-             "SANDUSDT",
-             "OPUSDT",
-             "ARBUSDT",
-             "RNDRUSDT",
-             "ASTERUSDT",
-             "LDOUSDT",
-         ];
-         
-         const UPDATE_MS = 10000; // 10 Segundos
-         const marquee = document.getElementById("marquee");
-         const marqueeText = document.getElementById("marquee-text");
-         
-         let SCROLL_SPEED;
-         let lastTime = null;
-         let posX = window.innerWidth;
-         
-         function getFontSize() {
-             const ua = navigator.userAgent || navigator.vendor || window.opera;
-             return /android/i.test(ua) ? 1780 : 725;
-         }
-         
-         marquee.style.fontSize = getFontSize() + "px";
-         
-         function askSpeed() {
-             let valid = false;
-             let speed;
-             while (!valid) {
-                 speed = prompt("Introduce Velocidad Del Ticker ( Px/s ) – Velocidad Óptima: 1500", "1500");
-                 if (speed === null) {
-                     valid = true;
-                     speed = 1500;
-                 } else {
-                     speed = speed.trim();
-                     if (/^\d+$/.test(speed) && parseInt(speed) > 0) {
-                         valid = true;
-                         speed = parseInt(speed);
-                     }
-                 }
-             }
-             return speed;
-         }
-         
-         SCROLL_SPEED = askSpeed();
-         
-         function randomColor() {
-             const colors = ["#0ff", "#f0f", "#ff0", "#0f0", "#f00", "#00f", "#fa0", "#0fa", "#f88", "#8ff", "#ff8", "#8f8"];
-             return colors[Math.floor(Math.random() * colors.length)];
-         }
-         
-         async function fetchPrices() {
-             const url = `https://api.binance.com/api/v3/ticker/24hr?symbols=${encodeURIComponent(JSON.stringify(SYMBOLS))}`;
-             const resp = await fetch(url);
-             if (!resp.ok) throw new Error("HTTP " + resp.status);
-             return await resp.json();
-         }
-         
-         function formatNumber(n) {
-             const v = parseFloat(n);
-             if (isNaN(v)) return "–";
-             if (v >= 1000) return v.toLocaleString(undefined, { maximumFractionDigits: 0 });
-             if (v >= 1) return v.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-             return v.toPrecision(4);
-         }
-         
-         function buildText(dataArr) {
-             const parts = SYMBOLS.map((symbol) => {
-                 const item = dataArr.find((o) => o.symbol === symbol);
-                 if (!item) return symbol + ": –";
-                 const price = formatNumber(item.lastPrice);
-                 const changePct = parseFloat(item.priceChangePercent);
-                 const sign = changePct >= 0 ? "▲" : "▼";
-                 const pct = Math.abs(changePct).toFixed(2) + "%";
-                 return `${symbol} ${price} ${sign}${pct}`;
-             });
-             return parts.join("   •   ");
-         }
-         
-         async function updateTicker() {
-             try {
-                 const data = await fetchPrices();
-                 const txt = buildText(data);
-                 marqueeText.textContent = txt;
-                 marqueeText.style.color = randomColor();
-             } catch (err) {
-                 console.warn("Error Al Actualizar Precios...", err);
-                 marqueeText.textContent = marqueeText.textContent + " ( Sin Conexión )";
-             }
-         }
-         
-         function scrollLoop(time) {
-             if (!lastTime) lastTime = time;
-             const delta = (time - lastTime) / 1000;
-             lastTime = time;
-             posX -= SCROLL_SPEED * delta;
-             const textWidth = marquee.offsetWidth;
-             if (posX < -textWidth) posX += window.innerWidth + textWidth;
-             marquee.style.transform = `translate(${posX}px, -50%)`;
-             requestAnimationFrame(scrollLoop);
-         }
-         
-         function updateClock() {
-             const now = new Date();
-             const dias = ["DOM", "LUN", "MAR", "MIE", "JUE", "VIE", "SAB"];
-             const meses = ["ENE", "FEB", "MAR", "ABR", "MAY", "JUN", "JUL", "AGO", "SEP", "OCT", "NOV", "DIC"];
-             const diaSemana = dias[now.getDay()];
-             const diaMes = now.getDate();
-             const mes = meses[now.getMonth()];
-             const anio = now.getFullYear();
-             let horas = now.getHours();
-             let minutos = now.getMinutes();
-             let segundos = now.getSeconds();
-             horas = horas < 10 ? "0" + horas : horas;
-             minutos = minutos < 10 ? "0" + minutos : minutos;
-             segundos = segundos < 10 ? "0" + segundos : segundos;
-             document.getElementById("clock").textContent = `${diaSemana} ${diaMes} ${mes} ${anio}  ${horas}:${minutos}:${segundos}`;
-         }
-         
-         function changeClockColor() {
-             const color = randomColor();
-             document.getElementById("clock").style.color = color;
-             document.getElementById("footer").style.color = color;
-         }
-         
-         updateTicker();
-         setInterval(updateTicker, UPDATE_MS);
-         
-         updateClock();
-         
-         setInterval(updateClock, 1000);
-         setInterval(changeClockColor, 30000);
-         
-         requestAnimationFrame(scrollLoop);
-         const clockEl = document.getElementById("clock");
-         clockEl.style.cursor = "pointer"; // Cambia el cursor para indicar que es clickeable
-         clockEl.title = "--- Pincha Para Ver El Gráfico De BTC En TradingView ---";
-         clockEl.addEventListener("click", () => {
-         window.open("https://www.tradingview.com/chart/?symbol=BINANCE:BTCUSDT", "_blank");
-         });
-          
-      </script>
-   </body>
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+		<title>M8AX - CryptoPrecios LED Ticker - M8AX</title>
+		<style>
+			html,
+			body {
+			margin: 0;
+			padding: 0;
+			height: 100dvh;
+			width: 100dvw;
+			background: #000;
+			overflow: hidden;
+			}
+			/* --- Reloj fijo arriba centrado --- */
+			#clock {
+			position: fixed;
+			top: 1%;
+			left: 50%;
+			transform: translateX(-50%);
+			font-family: "Segoe UI", Roboto, Arial, sans-serif;
+			font-weight: 700;
+			font-size: clamp(135px, 8vw, 135px); /* Escala con la pantalla */
+			color: #0ff;
+			white-space: nowrap;
+			text-transform: uppercase;
+			text-align: center;
+			z-index: 9999; /* asegura que el div esté encima de todo */
+			}
+			/* --- Ticker principal --- */
+			#marquee {
+			position: absolute;
+			top: 207%; /* Mantiene el valor original para móviles */
+			left: 50%;
+			transform: translate(-50%, -50%);
+			white-space: nowrap;
+			font-family: "Segoe UI", Roboto, Arial, sans-serif;
+			font-weight: 900;
+			color: #0ff;
+			text-align: center;
+			font-size: clamp(80px, 20vw, 180px);
+			}
+			/* --- Ajuste solo para pantallas grandes (PC) --- */
+			@media (min-width: 1025px) {
+			#marquee {
+			top: 46%; /* Visible en PC */
+			font-size: clamp(80px, 15vw, 180px);
+			}
+			}
+			/* --- Footer (BY M8AX abajo centrado) --- */
+			#footer {
+			position: fixed;
+			bottom: 1%;
+			left: 50%;
+			transform: translateX(-50%);
+			width: 100%;
+			text-align: center;
+			color: #0ff;
+			font-family: "Segoe UI", Roboto, Arial, sans-serif;
+			font-weight: 700;
+			font-size: clamp(135px, 8vw, 135px);
+			}
+		</style>
+	</head>
+	<body>
+		<!-- Div para las partículas -->
+		<div id="particles-js" style="position: fixed; top:0; left:0; width:100%; height:100%; z-index:0;"></div>
+		<!-- Librería particles.js -->
+		<script src="https://cdn.jsdelivr.net/particles.js/2.0.0/particles.min.js"></script>
+		<div id="clock"></div>
+		<div id="marquee"><span id="marquee-text">... M8AX CORP ...</span></div>
+		<div id="footer">
+			--- 
+			<a href="https://youtube.com/m8ax" target="_blank" 
+				style="color: inherit; text-decoration: none;" 
+				title="--- Pincha Para Visitar Mi Canal De YouTube Y Suscribirte xD ---">
+			BY M8AX
+			</a> 
+			---
+		</div>
+		<!-- Script de configuración de partículas -->
+		<script>
+			// Función para generar un color hexadecimal aleatorio
+			function getRandomColor() {
+			    return '#' + Math.floor(Math.random() * 16777215).toString(16);
+			}
+			
+			// Configuración del fondo de partículas
+			particlesJS("particles-js", {
+			    particles: {
+			        number: { value: 80, density: { enable: true, value_area: 800 } },
+			        color: { value: "#ffffff" },
+			        shape: {
+			            type: "circle",
+			            stroke: { width: 0, color: "#000000" },
+			            polygon: { nb_sides: 5 }
+			        },
+			        opacity: {
+			            value: 0.5,
+			            random: true,
+			            anim: { enable: true, speed: 1, opacity_min: 0.1, sync: false }
+			        },
+			        size: {
+			            value: 3,
+			            random: true,
+			            anim: { enable: true, speed: 2, size_min: 0.1, sync: false }
+			        },
+			        line_linked: {
+			            enable: true,
+			            distance: 150,
+			            color: getRandomColor(),
+			            opacity: 0.4,
+			            width: 1
+			        },
+			        move: {
+			            enable: true,
+			            speed: 3,
+			            direction: "none",
+			            random: true,
+			            straight: false,
+			            out_mode: "bounce",
+			            bounce: true,
+			            attract: { enable: false, rotateX: 600, rotateY: 1200 }
+			        }
+			    },
+			    interactivity: {
+			        detect_on: "canvas",
+			        events: {
+			            onhover: { enable: true, mode: "bubble" },
+			            onclick: { enable: true, mode: "push" },
+			            resize: true
+			        },
+			        modes: {
+			            bubble: { distance: 200, size: 6, duration: 2, opacity: 0.8, speed: 3 },
+			            push: { particles_nb: 4 }
+			        }
+			    },
+			    retina_detect: true
+			});
+		</script>
+		<script>
+			const SYMBOLS = [
+			"BTCUSDT",   // Bitcoin - primera y más conocida criptomoneda
+			"ETHUSDT",   // Ethereum - plataforma de contratos inteligentes
+			"BNBUSDT",   // Binance Coin - token nativo de Binance
+			"XRPUSDT",   // XRP - token de pagos de Ripple
+			"SOLUSDT",   // Solana - blockchain rápida para DApps
+			"ADAUSDT",   // Cardano - plataforma de contratos inteligentes
+			"DOGEUSDT",  // Dogecoin - criptomoneda meme
+			"DOTUSDT",   // Polkadot - interoperabilidad entre blockchains
+			"MATICUSDT", // Polygon - solución de escalado para Ethereum
+			"LTCUSDT",   // Litecoin - fork de Bitcoin más rápido
+			"UNIUSDT",   // Uniswap - token del exchange descentralizado
+			"LINKUSDT",  // Chainlink - oráculos para contratos inteligentes
+			"AVAXUSDT",  // Avalanche - blockchain de alto rendimiento
+			"TRXUSDT",   // TRON - blockchain para contenidos y entretenimiento
+			"SHIBUSDT",  // Shiba Inu - criptomoneda meme
+			"NEARUSDT",  // NEAR Protocol - plataforma de contratos inteligentes
+			"ATOMUSDT",  // Cosmos - ecosistema interoperable de blockchains
+			"XLMUSDT",   // Stellar - pagos transfronterizos rápidos
+			"ETCUSDT",   // Ethereum Classic - versión original de Ethereum
+			"FILUSDT",   // Filecoin - almacenamiento descentralizado
+			"WBTCUSDT",  // Wrapped Bitcoin - BTC en la red Ethereum
+			"ICPUSDT",   // Internet Computer - blockchain de computación descentralizada
+			"AAVEUSDT",  // Aave - protocolo de préstamos descentralizado
+			"EOSUSDT",   // EOS - plataforma para DApps
+			"ALGOUSDT",  // Algorand - blockchain de alto rendimiento
+			"APTUSDT",   // Aptos - blockchain de nueva generación
+			"SANDUSDT",  // The Sandbox - token de metaverso y gaming
+			"OPUSDT",    // Optimism - solución de escalado L2 para Ethereum
+			"ARBUSDT",   // Arbitrum - solución de escalado L2 para Ethereum
+			"RNDRUSDT",  // Render Token - renderizado distribuido
+			"ASTERUSDT", // Astera - token emergente (ejemplo)
+			"LDOUSDT",   // Lido DAO - staking líquido de Ethereum
+			];
+			
+			const UPDATE_MS = 10000; // 10 Segundos
+			const marquee = document.getElementById("marquee");
+			const marqueeText = document.getElementById("marquee-text");
+			
+			let SCROLL_SPEED;
+			let lastTime = null;
+			let posX = window.innerWidth;
+			
+			function getFontSize() {
+			    const ua = navigator.userAgent || navigator.vendor || window.opera;
+			    return /android/i.test(ua) ? 1780 : 725;
+			}
+			
+			marquee.style.fontSize = getFontSize() + "px";
+			
+			function askSpeed() {
+			    let valid = false;
+			    let speed;
+			    while (!valid) {
+			        speed = prompt("Introduce Velocidad Del Ticker ( Px/s ) – Velocidad Óptima: 1500", "1500");
+			        if (speed === null) {
+			            valid = true;
+			            speed = 1500;
+			        } else {
+			            speed = speed.trim();
+			            if (/^\d+$/.test(speed) && parseInt(speed) > 0) {
+			                valid = true;
+			                speed = parseInt(speed);
+			            }
+			        }
+			    }
+			    return speed;
+			}
+			
+			SCROLL_SPEED = askSpeed();
+			
+			function randomColor() {
+			    const colors = ["#0ff", "#f0f", "#ff0", "#0f0", "#f00", "#00f", "#fa0", "#0fa", "#f88", "#8ff", "#ff8", "#8f8"];
+			    return colors[Math.floor(Math.random() * colors.length)];
+			}
+			
+			async function fetchPrices() {
+			    const url = `https://api.binance.com/api/v3/ticker/24hr?symbols=${encodeURIComponent(JSON.stringify(SYMBOLS))}`;
+			    const resp = await fetch(url);
+			    if (!resp.ok) throw new Error("HTTP " + resp.status);
+			    return await resp.json();
+			}
+			
+			function formatNumber(n) {
+			    const v = parseFloat(n);
+			    if (isNaN(v)) return "–";
+			    if (v >= 1000) return v.toLocaleString(undefined, { maximumFractionDigits: 0 });
+			    if (v >= 1) return v.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+			    return v.toPrecision(4);
+			}
+			
+			function buildText(dataArr) {
+			    const parts = SYMBOLS.map((symbol) => {
+			        const item = dataArr.find((o) => o.symbol === symbol);
+			        if (!item) return symbol + ": –";
+			        const price = formatNumber(item.lastPrice);
+			        const changePct = parseFloat(item.priceChangePercent);
+			        const sign = changePct >= 0 ? "▲" : "▼";
+			        const pct = Math.abs(changePct).toFixed(2) + "%";
+			        return `${symbol} ${price} ${sign}${pct}`;
+			    });
+			    return parts.join("   •   ");
+			}
+			
+			async function updateTicker() {
+			    try {
+			        const data = await fetchPrices();
+			        const txt = buildText(data);
+			        marqueeText.textContent = txt;
+			        marqueeText.style.color = randomColor();
+			    } catch (err) {
+			        console.warn("Error Al Actualizar Precios...", err);
+			        marqueeText.textContent = marqueeText.textContent + " ( Sin Conexión )";
+			    }
+			}
+			
+			function scrollLoop(time) {
+			    if (!lastTime) lastTime = time;
+			    const delta = (time - lastTime) / 1000;
+			    lastTime = time;
+			    posX -= SCROLL_SPEED * delta;
+			    const textWidth = marquee.offsetWidth;
+			    if (posX < -textWidth) posX += window.innerWidth + textWidth;
+			    marquee.style.transform = `translate(${posX}px, -50%)`;
+			    requestAnimationFrame(scrollLoop);
+			}
+			
+			function updateClock() {
+			    const now = new Date();
+			    const dias = ["DOM", "LUN", "MAR", "MIE", "JUE", "VIE", "SAB"];
+			    const meses = ["ENE", "FEB", "MAR", "ABR", "MAY", "JUN", "JUL", "AGO", "SEP", "OCT", "NOV", "DIC"];
+			    const diaSemana = dias[now.getDay()];
+			    const diaMes = now.getDate();
+			    const mes = meses[now.getMonth()];
+			    const anio = now.getFullYear();
+			    let horas = now.getHours();
+			    let minutos = now.getMinutes();
+			    let segundos = now.getSeconds();
+			    horas = horas < 10 ? "0" + horas : horas;
+			    minutos = minutos < 10 ? "0" + minutos : minutos;
+			    segundos = segundos < 10 ? "0" + segundos : segundos;
+			    document.getElementById("clock").textContent = `${diaSemana} ${diaMes} ${mes} ${anio}  ${horas}:${minutos}:${segundos}`;
+			}
+			
+			function changeClockColor() {
+			    const color = randomColor();
+			    document.getElementById("clock").style.color = color;
+			    document.getElementById("footer").style.color = color;
+			}
+			
+			updateTicker();
+			setInterval(updateTicker, UPDATE_MS);
+			
+			updateClock();
+			
+			setInterval(updateClock, 1000);
+			setInterval(changeClockColor, 30000);
+			
+			requestAnimationFrame(scrollLoop);
+			const clockEl = document.getElementById("clock");
+			clockEl.style.cursor = "pointer"; // Cambia el cursor para indicar que es clickeable
+			clockEl.title = "--- Pincha Para Ver El Gráfico De BTC En TradingView ---";
+			clockEl.addEventListener("click", () => {
+			window.open("https://www.tradingview.com/chart/?symbol=BINANCE:BTCUSDT", "_blank");
+			});
+		</script>
+	</body>
 </html>
