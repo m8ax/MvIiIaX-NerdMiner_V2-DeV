@@ -125,14 +125,14 @@ const char *urlsm8ax[] = {
     "GH - https://github.com/m8ax"};
 String urls[] = {
     "https://cointelegraph.com/rss",
-    "https://es.cointelegraph.com/rss/tag/altcoin",
-    "https://es.cointelegraph.com/rss/category/analysis",
-    "https://es.cointelegraph.com/rss/tag/regulation",
-    "https://es.cointelegraph.com/rss/tag/bitcoin",
-    "https://es.cointelegraph.com/rss/tag/blockchain",
-    "https://es.cointelegraph.com/rss/tag/ethereum",
-    "https://es.cointelegraph.com/rss/category/top-10-cryptocurrencies",
-    "https://es.cointelegraph.com/rss/category/market-analysis"};
+    "https://cointelegraph.com/rss/tag/altcoin",
+    "https://cointelegraph.com/rss/category/analysis",
+    "https://cointelegraph.com/rss/tag/regulation",
+    "https://cointelegraph.com/rss/tag/bitcoin",
+    "https://cointelegraph.com/rss/tag/blockchain",
+    "https://cointelegraph.com/rss/tag/ethereum",
+    "https://cointelegraph.com/rss/category/top-10-cryptocurrencies",
+    "https://cointelegraph.com/rss/category/market-analysis"};
 String BOT_TOKEN, CHAT_ID, cadenanoti = "", prebitco = "", alturabloque = "", variacion1dia, variacion1semana;
 std::pair<String, String> Tresultado;
 mining_data mineria;

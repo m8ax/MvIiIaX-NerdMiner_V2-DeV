@@ -37,14 +37,14 @@
  *   sistema no puede sincronizar la hora de forma continua, ya que esto podría causar problemas de rendimiento.
  *   Asi que si llega el día de cambio de hora que es de madrugada y no cambia al instante no te preocupes
  *   que el sistema lo hará automáticamente en la siguiente sincronización.
- * 
- * 
+ *
+ *
  *           Un minero de Bitcoin es un dispositivo o software que realiza cálculos
  *           matemáticos complejos para verificar y validar transacciones en la red.
  *           Los mineros compiten para resolver estos problemas y añadir un bloque
  *           a la cadena. A cambio, reciben bitcoins recién creados como recompensa.
  *
- * 
+ *
  *                              PARA MÁS INFORMACIÓN LEER PDF
  *
  *                     Tmp. De Programación 15H - 6445 Líneas De Código
@@ -160,14 +160,14 @@ const char *urlsm8ax[] = {
     "GH - https://github.com/m8ax"};
 String urls[] = {
     "https://cointelegraph.com/rss",
-    "https://es.cointelegraph.com/rss/tag/altcoin",
-    "https://es.cointelegraph.com/rss/category/analysis",
-    "https://es.cointelegraph.com/rss/tag/regulation",
-    "https://es.cointelegraph.com/rss/tag/bitcoin",
-    "https://es.cointelegraph.com/rss/tag/blockchain",
-    "https://es.cointelegraph.com/rss/tag/ethereum",
-    "https://es.cointelegraph.com/rss/category/top-10-cryptocurrencies",
-    "https://es.cointelegraph.com/rss/category/market-analysis"};
+    "https://cointelegraph.com/rss/tag/altcoin",
+    "https://cointelegraph.com/rss/category/analysis",
+    "https://cointelegraph.com/rss/tag/regulation",
+    "https://cointelegraph.com/rss/tag/bitcoin",
+    "https://cointelegraph.com/rss/tag/blockchain",
+    "https://cointelegraph.com/rss/tag/ethereum",
+    "https://cointelegraph.com/rss/category/top-10-cryptocurrencies",
+    "https://cointelegraph.com/rss/category/market-analysis"};
 int zonasHorarias[] = {
     -5, 0, 1, 9, 11, // Nueva York, Londres, Paris, Tokio, Sidney
     -8, 8, 3, 5, -3, // Los Angeles, Beijing, Moscu, Delhi, Buenos Aires
