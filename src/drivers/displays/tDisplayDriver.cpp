@@ -47,7 +47,7 @@
  *
  *                              PARA MÁS INFORMACIÓN LEER PDF
  *
- *                     Tmp. De Programación 15H - 6445 Líneas De Código
+ *                     Tmp. De Programación 16H - 6540 Líneas De Código
  *                     ------------------------------------------------
  *
  ********************************************************************************************/
@@ -124,7 +124,7 @@ int mirarTiempo = 0, sumatele = 1, abortar = 0, alertatemp = 0, maxtemp = 0, min
 float anterBTC = 0.0, maxkh = 0.00, minkh = 1000.00, porcentaje = 0.00;
 const char *nombrecillo;
 const char *apiUrl = "http://ip-api.com/json/";
-const char *serverName = "https://favqs.com/api/qotd";
+const char *serverName = "https://dummyjson.com/quotes/random";
 const char *criptomonedas[] = {
     "BTC-USD",   // Bitcoin
     "ETH-USD",   // Ethereum
@@ -160,14 +160,14 @@ const char *urlsm8ax[] = {
     "GH - https://github.com/m8ax"};
 String urls[] = {
     "https://cointelegraph.com/rss",
-    "https://cointelegraph.com/rss/tag/altcoin",
-    "https://cointelegraph.com/rss/category/analysis",
+    "https://cointelegraph.com/rss/tag/altcoins",
+    "https://cointelegraph.com/rss/tag/defi",
     "https://cointelegraph.com/rss/tag/regulation",
     "https://cointelegraph.com/rss/tag/bitcoin",
     "https://cointelegraph.com/rss/tag/blockchain",
     "https://cointelegraph.com/rss/tag/ethereum",
-    "https://cointelegraph.com/rss/category/top-10-cryptocurrencies",
-    "https://cointelegraph.com/rss/category/market-analysis"};
+    "https://cointelegraph.com/rss/tag/nft",
+    "https://cointelegraph.com/rss/tag/stablecoin"};
 int zonasHorarias[] = {
     -5, 0, 1, 9, 11, // Nueva York, Londres, Paris, Tokio, Sidney
     -8, 8, 3, 5, -3, // Los Angeles, Beijing, Moscu, Delhi, Buenos Aires
@@ -347,6 +347,73 @@ int obtenHoraPorIP(const String &ip)
   if (!success)
     Serial.println("M8AX - No Se Pudo Obtener La Zona Horaria Tras ( 5 Intentos )\n");
   return offset;
+}
+
+/**
+ * Convierte un número `float` en un entero sin signo de 32 bits (`uint32_t`), redondeándolo
+ * al entero más cercano.
+ *
+ * Si el valor es negativo devuelve 0, y si supera el máximo de `uint32_t` devuelve
+ * `UINT32_MAX`, de modo que el resultado siempre queda dentro del rango válido.
+ */
+
+uint32_t floatToUint32(float num)
+{
+  if (num < 0)
+    return 0;
+  if (num > UINT32_MAX)
+    return UINT32_MAX;
+  return static_cast<uint32_t>(round(num));
+}
+
+/**
+ * Calcula cuántos días han pasado desde que se compiló el firmware hasta la hora actual.
+ *
+ * Obtiene la fecha y hora de compilación a partir de las macros `__DATE__` y `__TIME__`,
+ * y la compara con la hora actual que da el cliente NTP (`timeClient`). Devuelve la
+ * diferencia en días como `float`, con decimales (por ejemplo, 2.5 son dos días y medio).
+ *
+ * Depende de que el NTP ya se haya sincronizado: si no es así, la hora actual será
+ * incorrecta y el resultado saldrá negativo o absurdo.
+ */
+
+float calcularDiferenciaDias()
+{
+  struct tm compileTime = {0};
+  char fechaHoraCompilacion[25];
+  snprintf(fechaHoraCompilacion, sizeof(fechaHoraCompilacion), "%s %s", __DATE__, __TIME__);
+  strptime(fechaHoraCompilacion, "%b %d %Y %H:%M:%S", &compileTime);
+  time_t compiledEpoch = mktime(&compileTime);
+  unsigned long epochTime = timeClient.getEpochTime();
+  time_t epoch = (time_t)epochTime;
+  struct tm *timeinfo = localtime(&epoch);
+  time_t currentEpoch = mktime(timeinfo);
+  float diferenciaDias = (float)(currentEpoch - compiledEpoch) / (60 * 60 * 24);
+  return diferenciaDias;
+}
+
+/**
+ * Convierte una cantidad de segundos en una cadena de texto con formato
+ * "DDd HHh MMm SSs" (días, horas, minutos y segundos, cada uno con dos dígitos).
+ *
+ * Devuelve un puntero a un búfer estático interno de 20 bytes, por lo que el
+ * resultado se sobrescribe en cada llamada y la función no es segura entre hilos.
+ * Si hay más de 99 días, el campo de días ocupa más de dos dígitos y la cadena
+ * se trunca al llegar al límite del búfer.
+ */
+
+const char *convertirTiempo(uint32_t segundos)
+{
+  uint32_t dias, horas, minutos, segs;
+  dias = segundos / 86400;
+  segundos %= 86400;
+  horas = segundos / 3600;
+  segundos %= 3600;
+  minutos = segundos / 60;
+  segs = segundos % 60;
+  static char buffer[20];
+  snprintf(buffer, sizeof(buffer), "%02lud %02luh %02lum %02lus", (unsigned long)dias, (unsigned long)horas, (unsigned long)minutos, (unsigned long)segs);
+  return buffer;
 }
 
 /**
@@ -919,11 +986,11 @@ void recopilaTelegram()
   quediase.shrink_to_fit();
   if (sumatele <= 3999)
   {
-    cadenaEnvio += "Mensaje Número - " + convertirARomanos(sumatele) + "\n";
+    cadenaEnvio += "Mensaje Número - " + convertirARomanos(sumatele) + " | F.C.FW - " + String(__DATE__) + " A Las " + String(__TIME__) + " | Hace - " + String(convertirTiempo(floatToUint32(calcularDiferenciaDias() * 86400))).c_str() + "\n";
   }
   else
   {
-    cadenaEnvio += "Mensaje Número - " + String(sumatele) + "\n";
+    cadenaEnvio += "Mensaje Número - " + String(sumatele) + " | F.C.FW - " + String(__DATE__) + " A Las " + String(__TIME__) + " | Hace - " + String(convertirTiempo(floatToUint32(calcularDiferenciaDias() * 86400))).c_str() + "\n";
   }
   cadenaEnvio += "Tiempo Minando - " + (mineria.timeMining.substring(0, mineria.timeMining.indexOf(" ")).length() == 1 ? "0" + mineria.timeMining.substring(0, mineria.timeMining.indexOf(" ")) : mineria.timeMining.substring(0, mineria.timeMining.indexOf(" "))) + " Días" + mineria.timeMining.substring(mineria.timeMining.indexOf(" ") + 1) + "\n";
   cadenaEnvio += "HR Actual - " + mineria.currentHashRate + " KH/s ( MAX - " + String(maxkh) + " | MIN - " + String(minkh) + " )\n";
@@ -934,7 +1001,7 @@ void recopilaTelegram()
   cadenaEnvio += "Dificultad De La Red - " + monedilla.netwrokDifficulty + "\n";
   cadenaEnvio += "Cómputo Total - " + mineria.totalKHashes + " KH - ( " + String(atof(mineria.totalKHashes.c_str()) / 1000, 3) + " MH )\n";
   cadenaEnvio += "HR Global - " + monedilla.globalHashRate + " EH/s\n";
-  cadenaEnvio += "Precio De BTC - " + monedilla.btcPrice + " | En 24H -> " + subebaja + " |\n";
+  cadenaEnvio += "Precio De BTC - " + monedilla.btcPrice + " | Ayer -> " + subebaja + " |\n";
   cadenaEnvio += "FEE Promedio Por TX - " + monedilla.halfHourFee + "\n";
   cadenaEnvio += "Altura De Bloque - " + relojete.blockHeight + "\n";
   telrb.replace("BLOCKS", "");
@@ -1000,7 +1067,7 @@ void datosPantallaTextoPlano()
   cadenaEnvio2 += ". Dificultad De La Red - " + monedilla.netwrokDifficulty;
   cadenaEnvio2 += ". Cómputo Total - " + mineria.totalKHashes + " KH - ( " + String(atof(mineria.totalKHashes.c_str()) / 1000, 3) + " MH )";
   cadenaEnvio2 += ". HR Global - " + monedilla.globalHashRate + " EH/s";
-  cadenaEnvio2 += ". Precio De BTC - " + monedilla.btcPrice + " | En 24H -> " + subebaja + " |";
+  cadenaEnvio2 += ". Precio De BTC - " + monedilla.btcPrice + " | Ayer -> " + subebaja + " |";
   cadenaEnvio2 += ". FEE Promedio Por TX - " + monedilla.halfHourFee;
   cadenaEnvio2 += ". Altura De Bloque - " + relojete.blockHeight;
   telrb.replace("BLOCKS", "");
@@ -1920,89 +1987,119 @@ void dibujaAnalogKH(float khs)
 }
 
 /**
- * Obtiene y procesa las noticias desde un feed RSS.
+ * Obtiene y muestra hasta 5 titulares desde un feed RSS.
  *
- * Realiza una solicitud HTTP GET a una de las URL de noticias seleccionada aleatoriamente, extrae los titulares de noticias y los muestra en el monitor serial.
- * También muestra los titulares en la pantalla LCD del dispositivo.
+ * Elige un feed al azar de los 9 de "urls". Si falla o no da noticias, prueba el siguiente (dando la vuelta) hasta recorrer los 9.
+ * Lee la respuesta en streaming, sin guardarla entera, para gastar poca RAM. Omite el título del canal "Cointelegraph.com News".
  *
- * Solo muestra hasta 5 noticias válidas, y omite noticias de canales específicos como "Cointelegraph.com News".
+ * Muestra los titulares en el monitor serial y en la pantalla LCD. Si ningún feed da noticias, muestra un mensaje fijo.
  */
 
 void obtenerNoticias()
 {
-  HTTPClient http;
-  int indice = esp_random() % 9;
-  String urlnot = urls[indice];
-  http.begin(urlnot);        // URL del feed RSS
-  int httpCode = http.GET(); // Realiza la solicitud GET
-  cadenanoti = "";
-  if (httpCode == HTTP_CODE_OK)
-  { // Si la solicitud es exitosa
-    String payload = http.getString();
-    Serial.println("M8AX - Noticias Obtenidas. Procesando...");
+  int total = 9;
+  int inicio = esp_random() % total;
+  bool hayNoticias = false;
 
-    int itemIndex = 0;
-    int startIndex = 0;
-    int endIndex = 0;
-
-    // Extraer hasta 5 titulares
-    while (itemIndex < 5)
+  for (int intento = 0; intento < total && !hayNoticias; intento++)
+  {
+    HTTPClient http;
+    int indice = (inicio + intento) % total;
+    String urlnot = urls[indice];
+    http.begin(urlnot);
+    http.useHTTP10(true);
+    int httpCode = http.GET();
+    cadenanoti = "";
+    if (httpCode == HTTP_CODE_OK)
     {
-      // Buscar la etiqueta <item> que marca una nueva noticia
-      startIndex = payload.indexOf("<item>", endIndex); // Encuentra <item>
-      if (startIndex == -1)
-        break;
+      WiFiClient *stream = http.getStreamPtr();
+      stream->setTimeout(3000);
+      Serial.println("M8AX - Noticias Obtenidas. Procesando...");
+      int itemIndex = 0;
 
-      endIndex = payload.indexOf("</item>", startIndex); // Encuentra </item>
-      if (endIndex == -1)
-        break;
-
-      // Extraer el título dentro de <title> de cada <item>
-      int titleStart = payload.indexOf("<title>", startIndex);
-      int titleEnd = payload.indexOf("</title>", titleStart);
-      String title = payload.substring(titleStart + 7, titleEnd); // Extrae el título
-
-      // Eliminar la parte CDATA si está presente
-      int cdataStart = title.indexOf("<![CDATA[");
-      int cdataEnd = title.indexOf("]]>");
-      if (cdataStart != -1 && cdataEnd != -1)
+      while (itemIndex < 5)
       {
-        title = title.substring(cdataStart + 9, cdataEnd); // Elimina CDATA
+        if (!stream->find("<item>"))
+          break;
+        if (!stream->find("<title>"))
+          break;
+
+        String title = "";
+        bool completo = false;
+        uint32_t t0 = millis();
+
+        while (millis() - t0 < 3000 && title.length() < 300)
+        {
+          if (!stream->available())
+          {
+            if (!http.connected())
+              break;
+            delay(1);
+            continue;
+          }
+          title += (char)stream->read();
+          if (title.endsWith("</title>"))
+          {
+            title.remove(title.length() - 8);
+            completo = true;
+            break;
+          }
+        }
+
+        if (!completo)
+          break;
+
+        int cdataStart = title.indexOf("<![CDATA[");
+        int cdataEnd = title.indexOf("]]>");
+        if (cdataStart != -1 && cdataEnd != -1)
+        {
+          title = title.substring(cdataStart + 9, cdataEnd);
+        }
+
+        if (title.indexOf("Cointelegraph.com News") != -1)
+        {
+          continue;
+        }
+
+        Serial.println(String(itemIndex + 1) + ". " + title);
+        cadenanoti += String(itemIndex + 1) + ". " + title + "\n\n";
+        itemIndex++;
+        taskYIELD();
       }
 
-      // Si el título es del canal (ej. "Cointelegraph.com News"), busca otra noticia
-      if (title.indexOf("Cointelegraph.com News") != -1)
+      if (itemIndex > 0)
       {
-        continue; // Si el título es del canal, salta a la siguiente noticia
+        hayNoticias = true;
+        tft.setCursor(1, 26);
+        tft.setTextSize(1);
+        colorI = esp_random() % (sizeof(colors) / sizeof(colors[0]));
+        tft.setTextColor(colors[colorI]);
+        tft.print(quitarAcentos(cadenanoti));
       }
-
-      // Si llegamos aquí, es una noticia válida, la mostramos
-      Serial.println(String(itemIndex + 1) + ". " + title);
-      cadenanoti += String(itemIndex + 1) + ". " + title + "\n\n";
-      itemIndex++;
-      taskYIELD();
+      else
+      {
+        Serial.println("M8AX - No Se Encontraron Noticias Válidas.");
+      }
+      cadenanoti = "";
+      cadenanoti.reserve(0);
     }
-    payload = "";
-    payload.reserve(0);
+    else
+    {
+      Serial.println("M8AX - Error Al Obtener El Feed RSS. Código HTTP: " + String(httpCode));
+    }
+
+    http.end();
+  }
+
+  if (!hayNoticias)
+  {
+    Serial.println("M8AX - Ningún Feed Ha Dado Noticias.");
     tft.setCursor(1, 26);
     tft.setTextSize(1);
     colorI = esp_random() % (sizeof(colors) / sizeof(colors[0]));
     tft.setTextColor(colors[colorI]);
-    tft.print(quitarAcentos(cadenanoti));
-    cadenanoti = "";
-    cadenanoti.reserve(0);
-
-    // Si no se encontraron 5 noticias válidas, avisa al usuario
-    if (itemIndex == 0)
-    {
-      Serial.println("M8AX - No Se Encontraron Noticias Válidas.");
-    }
+    tft.print("POR MUCHAS VUELTAS QUE DEMOS, SIEMPRE TENDREMOS EL CULO ATRAS...");
   }
-  else
-  {
-    Serial.println("M8AX - Error Al Obtener El Feed RSS. Código HTTP: " + String(httpCode));
-  }
-  http.end(); // Finaliza la solicitud HTTP
 }
 
 /**
@@ -2189,8 +2286,8 @@ String getQuote()
       payload.reserve(0);
 
       // Extraer la cita y el autor
-      String quoteText = doc["quote"]["body"].as<String>();
-      String author = doc["quote"]["author"].as<String>();
+      String quoteText = doc["quote"].as<String>();
+      String author = doc["author"].as<String>();
 
       quote = "\"" + quoteText + "\"\n\n- " + author;
       Serial.println("M8AX - Frase Número - " + String(numfrases) + " - " + quote + " - " + String(quote.length()) + " Caracteres");
@@ -3319,7 +3416,7 @@ void tDisplay_ClockScreen(unsigned long mElapsed)
     tft.setTextColor(TFT_WHITE);
     tft.print("+ " + String(maxkh) + " - " + String(minkh));
     tft.setCursor(4, 162);
-    tft.print("BTC 24H - " + subebaja);
+    tft.print("BTC AYER - " + subebaja);
     if (segundo % 2 == 0)
     {
       tft.fillCircle(123, 20, 8, colors[colorIndex]);
@@ -3347,7 +3444,7 @@ void tDisplay_ClockScreen(unsigned long mElapsed)
     tft.setTextColor(TFT_WHITE);
     tft.print("+ " + String(maxkh) + " - " + String(minkh));
     tft.setCursor(4, 162);
-    tft.print("BTC 24H - " + subebaja);
+    tft.print("BTC AYER - " + subebaja);
     if (segundo % 2 == 0)
     {
       tft.fillCircle(123, 20, 8, colors[colorIndex]);
@@ -3566,7 +3663,7 @@ void tDisplay_BTCprice(unsigned long mElapsed)
   tft.setTextColor(TFT_WHITE);
   tft.print("+ " + String(maxkh) + " - " + String(minkh));
   tft.setCursor(4, 162);
-  tft.print("BTC 24H - " + subebaja);
+  tft.print("BTC AYER - " + subebaja);
 }
 
 /*
@@ -6390,8 +6487,7 @@ void tDisplay_DoLedStuff(unsigned long frame)
 {
 }
 
-// Definición de la estructura `tDisplayDriver` que encapsula las funciones necesarias para controlar las pantallas y sus interacciones.
-// Esta estructura contiene las siguientes funciones:
+// Definición de la estructura `tDisplayDriver` que encapsula las funciones necesarias para controlar las pantallas y sus interacciones. Esta estructura contiene las siguientes funciones:
 // - `tDisplay_Init`: Inicializa la pantalla y otros componentes necesarios.
 // - `tDisplay_AlternateScreenState`: Permite alternar entre diferentes estados de la pantalla.
 // - `tDisplay_AlternateRotation`: Maneja la rotación de la pantalla.
@@ -6400,8 +6496,7 @@ void tDisplay_DoLedStuff(unsigned long frame)
 // - `tDisplayCyclicScreens`: Array de funciones cíclicas que se muestran de manera periódica, permitiendo la transición entre pantallas, como la pantalla del minero, cotización de BTC, hora, etc.
 // - `tDisplay_AnimateCurrentScreen`: Actualiza las pantallas de forma cíclica y con animaciones, como la del minero o las cotizaciones.
 // - `tDisplay_DoLedStuff`: Función vacía en este momento, reservada para gestionar efectos relacionados con LEDs.
-// Además, contiene detalles de la pantalla, como el tamaño y el número total de pantallas definidas en `tDisplayCyclicScreens` (calculado con `SCREENS_ARRAY_SIZE`).
-// La estructura `tDisplayDriver` centraliza el control de todas las operaciones relacionadas con la pantalla, permitiendo la ejecución secuencial o cíclica de diferentes pantallas en el dispositivo.
+// Además, contiene detalles de la pantalla, como el tamaño y el número total de pantallas definidas en `tDisplayCyclicScreens` (calculado con `SCREENS_ARRAY_SIZE`). La estructura `tDisplayDriver` centraliza el control de todas las operaciones relacionadas con la pantalla, permitiendo la ejecución secuencial o cíclica de diferentes pantallas en el dispositivo.
 
 CyclicScreenFunction tDisplayCyclicScreens[] = {tDisplay_MinerScreen, tDisplay_GlobalHashScreen, tDisplay_BTCprice, tDisplay_m8axScreen15, tDisplay_m8axScreen2, datoTextPlano, tDisplay_m8axScreen5, tDisplay_m8axScreen16, tDisplay_ClockScreen, tDisplay_m8axScreen1, tDisplay_m8axScreen7, RelojDeNumeros, tDisplay_m8axScreen9, tDisplay_m8axScreen10, tDisplay_m8axScreen11, tDisplay_m8axScreen18, tDisplay_m8axScreen3, tDisplay_m8axScreen13, tDisplay_m8axScreen14, tDisplay_m8axScreen8, tDisplay_m8axScreen4, tDisplay_m8axScreen6, tDisplay_m8axScreen17, monedaYdado, tDisplay_m8axScreen12, tDisplay_m8axvida};
 

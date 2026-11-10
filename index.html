@@ -1,797 +1,971 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="es">
-	<head>
-		<meta charset="UTF-8">
-		<meta name="viewport" content="width=device-width, initial-scale=1.0">
-		<title>M8AX - NerdMinerV2 - M8AX -> Firmware UPDATE</title>
-		<script type="module" src="https://unpkg.com/esp-web-tools@10.1.0/dist/web/install-button.js?module"></script>
-		<style>
-			.button-container {
-			display: flex;
-			gap: 40px;
-			/* Espacio entre botones */
-			justify-content: center;
-			/* Centra los botones en la página */
-			align-items: center;
-			/* Alinea verticalmente */
-			margin-top: -16px;
-			/* Espacio superior */
-			}
-			h1 {
-			margin-bottom: 16px;
-			/* Reduce el espacio debajo del título */
-			}
-			p.note {
-			margin-top: 5px;
-			/* Reduce el espacio arriba del párrafo */
-			}
-		</style>
-		<style>
-			hr {
-			border: none;
-			/* Elimina el borde */
-			border-top: 1px solid #00ff00;
-			/* Añade una línea gris (o cualquier color) */
-			margin: 1px 0;
-			/* Ajusta el espacio alrededor del 
-			<hr>
-			*/
-			}
-		</style>
-		<style>
-			body {
-			font-family: Arial, sans-serif;
-			text-align: center;
-			background-color: #1a1a1a;
-			display: flex;
-			flex-direction: column;
-			justify-content: center;
-			align-items: center;
-			height: 100vh;
-			margin: 0;
-			overflow: hidden;
-			position: relative;
-			color: white;
-			}
-			h1 {
-			color: #00000;
-			}
-			.container {
-			background: rgba(255, 255, 255, 0.9);
-			padding: 20px;
-			border-radius: 50px;
-			box-shadow: 0px 0px 20px rgba(0, 0, 0, 0.5);
-			width: 80%;
-			max-width: 630px;
-			display: flex;
-			flex-direction: column;
-			justify-content: flex-start;
-			position: relative;
-			z-index: 1;
-			}
-			.note {
-			color: blue;
-			font-weight: bold;
-			margin-bottom: 0px;
-			}
-			span {
-			display: block;
-			margin-top: 0px;
-			}
-			.header-image {
-			margin-bottom: 5px;
-			text-align: center;
-			}
-			.header-image img {
-			max-width: 100%;
-			height: auto;
-			}
-			.footer-image {
-			margin-top: 5px;
-			text-align: center;
-			}
-			.footer-image img {
-			max-width: 100%;
-			height: auto;
-			}
-			/* Estilos para el fondo de partículas */
-			#particles-js {
-			position: absolute;
-			top: 0;
-			left: 0;
-			width: 100%;
-			height: 100%;
-			z-index: 0;
-			}
-			/* Estilos para la imagen en la esquina inferior izquierda */
-			.corner-image {
-			position: fixed;
-			bottom: 10px;
-			left: 10px;
-			width: 100px;
-			height: 100px;
-			z-index: 2;
-			border-radius: 10px;
-			box-shadow: 0px 0px 10px rgba(0, 0, 0, 0.5);
-			}
-			.corner-image img {
-			width: 100%;
-			height: 100%;
-			object-fit: cover;
-			border-radius: 10px;
-			}
-			/* Imagen para donaciones BTC */
-			.btc-donation {
-			position: fixed;
-			top: 100px;
-			/* 4 cm lower from the top */
-			right: 250px;
-			/* 3 cm more to the left */
-			width: 150px;
-			height: 150px;
-			z-index: 3;
-			border-radius: 10px;
-			box-shadow: 0px 0px 10px rgba(0, 0, 0, 0.5);
-			text-align: center;
-			/* Center the text under the image */
-			}
-			.btc-donation img {
-			width: 100%;
-			height: 100%;
-			object-fit: cover;
-			border-radius: 5px;
-			}
-			/* Imagen para donaciones BTC */
-			.btcc-donation {
-			position: fixed;
-			top: 100px;
-			/* 4 cm lower from the top */
-			right: 1500px;
-			/* 3 cm more to the left */
-			width: 150px;
-			height: 150px;
-			z-index: 3;
-			border-radius: 10px;
-			box-shadow: 0px 0px 10px rgba(0, 0, 0, 0.5);
-			text-align: center;
-			/* Center the text under the image */
-			}
-			.btcc-donation img {
-			width: 100%;
-			height: 100%;
-			object-fit: cover;
-			border-radius: 5px;
-			}
-			.donation-text {
-			margin-top: 10px;
-			/* Space between image and text */
-			font-size: 12px;
-			/* Adjust the font size as needed */
-			color: #fff;
-			/* White text color */
-			font-weight: bold;
-			/* Make the text bold */
-			text-align: center;
-			/* Center the text */
-			}
-		</style>
-	</head>
-	<body>
-		<div id="crypto-ticker" style="
-			position: fixed;
-			top: 0;
-			left: 0;
-			width: 100%;
-			background-color: #333;
-			color: white;
-			padding: 10px;
-			text-align: center;
-			font-size: 13px;
-			z-index: 10000;
-			">
-			Cargando Precios...
-		</div>
-		<!-- Fondo de partículas animadas -->
-		<div id="particles-js"></div>
-		<!-- Imagen en la esquina inferior izquierda -->
-		<div class="corner-image">
-			<a href="https://opensea.io/m8ax" target="_blank" title="Haz Clic Para Visitar Mi Arte En NFT's.">
-			<img src="webflash/m8ax.png" alt="https://opensea.io/m8ax">
-			</a>
-		</div>
-		<!-- Imagen de donación BTC -->
-		<div class="btc-donation">
-			<img src="webflash/btcdonation.png" alt="Donación Voluntaria De BTC">
-			<p class="donation-text">DONACION BITCOIN <br>PARA EL CREADOR <br>( VOLUNTARIA ) <br>
-				<br>ESCANEA PARA <br>OBTENER MI <br>DIRECCIÓN DE <br>BITCOIN <br>
-			<hr>
-			<br>DONACIÓN PAYPAL <br>VOLUNTARIA <br>
-			<a href="https://www.paypal.me/m8ax" target="_blank">
-			<font size=3>
-			<br>
-			<img src="webflash/paypal.png" alt="Donación Voluntaria Mediante PayPal" style="width: 60px; height: 60px;">
-			</a>
-			</font>
-			<br>
-			<br>
-			<hr>
-			<br>
-			<script async src="https://js.stripe.com/v3/buy-button.js"></script>
-			<stripe-buy-button buy-button-id="buy_btn_1R9mDLG6Z48hDDbhNF1rOjq9" publishable-key="pk_live_51R9kxCG6Z48hDDbhv2liWJMCmC9CamrzcpawsWZqtyGoXSnZNhvjSCk17AgDkFUVjORwPSiciVTegSVI4MuFLWaI00LV2Z8iaT"></stripe-buy-button>
-			<br>
-			<br>
-			<hr>
-			<br>DONACIÓN VOLUNTARIA <br>
-			<br>
-			<img src="webflash/satos.jpg" alt="Donación Mediante La Red Lightning Network De Bitcoin" style="width: 200px; height: 200px;">
-			</a>
-			</p>
-			<!-- Corrected HTML structure -->
-		</div>
-		<!-- Imagen de donación BTC -->
-		<div class="btcc-donation">
-			<img src="webflash/btcdonation.png" alt="Donación Voluntaria De BTC">
-			<p class="donation-text">DONACION BITCOIN <br>PARA EL CREADOR <br>( VOLUNTARIA ) <br>
-				<br>ESCANEA PARA <br>OBTENER MI <br>DIRECCIÓN DE <br>BITCOIN <br>
-			<hr>
-			<br>DONACIÓN PAYPAL <br>VOLUNTARIA <br>
-			<a href="https://www.paypal.me/m8ax" target="_blank">
-			<font size=3>
-			<br>
-			<img src="webflash/paypal.png" alt="Donación Voluntaria Mediante PayPal" style="width: 60px; height: 60px;">
-			</a>
-			</font>
-			<br>
-			<br>
-			<hr>
-			<br>
-			<script async src="https://js.stripe.com/v3/buy-button.js"></script>
-			<stripe-buy-button buy-button-id="buy_btn_1R9mDLG6Z48hDDbhNF1rOjq9" publishable-key="pk_live_51R9kxCG6Z48hDDbhv2liWJMCmC9CamrzcpawsWZqtyGoXSnZNhvjSCk17AgDkFUVjORwPSiciVTegSVI4MuFLWaI00LV2Z8iaT"></stripe-buy-button>
-			<br>
-			<br>
-			<hr>
-			<br>DONACIÓN VOLUNTARIA <br>
-			<br>
-			<img src="webflash/satos.jpg" alt="Donación Mediante La Red Lightning Network De Bitcoin" style="width: 200px; height: 200px;">
-			</a>
-			</p>
-			<!-- Corrected HTML structure -->
-		</div>
-		<div class="container">
-			<!-- hitwebcounter Code START -->
-                        <a href="https://www.hitwebcounter.com/convert-png-to-jpg" target="_blank" >
-                        <img src="https://hitwebcounter.com/counter/counter.php?page=21490331&style=0025&nbdigits=9&type=page&initCount=16858"title="Your PNG  File to JPG                  Conversion"alt="Your PNG File to JPG Conversion"style="border:0;" /></a>
-			<div class="header-image">
-				<a href="https://youtu.be/hjlTQvUVsiU" target="_blank" title="Haz Clic Para Para Ver El Video De Mi Versión Del Firmware Del NerdMinerV2.">
-					Pincha Para Ver Video En Cualquier Imágen Ó Aquí Mismo 
-					<p>
-						<img src="webflash/pantallas.jpg" alt="Pantallas Del --- M8AX - NerdMinerV2 - M8AX | ( PINCHA PARA VER VIDEO ) |">
-				</a>
-			</div>
-			<!-- Botón para abrir el manual en nueva pestaña -->
-			<a id="downloadManual" href="M8AX-NerdMinerV2-M8AX-Manual.pdf" target="_blank">
-			<button style="
-				padding: 8px 16px; 
-				font-size: 14px; 
-				border-radius: 6px; 
-				cursor: pointer; 
-				background-color:#00008B;
-				color: white;
-				border: none;
-				font-weight: bold;
-				">
-			Abrir Manual PDF De M8AX - NerdMinerV2 - M8AX
-			</button>
-			</a>
-			<!-- Enlace al repositorio -->
-			<div style="margin-top: 8px;">
-				<a href="https://github.com/m8ax/MvIiIaX-NerdMiner_V2-DeV" target="_blank" title="Haz Clic Para Visitar El Repositorio Del Firmware M8AX NerdMinerV2 En GitHub." style="font-size: 32px; font-weight: bold; text-decoration: none; color: #000;"> M8AX - Firmware NerdMinerV2 </a>
-			</div>
-			<p class="note">Si No Funciona, Activa El Modo Programación: Pulsa El Botón 1 (Abajo), Conéctalo Por USB Y Suéltalo Tras 2 Segundos. <span style="color: red; font-weight: bold; font-size: 14px;"> <br>NOTA: Asegúrate De Cerrar Cualquier Programa Que Esté Usando El Puerto COM De Tu Dispositivo ( Por Ejemplo, El Monitor Serie ). <span style="color: green; display: inline;">
-				<br>
-				<br>SSID Config: M8AX-Minero | Clave: MinaTuPasta </span>
-				</span>
-			</p>
-			<br>
-			<div class="button-container">
-				<div>
-					<img src="webflash/nmv2.png" alt="NerdMiner V2" title="NerdMiner V2" style="width: 100px; height: 50px; display: block; margin: 0 auto;">
-					<br>
-					<esp-web-install-button manifest="webflash/manifest1.json"></esp-web-install-button>
-					<strong>
-					<span style="font-size: 12px; color: #0000ff;">ESP32-NerdMinerV2</span>
-					</strong>
-				</div>
-				<div>
-					<img src="webflash/pgrande.png" alt="NerdMiner V2 - ESP32-2432S028R" title="NerdMiner V2 - ESP32-2432S028R" style="width: 100px; height: 50px; display: block; margin: 0 auto;">
-					<br>
-					<esp-web-install-button manifest="webflash/manifest2.json"></esp-web-install-button>
-					<strong>
-					<span style="font-size: 12px; color: #0000ff;">ESP32-2432S028R</span>
-					</strong>
-				</div>
-				<div>
-					<img src="webflash/pgrande.png" alt="NerdMiner V2 - ESP32-2432S028R - Pantalla Invertida" title="NerdMiner V2 - ESP32-2432S028R - Pantalla Invertida" style="width: 100px; height: 50px; display: block; margin: 0 auto;">
-					<br>
-					<esp-web-install-button manifest="webflash/manifest5.json"></esp-web-install-button>
-					<strong>
-					<span style="font-size: 12px; color: #0000ff;">ESP32-2432S028R - Pantalla Invertida</span>
-					</strong>
-				</div>
-				<div>
-					<img src="webflash/trumpfirm.png" alt="NerdMiner V2 - TRUMP VERSION - ESP32-2432S028R" title="NerdMiner V2 - TRUMP VERSION - ESP32-2432S028R" style="width: 100px; height: 50px; display: block; margin: 0 auto;">
-					<br>
-					<esp-web-install-button manifest="webflash/manifest4.json"></esp-web-install-button>
-					<strong>
-					<span style="font-size: 12px; color: #0000ff;">ESP32-2432S028R - TRUMP VERSION</span>
-					</strong>
-				</div>
-				<div>
-					<img src="webflash/placa.jpg" alt="Placas ESP32 WROOM" title="Placas ESP32 WROOM" style="width: 100px; height: 50px; display: block; margin: 0 auto;">
-					<br>
-					<esp-web-install-button manifest="webflash/manifest3.json"></esp-web-install-button>
-					<strong>
-					<span style="font-size: 12px; color: #0000ff;">ESP32 WROOM</span>
-					</strong>
-				</div>
-			</div>
-			<div id="notSupported" style="display: none;">
-				<p>Tu Navegador No Es Compatible Con La API Web Serial. Prueba Con Chrome.</p>
-			</div>
-			<div class="footer-image">
-				<a href="https://web.public-pool.io/" target="_blank" title="Visitar Public Pool">
-				<img src="webflash/M8AXNMV2.png" alt="M8AX - NerdMinerV2 - M8AX">
-				</a>
-			</div>
-		</div>
-		<!-- Script para el fondo de partículas -->
-		<script src="https://cdn.jsdelivr.net/particles.js/2.0.0/particles.min.js"></script>
-		<script>
-			// Función para generar un color hexadecimal aleatorio
-			function getRandomColor() {
-			  return '#' + Math.floor(Math.random() * 16777215).toString(16);
-			}
-			// Configuración del fondo de partículas
-			particlesJS("particles-js", {
-			  particles: {
-			    number: {
-			      value: 80,
-			      density: {
-			        enable: true,
-			        value_area: 800
-			      }
-			    },
-			    color: {
-			      value: "#ffffff"
-			    },
-			    shape: {
-			      type: "circle",
-			      stroke: {
-			        width: 0,
-			        color: "#000000"
-			      },
-			      polygon: {
-			        nb_sides: 5
-			      }
-			    },
-			    opacity: {
-			      value: 0.5,
-			      random: true,
-			      anim: {
-			        enable: true,
-			        speed: 1,
-			        opacity_min: 0.1,
-			        sync: false
-			      }
-			    },
-			    size: {
-			      value: 3,
-			      random: true,
-			      anim: {
-			        enable: true,
-			        speed: 2,
-			        size_min: 0.1,
-			        sync: false
-			      }
-			    },
-			    line_linked: {
-			      enable: true,
-			      distance: 150,
-			      color: getRandomColor(), // Asignar color aleatorio
-			      opacity: 0.4,
-			      width: 1
-			    },
-			    move: {
-			      enable: true,
-			      speed: 3,
-			      direction: "none",
-			      random: true,
-			      straight: false,
-			      out_mode: "bounce",
-			      bounce: true,
-			      attract: {
-			        enable: false,
-			        rotateX: 600,
-			        rotateY: 1200
-			      }
-			    }
-			  },
-			  interactivity: {
-			    detect_on: "canvas",
-			    events: {
-			      onhover: {
-			        enable: true,
-			        mode: "bubble"
-			      },
-			      onclick: {
-			        enable: true,
-			        mode: "push"
-			      },
-			      resize: true
-			    },
-			    modes: {
-			      bubble: {
-			        distance: 200,
-			        size: 6,
-			        duration: 2,
-			        opacity: 0.8,
-			        speed: 3
-			      },
-			      push: {
-			        particles_nb: 4
-			      }
-			    }
-			  },
-			  retina_detect: true
-			});
-			// Verificar compatibilidad con la API Web Serial
-			if (navigator.serial) {
-			  document.getElementById("notSupported").style.display = 'none';
-			  document.getElementById("main").style.display = 'block';
-			} else {
-			  document.getElementById("notSupported").style.display = 'block';
-			  document.getElementById("main").style.display = 'none';
-			}
-		</script>
-		<!-- Audio de fondo que se repite constantemente -->
-		<audio id="backgroundAudio" loop>Tu navegador no soporta la etiqueta de audio.</audio>
-		<!-- Botón rojo -->
-		<button id="playButtonn">- 🔊 Sonido Aleatorio De Fondo -</button>
-		<!-- Audio fijo para el botón rojo -->
-		<audio id="audioRed" loop></audio>
-		<script>
-			const audioRed = document.getElementById('audioRed');
-			const audioRandom = document.getElementById('backgroundAudio');
-			const redButton = document.getElementById('playButtonn');
-			
-			// Lista de audios aleatorios para el botón rojo (fondos)
-			const fondos = ['webflash/m8ax-fondo1.opus', 'webflash/m8ax-fondo2.opus'];
-			
-			// Lista de audios aleatorios para el botón azul
-			const audios = [
-			  'webflash/m8ax1.opus',
-			  'webflash/m8ax2.opus',
-			  'webflash/m8ax3.opus',
-			  'webflash/m8ax4.opus'
-			];
-			
-			// Función para detener cualquier audio
-			function stopAllAudio() {
-			  audioRed.pause();
-			  audioRed.currentTime = 0;
-			  audioRandom.pause();
-			  audioRandom.currentTime = 0;
-			}
-			
-			// Botón rojo → elige aleatoriamente entre los dos fondos
-			redButton.addEventListener('click', () => {
-			  stopAllAudio();
-			  const randomFondo = fondos[Math.floor(Math.random() * fondos.length)];
-			  audioRed.src = randomFondo;
-			  audioRed.volume = 0.5;
-			  audioRed.play();
-			});
-			
-			// Función para reproducir música aleatoria (botón azul)
-			function playRandomAudio() {
-			  stopAllAudio();
-			  const randomIndex = Math.floor(Math.random() * audios.length);
-			  audioRandom.src = audios[randomIndex];
-			  audioRandom.volume = 0.5;
-			  audioRandom.play().catch(() => {
-			    console.log("Autoplay bloqueado, requiere interacción del usuario.");
-			  });
-			}
-			
-			// Crear el botón azul dinámicamente
-			const randomButton = document.createElement('button');
-			randomButton.innerText = "- 🎵 Música Aleatoria NerdMiners -";
-			randomButton.id = "playButtonRandom";
-			randomButton.addEventListener('click', playRandomAudio);
-			document.body.appendChild(randomButton);
-		</script>
-		<style>
-			/* Contenedor de botones centrado */
-			#audioButtonsContainer {
-			position: fixed;
-			bottom: 17px;
-			left: 50%;
-			transform: translateX(-50%);
-			display: flex;
-			gap: 12px;
-			z-index: 9999;
-			}
-			#playButtonn,
-			#playButtonRandom {
-			padding: 6px 12px;
-			font-size: 12px;
-			border-radius: 6px;
-			border: none;
-			cursor: pointer;
-			}
-			#playButtonn {
-			background-color: #ff4500;
-			color: white;
-			}
-			#playButtonn:hover {
-			background-color: #ff6347;
-			}
-			#playButtonRandom {
-			background-color: #1e90ff;
-			color: white;
-			}
-			#playButtonRandom:hover {
-			background-color: #3aa0ff;
-			}
-		</style>
-		<script>
-			// Mover los botones al contenedor centrado
-			const container = document.createElement('div');
-			container.id = "audioButtonsContainer";
-			container.appendChild(redButton);
-			container.appendChild(document.getElementById('playButtonRandom'));
-			document.body.appendChild(container);
-		</script>
-		<div style="position: absolute; right: 0; bottom: 0;">
-			<a href="https://youtube.com/m8ax" target="_blank" title="Pulsa Para Ver Mi Canal De Youtube.">
-			<img src="webflash/m8ax.png" alt="https://youtube.com/m8ax" style="width: 100px; height: 100px;">
-			</a>
-		</div>
-		<script>
-			async function getCryptoPrices() {
-			  const url = "https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids=bitcoin,ethereum,ripple,litecoin,cardano,doge,polkadot,uniswap,binancecoin,solana,chainlink,vechain,shiba,inuyasha,terra,monero,ethereum-classic,stellar,usd-coin,wrapped-bitcoin&order=market_cap_desc&per_page=20&page=1&sparkline=false";
-			  try {
-			    const response = await fetch(url);
-			    const data = await response.json();
-			    let tickerHtml = "Precios De Criptomonedas: ";
-			    data.forEach(crypto => {
-			      tickerHtml += `${crypto.name}: $${crypto.current_price} | `;
-			    });
-			    // Remove the last " | "
-			    tickerHtml = tickerHtml.slice(0, -3);
-			    document.getElementById('crypto-ticker').innerHTML = tickerHtml;
-			  } catch (error) {
-			    document.getElementById('crypto-ticker').innerHTML = "Error al cargar los precios.";
-			    console.error("Error fetching data: ", error);
-			  }
-			}
-			// Llamar a la función para cargar los precios
-			getCryptoPrices();
-			// Actualizar cada 60 segundos
-			setInterval(getCryptoPrices, 60000);
-		</script>
-		<!-- Popup De Actualización De Mineros -->
-		<style>
-			#updatePopup {
-			display: none;
-			position: fixed;
-			top: 50%;
-			left: 50%;
-			transform: translate(-50%, -50%);
-			background: rgba(0, 0, 0, 0.95);
-			color: #00ffcc;
-			padding: 20px 35px;
-			border-radius: 20px;
-			text-align: center;
-			font-family: 'Arial', sans-serif;
-			z-index: 9999;
-			box-shadow: 0 0 25px #00ffcc;
-			max-width: 650px;
-			animation: popIn 1.3s ease-out;
-			}
-			#updatePopup h2 {
-			font-size: 18px;
-			margin-bottom: 10px;
-			}
-			#updatePopup p {
-			font-size: 14px;
-			margin: 5px 0;
-			text-align: left;
-			}
-			#updatePopup button {
-			margin-top: 5px;
-			padding: 8px 16px;
-			background: #00ffcc;
-			border: none;
-			border-radius: 8px;
-			color: #000;
-			font-weight: bold;
-			cursor: pointer;
-			transition: background 0.3s;
-			}
-			#updatePopup button:hover {
-			background: #00bfa6;
-			}
-			@keyframes popIn {
-			from {
-			transform: translate(-50%, -60%) scale(0.8);
-			opacity: 0;
-			}
-			to {
-			transform: translate(-50%, -50%) scale(1);
-			opacity: 1;
-			}
-			}
-		</style>
-		<div id="updatePopup">
-			<h2>🚀 Actualización De Mineros 🚀</h2>
-			<p>📅 Compilación: 08/11/2025 Sábado</p>
-			<p>✅ Mejoras Importantes:</p>
-			<p>• Velocidad De Minado Estable ( No Más Ralentizaciones )</p>
-			<p>• Algunas Funciones Ocupan La Mitad De Memoria Que En Versiones Anteriores</p>
-			<p>• Añadidas Más Estadísticas A Enviar A Tu Canal De Telegram Si Lo Tienes Configurado</p>
-			<p>• Corregido Bug De Cambio De Hora Automático</p>
-			<p>• Mayor Estabilidad General</p>
-			<hr style="border: none; border-top: 1px solid #00ffcc; margin: 10px 0;">
-			<h3>🔗 Otros Recursos:</h3>
-			<p>• <a href="webflash/M8AX-CriptoPrecios/M8AX-CriptoPrecios.html" target="_blank">M8AX - Ticker De CriptoPrecios</a> - Ticker De Precios Cripto Desplazándose Por La Pantalla </p>
-			<p>• <a href="webflash/M8AX-CriptoPrecios/M8AX-SalvaPantallas.zip" target="_blank">Salvapantallas De M8AX - CriptoPrecios</a> — Descarga Este Zip, Descomprímelo En <code>Windows\System32</code>, Luego Abre El Panel De Control De Salvapantallas ( Win+R → Escribe <code>control desk.cpl,,@screensaver</code> ) Y Selecciona <strong>M8AXSALVAPANTALLAS</strong>. Para Cerrar El Salvapantallas, Presiona <strong>Alt+F4</strong>. </p>
-			<button class="closeUpdatePopup">Cerrar Ventana</button>
-			<hr style="border: none; border-top: 1px solid #00ffcc; margin: 10px 0;">
-			<h2>🚀 Miners Update 🚀</h2>
-			<p>📅 Build: 11/08/2025 Saturday</p>
-			<p>✅ Major Improvements:</p>
-			<p>• Stable Mining Speed ( No More Slowdowns )</p>
-			<p>• Some Functions Now Use Half The Memory Compared To Previous Versions</p>
-			<p>• Added More Statistics To Send To Your Telegram Channel If Configured</p>
-			<p>• Fixed Automatic Time Change Bug</p>
-			<p>• Enhanced Overall Stability</p>
-			<hr style="border: none; border-top: 1px solid #00ffcc; margin: 10px 0;">
-			<h3>🔗 Other Resources:</h3>
-			<p>• <a href="webflash/M8AX-CriptoPrecios/M8AX-CriptoPrecios.html" target="_blank">M8AX - CryptoPrices Ticker</a> - Crypto Prices Ticker Scrolling Across The Screen </p>
-			<p>• <a href="webflash/M8AX-CriptoPrecios/M8AX-SalvaPantallas.zip" target="_blank">M8AX ScreenSaver - CryptoPrices</a> — Download This Zip, Extract It To <code>Windows\System32</code>, Then Open The Screensaver Control Panel ( Win+R → Type <code>control desk.cpl,,@screensaver</code> ) And Select <strong>M8AXSALVAPANTALLAS</strong>. To Close The Screensaver, Press <strong>Alt+F4</strong>. </p>
-			<br>
-			<p style="text-align: center;">¡ Ayúdame A Seguir Con Una Donación xD !</p>
-			<p style="text-align: center;">&iexcl; Help Me Keep Going With A Donation xD !</p>
-			<p style="text-align: center; font-size: 12px;">
-				<font color="#ffff00"><br>By M8AX ( 2025 ) | ¡Gracias! / Thank You!</font>
-			</p>
-		</div>
-		<script>
-			// Variable para que no vuelva a aparecer en la misma sesión
-			let updatePopupClosed = false;
-			// Mostrar popup automáticamente al cargar la página
-			window.addEventListener("load", function() {
-			  if (!updatePopupClosed) {
-			    document.getElementById("updatePopup").style.display = "block";
-			  }
-			});
-			document.querySelectorAll(".closeUpdatePopup").forEach(btn => {
-			  btn.addEventListener("click", function() {
-			    document.getElementById("updatePopup").style.display = "none";
-			    updatePopupClosed = true; // No volverá a aparecer hasta recargar
-			  });
-			});
-		</script>
-		<!-- Ventanita de salida personalizada -->
-		<style>
-			#exitPopup {
-			display: none;
-			position: fixed;
-			top: 50%;
-			left: 50%;
-			transform: translate(-50%, -50%);
-			background: rgba(0, 0, 0, 0.95);
-			color: #00ffcc;
-			padding: 25px 35px;
-			border-radius: 20px;
-			text-align: center;
-			font-family: 'Arial', sans-serif;
-			z-index: 9999;
-			box-shadow: 0 0 25px #00ffcc;
-			max-width: 450px;
-			animation: popIn 1.3s ease-out;
-			}
-			#exitPopup h2 {
-			font-size: 18px;
-			margin-bottom: 10px;
-			}
-			#exitPopup p {
-			font-size: 14px;
-			margin: 5px 0;
-			}
-			#exitPopup a {
-			color: #00ffcc;
-			font-weight: bold;
-			text-decoration: none;
-			}
-			#exitPopup a:hover {
-			text-decoration: underline;
-			color: #ffffff;
-			}
-			#exitPopup button {
-			margin-top: 15px;
-			padding: 8px 16px;
-			background: #00ffcc;
-			border: none;
-			border-radius: 8px;
-			color: #000;
-			font-weight: bold;
-			cursor: pointer;
-			transition: background 0.2s;
-			}
-			#exitPopup button:hover {
-			background: #00bfa6;
-			}
-			@keyframes popIn {
-			from {
-			transform: translate(-50%, -60%) scale(0.8);
-			opacity: 0;
-			}
-			to {
-			transform: translate(-50%, -50%) scale(1);
-			opacity: 1;
-			}
-			}
-		</style>
-		<div id="exitPopup">
-			<hr style="border: none; border-top: 2px solid #00ff00; margin: 10px 0;">
-			<h2>⚡ Gracias Por Visitar M8AX - NerdMinerV2 ⚡</h2>
-			<p>💬 Si Quieres Un Firmware Con Tu Logo, <br>No Dudes En Contactarme: </p>
-			<p>📧 <a href="mailto:mviiiax.m8ax@gmail.com">
-				<strong>mviiiax.m8ax@gmail.com</strong>
-				</a>
-			</p>
-			<hr style="border: none; border-top: 2px solid #ff0000; margin: 10px 0;">
-			<h2>⚡ Thanks For Visiting M8AX - NerdMinerV2 ⚡</h2>
-			<p>💬 If You Want A Custom Firmware With Your Own Logo, <br>Feel Free To Contact Me: </p>
-			<p>📧 <a href="mailto:mviiiax.m8ax@gmail.com">
-				<strong>mviiiax.m8ax@gmail.com</strong>
-				</a>
-			</p>
-			<hr style="border: none; border-top: 2px solid #0000ff; margin: 10px 0;">
-			<p style="margin-top: 10px;"> 👉 <a href="http://youtube.com/m8ax" target="_blank">Suscríbete A Mi Canal De YouTube</a> 👈 </p>
-			<p style="margin-top: 5px;"> 👉 <a href="http://youtube.com/m8ax" target="_blank">Subscribe To My YouTube Channel</a> 👈 </p>
-			<hr style="border: none; border-top: 2px solid #f0f0f0; margin: 10px 0;">
-			<p style="margin-top: 5px;"> 👉 <a href="webflash/M8AX-CriptoPrecios/M8AX-CriptoPrecios.html" target="_blank">Ticker Cripto Desplazándose Por La Pantalla</a> 👈 </p>
-			<p style="margin-top: 5px;"> 👉 <a href="webflash/M8AX-CriptoPrecios/M8AX-CriptoPrecios.html" target="_blank">Crypto Ticker Scrolling Across The Screen</a> 👈 </p>
-			<hr style="border: none; border-top: 2px solid #ffff00; margin: 10px 0;">
-			<p style="margin-top: 5px;"> 👉 <a href="webflash/M8AX-CriptoPrecios/M8AX-Ticker_Cripto.apk" target="_blank">App Android Con Ticker De Precios Cripto</a> 👈 </p>
-			<p style="margin-top: 5px;"> 👉 <a href="webflash/M8AX-CriptoPrecios/M8AX-Ticker_Cripto.apk" target="_blank">Android App With Crypto Price Ticker</a> 👈 </p>
-			<hr style="border: none; border-top: 2px solid #ffc2d2; margin: 10px 0;">
-			<button id="closePopup">Cerrar Ventana</button><br><br>
-			<hr style="border: none; border-top: 2px solid #d0ff33; margin: 10px 0;">
-		</div>
-		<script>
-			let popupShown = false;
-			let lastTriggerTime = 0;
-			document.addEventListener("mouseout", function(e) {
-			  // Detectar si el ratón se va hacia la barra de título (parte superior)
-			  if (!popupShown && e.clientY <= 0) {
-			    const now = Date.now();
-			    // Evitar que se repita en menos de 5 segundos
-			    if (now - lastTriggerTime > 5000) {
-			      lastTriggerTime = now;
-			      const popup = document.getElementById("exitPopup");
-			      popup.style.display = "block";
-			      popupShown = true;
-			    }
-			  }
-			});
-			// Botón para cerrar el popup
-			document.getElementById("closePopup").addEventListener("click", function() {
-			  document.getElementById("exitPopup").style.display = "none";
-			});
-		</script>
-	</body>
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+        <meta name="theme-color" content="#0b0f17" />
+        <title>M8AX - NerdMinerV2 - M8AX -> Firmware UPDATE</title>
+        <script type="module" src="https://unpkg.com/esp-web-tools@10.1.0/dist/web/install-button.js?module"></script>
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+        <link
+            href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;700&family=Space+Grotesk:wght@400;500;700&display=swap"
+            rel="stylesheet"
+        />
+        <style>
+            :root {
+                --bg: #0b0f17;
+                --panel: #131a27;
+                --panel2: #18212f;
+                --line: #263147;
+                --text: #e9edf5;
+                --muted: #97a3ba;
+                --btc: #f7931a;
+                --ok: #3ddc97;
+                --warn: #ff6b5e;
+                --info: #6cb4ff;
+                --ui: "Space Grotesk", system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+                --mono: "JetBrains Mono", ui-monospace, Consolas, monospace;
+                --r: 14px;
+            }
+            * {
+                box-sizing: border-box;
+            }
+            html {
+                -webkit-text-size-adjust: 100%;
+            }
+            body {
+                margin: 0;
+                background: var(--bg);
+                color: var(--text);
+                font: clamp(14px, 1.05vw + 10px, 16px) / 1.55 var(--ui);
+                min-height: 100vh;
+                padding: calc(44px + env(safe-area-inset-top)) 0 calc(104px + env(safe-area-inset-bottom));
+                overflow-x: hidden;
+            }
+            a {
+                color: var(--btc);
+            }
+            img {
+                max-width: 100%;
+                height: auto;
+            }
+            :focus-visible {
+                outline: 2px solid var(--btc);
+                outline-offset: 2px;
+            }
+            #particles-js {
+                position: fixed;
+                inset: 0;
+                z-index: 0;
+            }
+            #crypto-ticker {
+                position: fixed;
+                top: 0;
+                left: 0;
+                right: 0;
+                z-index: 10000;
+                height: calc(40px + env(safe-area-inset-top));
+                padding-top: env(safe-area-inset-top);
+                background: #0f1522;
+                border-bottom: 1px solid var(--line);
+                overflow: hidden;
+                display: flex;
+                align-items: center;
+                font: 500 13px var(--mono);
+                white-space: nowrap;
+            }
+            #crypto-ticker .track {
+                display: inline-flex;
+                animation: tick 80s linear infinite;
+            }
+            #crypto-ticker:hover .track {
+                animation-play-state: paused;
+            }
+            #crypto-ticker .track span {
+                padding: 0 22px;
+                color: var(--muted);
+            }
+            #crypto-ticker .track b {
+                color: var(--text);
+                font-weight: 500;
+            }
+            #crypto-ticker .msg {
+                padding: 0 16px;
+                color: var(--muted);
+            }
+            @keyframes tick {
+                to {
+                    transform: translateX(-50%);
+                }
+            }
+            .layout {
+                position: relative;
+                z-index: 1;
+                display: grid;
+                gap: 24px;
+                padding: 24px clamp(12px, 3vw, 32px);
+                max-width: 2400px;
+                margin: 0 auto;
+                grid-template-columns: minmax(0, 1fr);
+            }
+            @media (min-width: 1200px) {
+                .layout {
+                    grid-template-columns:
+                        minmax(240px, 1fr) minmax(0, min(55vw, 1100px))
+                        minmax(240px, 1fr);
+                    align-items: start;
+                }
+                .aside {
+                    position: sticky;
+                    top: 64px;
+                    max-height: calc(100vh - 180px);
+                    overflow: auto;
+                }
+            }
+            @media (max-width: 1199px) {
+                .layout > .aside {
+                    order: 2;
+                    max-width: 720px;
+                    width: 100%;
+                    margin: 0 auto;
+                }
+                .layout > .aside + .main ~ .aside,
+                #asideR {
+                    display: none;
+                }
+                .main {
+                    order: 1;
+                    max-width: 720px;
+                    width: 100%;
+                    margin: 0 auto;
+                }
+            }
+            .card {
+                background: rgba(19, 26, 39, 0.92);
+                backdrop-filter: blur(8px);
+                border: 1px solid var(--line);
+                border-radius: 20px;
+                padding: clamp(16px, 3vw, 28px);
+                box-shadow: 0 20px 50px rgba(0, 0, 0, 0.4);
+            }
+            .main {
+                display: flex;
+                flex-direction: column;
+                gap: 20px;
+                text-align: center;
+            }
+            .counter img {
+                border-radius: 8px;
+                display: block;
+                margin: 0 auto;
+            }
+            .video {
+                display: block;
+                color: var(--text);
+                text-decoration: none;
+                font-weight: 500;
+            }
+            .video img {
+                width: 100%;
+                border-radius: var(--r);
+                border: 1px solid var(--line);
+                margin-top: 10px;
+                display: block;
+            }
+            .video:hover img {
+                border-color: var(--btc);
+            }
+            h1 {
+                margin: 0;
+                font-size: clamp(1.5rem, 4.5vw, 2.25rem);
+                line-height: 1.15;
+                letter-spacing: -0.02em;
+            }
+            h1 a {
+                color: var(--text);
+                text-decoration: none;
+            }
+            h1 a:hover {
+                color: var(--btc);
+            }
+            .btn {
+                display: inline-block;
+                padding: 11px 20px;
+                border-radius: 10px;
+                border: 0;
+                background: var(--btc);
+                color: #1a1000;
+                font: 700 0.95rem var(--ui);
+                cursor: pointer;
+                text-decoration: none;
+                transition: filter 0.2s;
+            }
+            .btn:hover {
+                filter: brightness(1.1);
+            }
+            #downloadManual {
+                text-decoration: none;
+            }
+            .note {
+                margin: 0;
+                text-align: left;
+                display: grid;
+                gap: 10px;
+            }
+            .note > * {
+                display: block;
+                margin: 0;
+                padding: 12px 14px;
+                border-radius: 10px;
+                border: 1px solid var(--line);
+                background: var(--panel2);
+            }
+            .note .a {
+                border-left: 4px solid var(--info);
+                color: #cfe5ff;
+                font-weight: 500;
+            }
+            .note .w {
+                border-left: 4px solid var(--warn);
+                color: #ffd0cb;
+                font-weight: 500;
+            }
+            .note .c {
+                border-left: 4px solid var(--ok);
+                color: var(--ok);
+                font: 700 0.9rem var(--mono);
+                overflow-wrap: anywhere;
+            }
+            .devices {
+                display: grid;
+                gap: 12px;
+                grid-template-columns: repeat(auto-fit, minmax(min(100%, 190px), 1fr));
+            }
+            .dev {
+                background: var(--panel2);
+                border: 1px solid var(--line);
+                border-radius: var(--r);
+                padding: 14px 10px;
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                gap: 10px;
+                justify-content: space-between;
+            }
+            .dev img {
+                width: 100px;
+                height: 50px;
+                object-fit: contain;
+            }
+            .dev strong {
+                font-size: 0.78rem;
+                color: var(--info);
+                line-height: 1.3;
+            }
+            #notSupported {
+                display: none;
+                padding: 12px;
+                border-radius: 10px;
+                background: #2a1517;
+                border: 1px solid var(--warn);
+                color: #ffd0cb;
+            }
+            #notSupported p {
+                margin: 0;
+            }
+            .footer-image img {
+                border-radius: var(--r);
+            }
+            .don {
+                text-align: center;
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                gap: 12px;
+                font: 700 0.75rem/1.5 var(--ui);
+                letter-spacing: 0.02em;
+            }
+            .don img {
+                border-radius: 10px;
+                width: min(100%, 170px);
+            }
+            .don hr {
+                width: 100%;
+                border: 0;
+                border-top: 1px solid var(--line);
+                margin: 4px 0;
+            }
+            .don p {
+                margin: 0;
+            }
+            .dock {
+                position: fixed;
+                left: 0;
+                right: 0;
+                bottom: 0;
+                z-index: 9999;
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                gap: 10px;
+                padding: 10px clamp(10px, 2vw, 20px) calc(10px + env(safe-area-inset-bottom));
+                background: rgba(11, 15, 23, 0.92);
+                backdrop-filter: blur(10px);
+                border-top: 1px solid var(--line);
+            }
+            .dock .logo img {
+                width: clamp(44px, 7vw, 64px);
+                height: clamp(44px, 7vw, 64px);
+                object-fit: cover;
+                border-radius: 10px;
+                display: block;
+            }
+            #audioButtonsContainer {
+                display: flex;
+                flex-wrap: wrap;
+                gap: 8px;
+                justify-content: center;
+            }
+            #playButtonn,
+            #playButtonRandom {
+                padding: 9px 14px;
+                border-radius: 999px;
+                border: 0;
+                color: #fff;
+                font: 500 0.8rem var(--ui);
+                cursor: pointer;
+                transition:
+                    filter 0.2s,
+                    box-shadow 0.2s;
+            }
+            #playButtonn {
+                background: #e8481f;
+            }
+            #playButtonRandom {
+                background: #2a7fe0;
+            }
+            #playButtonn:hover,
+            #playButtonRandom:hover {
+                filter: brightness(1.15);
+            }
+            .is-playing {
+                box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.35);
+            }
+            @media (max-width: 480px) {
+                #audioButtonsContainer {
+                    flex-direction: column;
+                    align-items: stretch;
+                }
+            }
+            .modal {
+                display: none;
+                position: fixed;
+                inset: 0;
+                z-index: 20000;
+                background: rgba(3, 6, 12, 0.75);
+                padding: 16px;
+                align-items: center;
+                justify-content: center;
+            }
+            .modal.open {
+                display: flex;
+            }
+            .modal .box {
+                width: 100%;
+                max-width: 660px;
+                max-height: calc(100dvh - 32px);
+                overflow: auto;
+                background: var(--panel);
+                border: 1px solid var(--btc);
+                border-radius: 20px;
+                padding: clamp(16px, 3vw, 28px);
+                box-shadow: 0 0 40px rgba(247, 147, 26, 0.25);
+                animation: pop 0.4s ease-out;
+            }
+            .modal h2 {
+                font-size: 1.15rem;
+                margin: 0 0 10px;
+                text-align: center;
+            }
+            .modal h3 {
+                font-size: 1rem;
+                margin: 12px 0 4px;
+            }
+            .modal p {
+                margin: 6px 0;
+                font-size: 0.9rem;
+            }
+            .modal hr {
+                border: 0;
+                border-top: 1px solid var(--line);
+                margin: 14px 0;
+            }
+            .modal code {
+                font-family: var(--mono);
+                color: var(--ok);
+                font-size: 0.85em;
+            }
+            .modal .c {
+                text-align: center;
+            }
+            .modal .actions {
+                text-align: center;
+                margin-top: 12px;
+            }
+            #exitPopup .box {
+                max-width: 480px;
+                text-align: center;
+            }
+            @keyframes pop {
+                from {
+                    transform: translateY(-14px) scale(0.96);
+                    opacity: 0;
+                }
+            }
+            @media (prefers-reduced-motion: reduce) {
+                * {
+                    animation: none !important;
+                    transition: none !important;
+                }
+            }
+        </style>
+    </head>
+
+    <body>
+        <div id="crypto-ticker"><span class="msg">Cargando Precios...</span></div>
+        <div id="particles-js"></div>
+
+        <div class="layout">
+            <aside class="aside card" id="asideL">
+                <div class="don" id="donSrc">
+                    <img
+                        src="webflash/btcdonation.png"
+                        alt="Donación Voluntaria De BTC"
+                        style="width: 170px; height: 127px"
+                    />
+                    <p>DONACION BITCOIN <br />PARA EL CREADOR <br />( VOLUNTARIA )</p>
+                    <p>ESCANEA PARA OBTENER MI <br />DIRECCIÓN DE BITCOIN</p>
+                    <hr />
+                    <p>DONACIÓN PAYPAL VOLUNTARIA</p>
+                    <a href="https://www.paypal.me/m8ax" target="_blank" rel="noopener"
+                        ><img
+                            src="webflash/paypal.png"
+                            alt="Donación Voluntaria Mediante PayPal"
+                            style="width: 100px; height: 100px"
+                    /></a>
+                    <hr />
+                    <script async src="https://js.stripe.com/v3/buy-button.js"></script>
+                    <stripe-buy-button
+                        buy-button-id="buy_btn_1R9mDLG6Z48hDDbhNF1rOjq9"
+                        publishable-key="pk_live_51R9kxCG6Z48hDDbhv2liWJMCmC9CamrzcpawsWZqtyGoXSnZNhvjSCk17AgDkFUVjORwPSiciVTegSVI4MuFLWaI00LV2Z8iaT"
+                    ></stripe-buy-button>
+                    <hr />
+                    <p>DONACIÓN VOLUNTARIA</p>
+                    <img
+                        src="webflash/satos.png"
+                        alt="Donación Mediante La Red Lightning Network De Bitcoin"
+                        style="width: 170px; height: 127px; max-width: 200%"
+                    />
+                </div>
+            </aside>
+            <main class="main card">
+                <div class="counter">
+                    <a href="https://odysee.com/@m8ax" target="_blank" rel="noopener">
+                        <img
+                            src="https://hitwebcounter.com/counter/counter.php?page=21490331&style=0025&nbdigits=9&type=page&initCount=16858"
+                            title="My Odysee Channel"
+                            alt="My Odysee Channel"
+                        />
+                    </a>
+                </div>
+                <div class="header-image">
+                    <a
+                        class="video"
+                        href="https://youtu.be/hjlTQvUVsiU"
+                        target="_blank"
+                        rel="noopener"
+                        title="Haz Clic Para Para Ver El Video De Mi Versión Del Firmware Del NerdMinerV2."
+                        >Pincha Para Ver Video En Cualquier Imágen Ó Aquí Mismo
+                        <img
+                            src="webflash/pantallas.png"
+                            alt="Pantallas Del --- M8AX - NerdMinerV2 - M8AX | ( PINCHA PARA VER VIDEO ) |"
+                    /></a>
+                </div>
+                <h1>
+                    <a
+                        href="https://github.com/m8ax/MvIiIaX-NerdMiner_V2-DeV"
+                        target="_blank"
+                        rel="noopener"
+                        title="Haz Clic Para Visitar El Repositorio Del Firmware M8AX NerdMinerV2 En GitHub."
+                        >M8AX - Firmware NerdMinerV2</a
+                    >
+                </h1>
+                <div>
+                    <a id="downloadManual" href="M8AX-NerdMinerV2-M8AX-Manual.pdf" target="_blank" rel="noopener">
+                        <button class="btn" type="button">Abrir Manual PDF De M8AX - NerdMinerV2 - M8AX</button>
+                    </a>
+                </div>
+                <p class="note">
+                    <span class="a"
+                        >Si No Funciona, Activa El Modo Programación: Pulsa El Botón 1 (Abajo), Conéctalo Por USB Y
+                        Suéltalo Tras 2 Segundos.</span
+                    >
+                    <span class="w"
+                        >NOTA: Asegúrate De Cerrar Cualquier Programa Que Esté Usando El Puerto COM De Tu Dispositivo (
+                        Por Ejemplo, El Monitor Serie ).</span
+                    >
+                    <span class="c">SSID Config: M8AX-Minero | Clave: MinaTuPasta</span>
+                </p>
+                <div class="devices" id="main">
+                    <div class="dev">
+                        <img src="webflash/nmv2.png" alt="NerdMiner V2" title="NerdMiner V2" />
+                        <esp-web-install-button manifest="webflash/manifest1.json"></esp-web-install-button
+                        ><strong>ESP32-NerdMinerV2</strong>
+                    </div>
+                    <div class="dev">
+                        <img
+                            src="webflash/pgrande.png"
+                            alt="NerdMiner V2 - ESP32-2432S028R"
+                            title="NerdMiner V2 - ESP32-2432S028R"
+                        />
+                        <esp-web-install-button manifest="webflash/manifest2.json"></esp-web-install-button
+                        ><strong>ESP32-2432S028R</strong>
+                    </div>
+                    <div class="dev">
+                        <img
+                            src="webflash/pgrande.png"
+                            alt="NerdMiner V2 - ESP32-2432S028R - Pantalla Invertida"
+                            title="NerdMiner V2 - ESP32-2432S028R - Pantalla Invertida"
+                        />
+                        <esp-web-install-button manifest="webflash/manifest5.json"></esp-web-install-button
+                        ><strong>ESP32-2432S028R - Pantalla Invertida</strong>
+                    </div>
+                    <div class="dev">
+                        <img
+                            src="webflash/trumpfirm.png"
+                            alt="NerdMiner V2 - TRUMP VERSION - ESP32-2432S028R"
+                            title="NerdMiner V2 - TRUMP VERSION - ESP32-2432S028R"
+                        />
+                        <esp-web-install-button manifest="webflash/manifest4.json"></esp-web-install-button
+                        ><strong>ESP32-2432S028R - TRUMP VERSION</strong>
+                    </div>
+                    <div class="dev">
+                        <img src="webflash/placa.png" alt="Placas ESP32 WROOM" title="Placas ESP32 WROOM" />
+                        <esp-web-install-button manifest="webflash/manifest3.json"></esp-web-install-button
+                        ><strong>ESP32 WROOM</strong>
+                    </div>
+                </div>
+                <div id="notSupported">
+                    <p>Tu Navegador No Es Compatible Con La API Web Serial. Prueba Con Chrome.</p>
+                </div>
+                <div class="footer-image">
+                    <a
+                        href="https://pool.bitronics.store/"
+                        target="_blank"
+                        rel="noopener"
+                        title="Visitar Bitronics Pool"
+                        ><img src="webflash/M8AXNMV2.png" alt="M8AX - NerdMinerV2 - M8AX"
+                    /></a>
+                </div>
+            </main>
+
+            <aside class="aside card" id="asideR"></aside>
+        </div>
+
+        <audio id="backgroundAudio" loop>Tu navegador no soporta la etiqueta de audio.</audio>
+        <audio id="audioRed" loop></audio>
+        <div class="dock">
+            <a
+                class="logo"
+                href="https://oncyber.io/m8ax"
+                target="_blank"
+                rel="noopener"
+                title="Haz Clic Para Visitar Mi Arte En NFT's."
+                ><img src="webflash/m8ax.png" alt="https://oncyber.io/m8ax"
+            /></a>
+            <div id="audioButtonsContainer">
+                <button id="playButtonn" type="button">🔊 Sonido Aleatorio De Fondo</button>
+                <button id="playButtonRandom" type="button">🎵 Música Aleatoria NerdMiners</button>
+            </div>
+            <a
+                class="logo"
+                href="https://youtube.com/m8ax"
+                target="_blank"
+                rel="noopener"
+                title="Pulsa Para Ver Mi Canal De Youtube. ( Audiolibros, Hardware, Etc... )"
+                ><img src="webflash/m8ax.png" alt="https://youtube.com/m8ax"
+            /></a>
+        </div>
+
+        <div class="modal" id="updatePopup">
+            <div class="box" role="dialog" aria-modal="true">
+                <h2>🚀 Actualización De Mineros 🚀</h2>
+                <p>📅 Compilación: 10/11/2026 Martes</p>
+                <p>✅ Mejoras Importantes:</p>
+                <p>• Velocidad De Minado Estable ( No Más Ralentizaciones )</p>
+                <p>• Algunas Funciones Ocupan La Mitad De Memoria Que En Versiones Anteriores</p>
+                <p>• Añadidas Más Estadísticas A Enviar A Tu Canal De Telegram Si Lo Tienes Configurado</p>
+                <p>• Corregido Bug De Cambio De Hora Automático</p>
+                <p>• Alguna Sorpresa</p>
+                <p>• Mayor Estabilidad General</p>
+                <hr />
+                <h3>🔗 Otros Recursos:</h3>
+                <p>
+                    •
+                    <a href="webflash/M8AX-CriptoPrecios/M8AX-CriptoPrecios.html" target="_blank"
+                        >M8AX - Ticker De CriptoPrecios</a
+                    >
+                    - Ticker De Precios Cripto Desplazándose Por La Pantalla
+                </p>
+                <p>
+                    •
+                    <a href="webflash/M8AX-CriptoPrecios/M8AX-SalvaPantallas.zip" target="_blank"
+                        >Salvapantallas De M8AX - CriptoPrecios</a
+                    >
+                    — Descarga Este Zip, Descomprímelo En
+                    <code>Windows\System32</code>, Luego Abre El Panel De Control De Salvapantallas ( Win+R → Escribe
+                    <code>control desk.cpl,,@screensaver</code> ) Y Selecciona <strong>M8AXSALVAPANTALLAS</strong>. Para
+                    Cerrar El Salvapantallas, Presiona <strong>Alt+F4</strong>.
+                </p>
+                <p>
+                    •
+                    <a href="https://youtube.com/m8ax" target="_blank">M8AX - Mi Canal De Videos En Youtube</a>
+                    - M8AX - Mi Canal De Videos En Youtube<br>( Audiolibros, Hardware, Etc... )
+                </p>
+                <p>
+                    •
+                    <a href="https://odysee.com/@m8ax" target="_blank">M8AX - Mi Canal De Videos En Odysee</a>
+                    - M8AX - Mi Canal De Videos En Odysee<br>( Audiolibros, Hardware, Etc... )
+                </p>
+                <p>
+                    •
+                    <a href="https://opensea.io/m8ax" target="_blank">M8AX - Mis NFT En OpenSea</a>
+                    - M8AX - Mis NFT En OpenSea
+                </p>
+                <div class="actions">
+                    <button class="btn closeUpdatePopup">Cerrar Ventana</button>
+                </div>
+                <hr />
+                <h2>🚀 Miners Update 🚀</h2>
+                <p>📅 Build: 11/10/2026 Tuesday</p>
+                <p>✅ Major Improvements:</p>
+                <p>• Stable Mining Speed ( No More Slowdowns )</p>
+                <p>• Some Functions Now Use Half The Memory Compared To Previous Versions</p>
+                <p>• Added More Statistics To Send To Your Telegram Channel If Configured</p>
+                <p>• Fixed Automatic Time Change Bug</p>
+                <p>• Some Surprise</p>
+                <p>• Enhanced Overall Stability</p>
+                <hr />
+                <h3>🔗 Other Resources:</h3>
+                <p>
+                    •
+                    <a href="webflash/M8AX-CriptoPrecios/M8AX-CriptoPrecios.html" target="_blank"
+                        >M8AX - CryptoPrices Ticker</a
+                    >
+                    - Crypto Prices Ticker Scrolling Across The Screen
+                </p>
+                <p>
+                    •
+                    <a href="webflash/M8AX-CriptoPrecios/M8AX-SalvaPantallas.zip" target="_blank"
+                        >M8AX ScreenSaver - CryptoPrices</a
+                    >
+                    — Download This Zip, Extract It To <code>Windows\System32</code>, Then Open The Screensaver Control
+                    Panel ( Win+R → Type <code>control desk.cpl,,@screensaver</code> ) And Select
+                    <strong>M8AXSALVAPANTALLAS</strong>. To Close The Screensaver, Press <strong>Alt+F4</strong>.
+                </p>
+                <p>
+                    •
+                    <a href="https://youtube.com/m8ax" target="_blank">M8AX - My YouTube Video Channel</a>
+                    - M8AX - My YouTube Video Channel<br>( Audiobooks, Hardware, Etc... )
+                </p>
+                <p>
+                    •
+                    <a href="https://odysee.com/@m8ax" target="_blank">M8AX - My Odysee Video Channel</a>
+                    - M8AX - My Odysee Video Channel<br>( Audiobooks, Hardware, Etc... )
+                </p>
+                <p>
+                    •
+                    <a href="https://opensea.io/m8ax" target="_blank">M8AX - My NFTs On OpenSea</a>
+                    - M8AX - My NFTs On OpenSea
+                </p>
+                <hr />
+                <p class="c">¡ Ayúdame A Seguir Con Una Donación xD !</p>
+                <p class="c">¡ Help Me Keep Going With A Donation xD !</p>
+                <p class="c" style="color: #ffd84d; font-size: 0.8rem">By M8AX ( 2026 ) | ¡Gracias! / Thank You!</p>
+                <div class="actions">
+                    <button class="btn closeUpdatePopup">Cerrar Ventana</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="modal" id="exitPopup">
+            <div class="box" role="dialog" aria-modal="true">
+                <hr style="border-top: 2px solid #00ff00" />
+                <h2>⚡ Gracias Por Visitar M8AX - NerdMinerV2 ⚡</h2>
+                <p>💬 Si Quieres Un Firmware Con Tu Logo, <br />No Dudes En Contactarme:</p>
+                <p>
+                    📧
+                    <a href="mailto:mviiiax.m8ax@gmail.com"><strong>mviiiax.m8ax@gmail.com</strong></a>
+                </p>
+                <hr style="border-top: 2px solid #ff0000" />
+                <h2>⚡ Thanks For Visiting M8AX - NerdMinerV2 ⚡</h2>
+                <p>💬 If You Want A Custom Firmware With Your Own Logo, <br />Feel Free To Contact Me:</p>
+                <p>
+                    📧
+                    <a href="mailto:mviiiax.m8ax@gmail.com"><strong>mviiiax.m8ax@gmail.com</strong></a>
+                </p>
+                <hr style="border-top: 2px solid #0000ff" />
+                <p>
+                    👉
+                    <a href="http://youtube.com/m8ax" target="_blank"
+                        >Suscríbete A Mi Canal De YouTube<br>( Audiolibros, Hardware, Etc... )</a
+                    >
+                    👈
+                </p>
+                <p>
+                    👉
+                    <a href="http://youtube.com/m8ax" target="_blank"
+                        >Subscribe To My YouTube Channel<br>( Audiobooks, Hardware, Etc... )</a
+                    >
+                    👈
+                </p>
+                <p>
+                    👉
+                    <a href="https://odysee.com/@m8ax" target="_blank"
+                        >Suscríbete A Mi Canal De Odysee<br>( Audiolibros, Hardware, Etc... )</a
+                    >
+                    👈
+                </p>
+                <p>
+                    👉
+                    <a href="https://odysee.com/@m8ax" target="_blank"
+                        >Subscribe To My Odysee Channel<br>( Audiobooks, Hardware, Etc... )</a
+                    >
+                    👈
+                </p>
+                <p>
+                    👉
+                    <a href="https://opensea.io/m8ax" target="_blank">M8AX - Mis NFT En OpenSea</a>
+                    👈
+                </p>
+                <p>
+                    👉
+                    <a href="https://opensea.io/m8ax" target="_blank">M8AX - My NFTs On OpenSea</a>
+                    👈
+                </p>
+                <hr style="border-top: 2px solid #f0f0f0" />
+                <p>
+                    👉
+                    <a href="webflash/M8AX-CriptoPrecios/M8AX-CriptoPrecios.html" target="_blank"
+                        >Ticker Cripto Desplazándose Por La Pantalla</a
+                    >
+                    👈
+                </p>
+                <p>
+                    👉
+                    <a href="webflash/M8AX-CriptoPrecios/M8AX-CriptoPrecios.html" target="_blank"
+                        >Crypto Ticker Scrolling Across The Screen</a
+                    >
+                    👈
+                </p>
+                <hr style="border-top: 2px solid #ffff00" />
+                <p>
+                    👉
+                    <a href="webflash/M8AX-CriptoPrecios/M8AX-Ticker_Cripto.apk" target="_blank"
+                        >App Android Con Ticker De Precios Cripto</a
+                    >
+                    👈
+                </p>
+                <p>
+                    👉
+                    <a href="webflash/M8AX-CriptoPrecios/M8AX-Ticker_Cripto.apk" target="_blank"
+                        >Android App With Crypto Price Ticker</a
+                    >
+                    👈
+                </p>
+                <hr style="border-top: 2px solid #ffc2d2" />
+                <div class="actions">
+                    <button class="btn" id="closePopup">Cerrar Ventana</button>
+                </div>
+                <hr style="border-top: 2px solid #d0ff33" />
+            </div>
+        </div>
+
+        <script src="https://cdn.jsdelivr.net/particles.js/2.0.0/particles.min.js"></script>
+        <script>
+            // Segundo panel de donaciones (copia del primero)
+            document.getElementById("asideR").appendChild(document.getElementById("donSrc").cloneNode(true));
+
+            function getRandomColor() {
+                return (
+                    "#" +
+                    Math.floor(Math.random() * 16777215)
+                        .toString(16)
+                        .padStart(6, "0")
+                );
+            }
+            if (window.particlesJS) {
+                particlesJS("particles-js", {
+                    particles: {
+                        number: {
+                            value: 80,
+                            density: { enable: true, value_area: 800 },
+                        },
+                        color: { value: "#ffffff" },
+                        shape: {
+                            type: "circle",
+                            stroke: { width: 0, color: "#000000" },
+                            polygon: { nb_sides: 5 },
+                        },
+                        opacity: {
+                            value: 0.5,
+                            random: true,
+                            anim: {
+                                enable: true,
+                                speed: 1,
+                                opacity_min: 0.1,
+                                sync: false,
+                            },
+                        },
+                        size: {
+                            value: 3,
+                            random: true,
+                            anim: {
+                                enable: true,
+                                speed: 2,
+                                size_min: 0.1,
+                                sync: false,
+                            },
+                        },
+                        line_linked: {
+                            enable: true,
+                            distance: 150,
+                            color: getRandomColor(),
+                            opacity: 0.4,
+                            width: 1,
+                        },
+                        move: {
+                            enable: true,
+                            speed: 3,
+                            direction: "none",
+                            random: true,
+                            straight: false,
+                            out_mode: "bounce",
+                            bounce: true,
+                            attract: { enable: false, rotateX: 600, rotateY: 1200 },
+                        },
+                    },
+                    interactivity: {
+                        detect_on: "window",
+                        events: {
+                            onhover: { enable: true, mode: "bubble" },
+                            onclick: { enable: true, mode: "push" },
+                            resize: true,
+                        },
+                        modes: {
+                            bubble: {
+                                distance: 200,
+                                size: 6,
+                                duration: 2,
+                                opacity: 0.8,
+                                speed: 3,
+                            },
+                            push: { particles_nb: 4 },
+                        },
+                    },
+                    retina_detect: true,
+                });
+            }
+            if (!navigator.serial) {
+                document.getElementById("notSupported").style.display = "block";
+            }
+
+            // Audio
+            const audioRed = document.getElementById("audioRed"),
+                audioRandom = document.getElementById("backgroundAudio"),
+                redButton = document.getElementById("playButtonn"),
+                randomButton = document.getElementById("playButtonRandom");
+            const fondos = ["webflash/m8ax-fondo1.opus", "webflash/m8ax-fondo2.opus"];
+            const audios = ["webflash/m8ax1.opus", "webflash/m8ax2.opus", "webflash/m8ax3.opus", "webflash/m8ax4.opus"];
+            function stopAllAudio() {
+                audioRed.pause();
+                audioRed.currentTime = 0;
+                audioRandom.pause();
+                audioRandom.currentTime = 0;
+                redButton.classList.remove("is-playing");
+                randomButton.classList.remove("is-playing");
+            }
+            redButton.addEventListener("click", () => {
+                stopAllAudio();
+                audioRed.src = fondos[Math.floor(Math.random() * fondos.length)];
+                audioRed.volume = 0.5;
+                audioRed
+                    .play()
+                    .then(() => redButton.classList.add("is-playing"))
+                    .catch(() => console.log("Autoplay bloqueado."));
+            });
+            function playRandomAudio() {
+                stopAllAudio();
+                audioRandom.src = audios[Math.floor(Math.random() * audios.length)];
+                audioRandom.volume = 0.5;
+                audioRandom
+                    .play()
+                    .then(() => randomButton.classList.add("is-playing"))
+                    .catch(() => console.log("Autoplay bloqueado, requiere interacción del usuario."));
+            }
+            randomButton.addEventListener("click", playRandomAudio);
+
+            // Ticker de precios
+            async function getCryptoPrices() {
+                const t = document.getElementById("crypto-ticker");
+                try {
+                    const r = await fetch(
+                        "https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids=bitcoin,ethereum,ripple,litecoin,cardano,doge,polkadot,uniswap,binancecoin,solana,chainlink,vechain,shiba,inuyasha,terra,monero,ethereum-classic,stellar,usd-coin,wrapped-bitcoin&order=market_cap_desc&per_page=20&page=1&sparkline=false"
+                    );
+                    const d = await r.json();
+                    const items = d.map((c) => `<span>${c.name}: <b>$${c.current_price}</b></span>`).join("");
+                    const html = `<span>Precios De Criptomonedas:</span>${items}`;
+                    t.innerHTML = `<div class="track">${html}${html}</div>`;
+                } catch (e) {
+                    t.innerHTML = '<span class="msg">Error al cargar los precios.</span>';
+                    console.error("Error fetching data: ", e);
+                }
+            }
+            getCryptoPrices();
+            setInterval(getCryptoPrices, 60000);
+
+            // Popups
+            const upd = document.getElementById("updatePopup"),
+                ex = document.getElementById("exitPopup");
+            window.addEventListener("load", () => upd.classList.add("open"));
+            document
+                .querySelectorAll(".closeUpdatePopup")
+                .forEach((b) => b.addEventListener("click", () => upd.classList.remove("open")));
+            document.getElementById("closePopup").addEventListener("click", () => ex.classList.remove("open"));
+            [upd, ex].forEach((m) =>
+                m.addEventListener("click", (e) => {
+                    if (e.target === m) m.classList.remove("open");
+                })
+            );
+            document.addEventListener("keydown", (e) => {
+                if (e.key === "Escape") {
+                    upd.classList.remove("open");
+                    ex.classList.remove("open");
+                }
+            });
+            let popupShown = false,
+                lastTriggerTime = 0;
+            document.addEventListener("mouseout", (e) => {
+                if (!popupShown && e.clientY <= 0) {
+                    const now = Date.now();
+                    if (now - lastTriggerTime > 5000) {
+                        lastTriggerTime = now;
+                        ex.classList.add("open");
+                        popupShown = true;
+                    }
+                }
+            });
+        </script>
+    </body>
 </html>

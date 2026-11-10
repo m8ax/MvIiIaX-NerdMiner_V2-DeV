@@ -44,9 +44,10 @@
  *   XIII                  - **Parpadeo Rápido Corto + Pausa 2s + Parpadeo Rápido Corto Después De Enviar Mensaje A Telegram** → Error En Envío :(
  *   XIV                   - **Parpadeos Largos** → Temperatura Superior A 75°C.
  *   XV                    - **Share Enviado A La Pool** → 5 Ticks Rápidos Del LED.
- *   XVI                   - NOTA - Si La Temperatura Pasa De 80°C, El Dispositivo Entrará En Deep Sleep 10 Min, Pasados Los 10 Min, Rearrancará.
- *   XVII                  - Espero Que Os Guste Y Minéis Un Bloque Y Si Es Así ¡Dadme Algo Coño!
- *   XVIII                 - ¡A Minar!
+ *   XVI                   - **Ritmo "TA TA RI ROO RI ROOOO" ( Cumpleaños Feliz )** → ¡Es El Cumpleaños De M8AX! ( 10 De Marzo, De 8h A 20h ). Sale Tras Los Ticks De Minado, Cada 20s.
+ *   XVII                  - NOTA - Si La Temperatura Pasa De 80°C, El Dispositivo Entrará En Deep Sleep 10 Min, Pasados Los 10 Min, Rearrancará.
+ *   XVIII                 - Espero Que Os Guste Y Minéis Un Bloque Y Si Es Así ¡Dadme Algo Coño!
+ *   XIX                   - ¡A Minar!
  *
  *
  *   Blockchain Es Una Base De Datos Descentralizada Que Almacena Registros De Transacciones En Bloques Enlazados.
@@ -70,11 +71,11 @@
  *   5 - "Forma De Almacenar Valor Que No Depende De Gobiernos Ni Instituciones." – Barry Silbert, CEO De Digital Currency Group.
  *
  *
- *              ///\\\ --- Minimizando Código, Maximizando Funcionalidad. Solo 2100 Líneas De Código En 6h --- ///\\\
+ *              ///\\\ --- Minimizando Código, Maximizando Funcionalidad. Solo 2200 Líneas De Código En 7h --- ///\\\
  *
  *                                                     .M8AX Corp. - ¡A Minar!
  *
- *                                                            Marzo 2025
+ *                                                         Noviembre 2026
  *
  *
  *                        ===============================================================================
@@ -112,7 +113,6 @@
 #define m8ax 2
 #define MAX_RESULT_LENGTH 500
 #define MAX_NUMBERS 6
-#define MAX_DEPTH 4
 #define MAX_HASHRATE 420
 #define BAR_LENGTH 42
 #define GOTAAGUA 0.00005
@@ -163,12 +163,6 @@ const unsigned long interval = 60 * 2 * 60, minStartupTime = interval;
 unsigned long lastTelegramEpochTime = 0, startTime = 0, epochTime, tiempoInicio, tiempoTranscurrido;
 mining_data data;
 moonPhase mymoonPhase;
-
-typedef struct
-{
-  int value;
-  char operation[500];
-} State;
 
 void noDisplay_Init(void)
 {
@@ -293,8 +287,7 @@ void calculateSunTimes(int year, int month, int day, double lat, double lng, dou
   double cosH = (sin(degToRad(-0.83)) - sin(degToRad(lat)) * sin(delta)) / (cos(degToRad(lat)) * cos(delta));
   if (cosH > 1)
   {
-    sunrise = -1;
-    sunset = -1;
+    sunrise = -1, sunset = -1;
     return;
   }
   else if (cosH < -1)
@@ -820,9 +813,26 @@ void fiestaLED()
   totalparpadeosled += 4;
 }
 
+#define CUMPLE_DIA 10
+#define CUMPLE_MES 3
+
+void cumpleLED()
+{
+  vTaskDelay(pdMS_TO_TICKS(600));
+  const int ritmo[][2] = {{120, 80}, {120, 80}, {250, 80}, {500, 80}, {250, 80}, {900, 300}};
+  for (int i = 0; i < 6; i++)
+  {
+    digitalWrite(m8ax, HIGH);
+    vTaskDelay(pdMS_TO_TICKS(ritmo[i][0]));
+    digitalWrite(m8ax, LOW);
+    vTaskDelay(pdMS_TO_TICKS(ritmo[i][1]));
+  }
+  totalparpadeosled += 6;
+}
+
 void sincroLED()
 {
-  for (int i = 0; i <= 50; i++)
+  for (int i = 0; i < 50; i++)
   {
     digitalWrite(m8ax, HIGH);
     vTaskDelay(pdMS_TO_TICKS(25));
@@ -835,7 +845,7 @@ void sincroLED()
 
 void sincroLED2()
 {
-  for (int i = 0; i <= 20; i++)
+  for (int i = 0; i < 20; i++)
   {
     digitalWrite(m8ax, HIGH);
     vTaskDelay(pdMS_TO_TICKS(25));
@@ -1040,105 +1050,186 @@ const char *convertirTiempoNoMinando(uint32_t segundos)
   return buffer;
 }
 
-void find_operations(int numbers[], int target, State current, State *best, int depth, int used[])
+#define CIFRAS_TIME_BUDGET_MS 2500
+#define CIFRAS_MAX_STEPS (MAX_NUMBERS - 1)
+
+struct CifraPaso
 {
-  if (current.value == target)
+  int a;
+  char op;
+  int b;
+  int r;
+};
+
+struct CifrasCtx
+{
+  int target;
+  int bestVal;
+  int bestDiff;
+  int bestCount;
+  CifraPaso best[CIFRAS_MAX_STEPS];
+  CifraPaso cur[CIFRAS_MAX_STEPS];
+  uint32_t nodes;
+  uint32_t deadline;
+  bool done;
+};
+
+static inline void cifras_candidate(CifrasCtx &c, int value, int steps)
+{
+  int diff = abs(value - c.target);
+  if (diff < c.bestDiff)
   {
-    *best = current;
-    return;
+    c.bestDiff = diff;
+    c.bestVal = value;
+    c.bestCount = steps;
+    for (int k = 0; k < steps; k++)
+      c.best[k] = c.cur[k];
+    if (diff == 0)
+      c.done = true;
   }
-  if (depth == MAX_DEPTH)
+}
+
+static void cifras_search(CifrasCtx &c, const int *vals, int n, int depth)
+{
+  for (int i = 0; i < n - 1 && !c.done; i++)
   {
-    int diff = abs(current.value - target);
-    int mejor_diff = abs(best->value - target);
-    if (diff < mejor_diff)
+    bool dupI = false;
+    for (int k = 0; k < i; k++)
+      if (vals[k] == vals[i])
+      {
+        dupI = true;
+        break;
+      }
+    if (dupI)
+      continue;
+    for (int j = i + 1; j < n && !c.done; j++)
     {
-      *best = current;
-    }
-    return;
-  }
-  for (int i = 0; i < MAX_NUMBERS; i++)
-  {
-    if (!used[i])
-    {
-      used[i] = 1;
-      int new_value = current.value + numbers[i];
-      if (new_value >= 0)
+      bool dupJ = false;
+      for (int k = i + 1; k < j; k++)
+        if (vals[k] == vals[j])
+        {
+          dupJ = true;
+          break;
+        }
+      if (dupJ)
+        continue;
+      int x = vals[i], y = vals[j];
+      if (x < y)
       {
-        State new_state;
-        new_state.value = new_value;
-        snprintf(new_state.operation, sizeof(new_state.operation), "%s -> (%d + %d) = %d", current.operation, current.value, numbers[i], new_value);
-        find_operations(numbers, target, new_state, best, depth + 1, used);
+        int t = x;
+        x = y;
+        y = t;
       }
-      if (current.value - numbers[i] >= 0)
+      int rest[MAX_NUMBERS];
+      int m = 0;
+      for (int k = 0; k < n; k++)
+        if (k != i && k != j)
+          rest[m++] = vals[k];
+      for (int o = 0; o < 4 && !c.done; o++)
       {
-        State new_state;
-        new_state.value = current.value - numbers[i];
-        snprintf(new_state.operation, sizeof(new_state.operation), "%s -> (%d - %d) = %d", current.operation, current.value, numbers[i], new_state.value);
-        find_operations(numbers, target, new_state, best, depth + 1, used);
+        int r;
+        char op;
+        switch (o)
+        {
+        case 0:
+          r = x + y;
+          op = '+';
+          break;
+        case 1:
+          if (x == y)
+            continue;
+          r = x - y;
+          op = '-';
+          break;
+        case 2:
+          if (x == 1 || y == 1)
+            continue;
+          r = x * y;
+          op = '*';
+          break;
+        default:
+          if (y == 1 || x % y != 0)
+            continue;
+          r = x / y;
+          op = '/';
+          break;
+        }
+        if ((++c.nodes & 0x3FF) == 0)
+        {
+          if (millis() > c.deadline)
+          {
+            c.done = true;
+            return;
+          }
+          vTaskDelay(1);
+        }
+        c.cur[depth] = {x, op, y, r};
+        cifras_candidate(c, r, depth + 1);
+        if (c.done)
+          return;
+        if (m >= 1)
+        {
+          rest[m] = r;
+          cifras_search(c, rest, m + 1, depth + 1);
+        }
       }
-      int mult_value = current.value * numbers[i];
-      if (mult_value >= 0 && mult_value <= target + 100)
-      {
-        State new_state;
-        new_state.value = mult_value;
-        snprintf(new_state.operation, sizeof(new_state.operation), "%s -> (%d * %d) = %d", current.operation, current.value, numbers[i], mult_value);
-        find_operations(numbers, target, new_state, best, depth + 1, used);
-      }
-      if (numbers[i] != 0 && current.value % numbers[i] == 0)
-      {
-        State new_state;
-        new_state.value = current.value / numbers[i];
-        snprintf(new_state.operation, sizeof(new_state.operation), "%s -> (%d / %d) = %d", current.operation, current.value, numbers[i], new_state.value);
-        find_operations(numbers, target, new_state, best, depth + 1, used);
-      }
-      used[i] = 0;
     }
   }
 }
 
 void calculate_operations(int numbers[], int target, char *result)
 {
-  int used[MAX_NUMBERS] = {0};
-  State best = {numbers[0], ""};
-  for (int i = 0; i < MAX_NUMBERS; i++)
+  static CifrasCtx c;
+  c.target = target;
+  c.bestVal = numbers[0];
+  c.bestDiff = abs(numbers[0] - target);
+  c.bestCount = 0;
+  c.nodes = 0;
+  c.done = false;
+  c.deadline = millis() + CIFRAS_TIME_BUDGET_MS;
+  for (int i = 0; i < MAX_NUMBERS && c.bestDiff != 0; i++)
   {
-    State current;
-    current.value = numbers[i];
-    snprintf(current.operation, sizeof(current.operation), "Inicio - %d", numbers[i]);
-    memset(used, 0, sizeof(used));
-    used[i] = 1;
-    find_operations(numbers, target, current, &best, 1, used);
+    int d = abs(numbers[i] - target);
+    if (d < c.bestDiff)
+    {
+      c.bestDiff = d;
+      c.bestVal = numbers[i];
+    }
   }
-  snprintf(result, 500, "%s\n>>> M8AX - Resultado - %d", best.operation, best.value);
-  if (totalci == 0)
+  if (c.bestDiff == 0)
+    c.done = true;
+  if (!c.done)
+    cifras_search(c, numbers, MAX_NUMBERS, 0);
+
+  size_t len = 0;
+  result[0] = '\0';
+  if (c.bestCount == 0)
   {
-    porcentaje = (static_cast<float>(aciertos) * 100) / 1;
+    len = snprintf(result, MAX_RESULT_LENGTH, "Inicio - %d", c.bestVal);
   }
   else
   {
-    porcentaje = (static_cast<float>(aciertos) * 100) / totalci;
+    for (int k = 0; k < c.bestCount && len < MAX_RESULT_LENGTH - 60; k++)
+    {
+      len += snprintf(result + len, MAX_RESULT_LENGTH - len, "%s(%d %c %d) = %d",
+                      k ? " -> " : "", c.best[k].a, c.best[k].op, c.best[k].b, c.best[k].r);
+    }
   }
-  if (best.value == target)
-  {
+  snprintf(result + len, MAX_RESULT_LENGTH - len, "\n>>> M8AX - Resultado - %d", c.bestVal);
+
+  bool exacto = (c.bestVal == target);
+  if (exacto)
     aciertos++;
-    strcat(result, ", ( EXACTO ) -");
-    char porcentaje_str[20];
-    snprintf(porcentaje_str, sizeof(porcentaje_str), " ( AC %.2f%% )", porcentaje);
-    strcat(result, porcentaje_str);
-  }
   else
-  {
     fallos++;
-    int diff = abs(best.value - target);
-    char diff_str[50];
-    snprintf(diff_str, sizeof(diff_str), ", Dif. - ( %d ) -", diff);
-    strcat(result, diff_str);
-    char porcentaje_str[20];
-    snprintf(porcentaje_str, sizeof(porcentaje_str), " ( AC %.2f%% )", porcentaje);
-    strcat(result, porcentaje_str);
-  }
   totalci++;
+  porcentaje = (static_cast<float>(aciertos) * 100) / totalci;
+  char extra[64];
+  if (exacto)
+    snprintf(extra, sizeof(extra), ", ( EXACTO ) - ( AC %.2f%% )", porcentaje);
+  else
+    snprintf(extra, sizeof(extra), ", Dif. - ( %d ) - ( AC %.2f%% )", abs(c.bestVal - target), porcentaje);
+  strncat(result, extra, MAX_RESULT_LENGTH - strlen(result) - 1);
 }
 
 void generate_random_numbers(int numbers[], int size, int min, int max)
@@ -1295,40 +1386,44 @@ void enviarMensajeATelegram(String mensaje)
     if (WiFi.status() != WL_CONNECTED)
     {
       Serial.println("M8AX - No Se Pudo Reconectar WiFi...");
+      sincroLED3();
       return;
     }
   }
   WiFiClientSecure client;
   client.setInsecure();
   String mensajeCodificado = urlEncode(mensaje);
-  mensajeCodificado.reserve(mensajeCodificado.length() + 100);
-  mensaje = "";
-  mensaje.reserve(0);
   mensajeCodificado.replace("\n", "%0A");
   Serial.println("M8AX - Enviando Mensaje A Telegram...");
   String url = "https://api.telegram.org/bot" + BOT_TOKEN + "/sendMessage?chat_id=" + CHAT_ID + "&text=" + mensajeCodificado;
-  url.reserve(url.length() + 50);
   mensajeCodificado = "";
-  mensajeCodificado.reserve(0);
   if (client.connect("api.telegram.org", 443))
   {
     client.print(String("GET ") + url + " HTTP/1.1\r\n" + "Host: api.telegram.org\r\n" + "Connection: close\r\n\r\n");
-    delay(1500);
-    Serial.println("M8AX - Mensaje Enviado A Telegram...");
-    client.flush();
+    unsigned long t0 = millis();
+    while (!client.available() && client.connected() && millis() - t0 < 5000)
+    {
+      vTaskDelay(pdMS_TO_TICKS(10));
+    }
+    String estado = client.readStringUntil('\n');
     client.stop();
-    sumatele += 1;
-    url = "";
-    url.reserve(0);
-    sincroLED2();
+    if (estado.indexOf(" 200") > 0)
+    {
+      Serial.println("M8AX - Mensaje Enviado A Telegram...");
+      sumatele += 1;
+      sincroLED2();
+    }
+    else
+    {
+      estado.trim();
+      Serial.println("M8AX - Telegram No Lo Aceptó - Respuesta: [" + estado + "]");
+      sincroLED3();
+    }
   }
   else
   {
     Serial.println("M8AX - Error De Conexión, Mensaje A Telegram Falló...");
-    client.flush();
     client.stop();
-    url = "";
-    url.reserve(0);
     sincroLED3();
   }
 }
@@ -1698,6 +1793,11 @@ void noDisplay_NoScreen(unsigned long mElapsed)
     }
     fiestaLED();
   }
+  if (dia == CUMPLE_DIA && mes == CUMPLE_MES && horas >= 8 && horas < 20 && ganador == 0 && hhashrate > 0 && cuenta % 20 == 0)
+  {
+    Serial.println(">>> M8AX - ¡ FELIZ CUMPLEAÑOS M8AX !");
+    cumpleLED();
+  }
   if (cuenta == 15)
   {
     sincronizarTiempo();
@@ -1925,7 +2025,7 @@ void noDisplay_NoScreen(unsigned long mElapsed)
   {
     enviados = data.completedShares;
     Serial.println("M8AX - Enviando Share A La Pool...");
-    for (int a = 0; a <= 5; a++)
+    for (int a = 0; a < 5; a++)
     {
       digitalWrite(m8ax, HIGH);
       vTaskDelay(pdMS_TO_TICKS(125));

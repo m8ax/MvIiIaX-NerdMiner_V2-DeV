@@ -56,7 +56,7 @@
  *           a la cadena. A cambio, reciben bitcoins recién creados como recompensa.
  *
  *
- *                     Tmp. De Programación 3H - 3965 Líneas De Código
+ *                     Tmp. De Programación 4H - 5590 Líneas De Código
  *                     -----------------------------------------------
  *
  ****************************************************************************************************************/
@@ -107,7 +107,7 @@ TFT_eSprite background = TFT_eSprite(&tft); // Invoke library sprite
 SPIClass hSPI(HSPI);
 TFT_eTouch<TFT_eSPI> touch(tft, ETOUCH_CS, 0xFF, hSPI);
 
-int colorI = 0, colorIndex = 0, maxtemp = 0, mintemp = 1000, limite = 0, zonilla, solounavez = 0, solouna = 0, sumatele = 1;
+int colorI = 0, colorM8 = 0, colorIndex = 0, maxtemp = 0, mintemp = 1000, limite = 0, zonilla, solounavez = 0, solouna = 0, sumatele = 1;
 uint16_t colors[] = {TFT_WHITE, TFT_RED, TFT_GREEN, TFT_BLUE, TFT_YELLOW, TFT_CYAN, TFT_MAGENTA, TFT_ORANGE, TFT_GREENYELLOW, TFT_PINK, TFT_LIGHTGREY, TFT_SKYBLUE, TFT_OLIVE, TFT_GOLD, TFT_SILVER};
 uint32_t rndnumero, uncontadormas = 0, refresca = 0, cuentita = 0, numnotis = 0, numfrases = 0, detectar = 0, detectar2 = 0;
 unsigned long lastTelegramEpochTime = 0;       // Guarda el tiempo de la última ejecución (en segundos desde Epoch)
@@ -116,7 +116,7 @@ const unsigned long interval = 60 * 2 * 60;    // 2 horas en segundos (2 horas *
 const unsigned long minStartupTime = interval; // Segundos para que no envíe mensaje a telegram si esta configurado, nada más arrancar
 float maxkh = 0.00, minkh = 1000.00;
 char result[MAX_RESULT_LENGTH];
-const char *apiURL = "https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids=bitcoin&price_change_percentage=24h,7d", *serverName = "https://favqs.com/api/qotd";
+const char *apiURL = "https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids=bitcoin&price_change_percentage=24h,7d", *serverName = "https://dummyjson.com/quotes/random";
 const char *urlsm8ax[] = {
     "YT - https://youtube.com/m8ax",
     "OS - https://opensea.io/es/m8ax",
@@ -125,14 +125,14 @@ const char *urlsm8ax[] = {
     "GH - https://github.com/m8ax"};
 String urls[] = {
     "https://cointelegraph.com/rss",
-    "https://cointelegraph.com/rss/tag/altcoin",
-    "https://cointelegraph.com/rss/category/analysis",
+    "https://cointelegraph.com/rss/tag/altcoins",
+    "https://cointelegraph.com/rss/tag/defi",
     "https://cointelegraph.com/rss/tag/regulation",
     "https://cointelegraph.com/rss/tag/bitcoin",
     "https://cointelegraph.com/rss/tag/blockchain",
     "https://cointelegraph.com/rss/tag/ethereum",
-    "https://cointelegraph.com/rss/category/top-10-cryptocurrencies",
-    "https://cointelegraph.com/rss/category/market-analysis"};
+    "https://cointelegraph.com/rss/tag/nft",
+    "https://cointelegraph.com/rss/tag/stablecoin"};
 String BOT_TOKEN, CHAT_ID, cadenanoti = "", prebitco = "", alturabloque = "", variacion1dia, variacion1semana;
 std::pair<String, String> Tresultado;
 mining_data mineria;
@@ -442,8 +442,8 @@ String getQuote()
       payload.reserve(0);
 
       // Extraer la cita y el autor
-      String quoteText = doc["quote"]["body"].as<String>();
-      String author = doc["quote"]["author"].as<String>();
+      String quoteText = doc["quote"].as<String>();
+      String author = doc["author"].as<String>();
 
       quote = "\"" + quoteText + "\"\n\n- " + author;
       Serial.println("M8AX - Frase Número - " + String(numfrases) + " - " + quote + " - " + String(quote.length()) + " Caracteres");
@@ -585,79 +585,109 @@ moonData_t moonPhase::_getPhase(const int32_t year, const int32_t month, const i
 
 void obtenerNoticias()
 {
-  HTTPClient http;
-  int indice = esp_random() % 9;
-  String urlnot = urls[indice];
-  http.begin(urlnot);        // URL del feed RSS
-  int httpCode = http.GET(); // Realiza la solicitud GET
-  cadenanoti = "";
-  if (httpCode == HTTP_CODE_OK)
-  { // Si la solicitud es exitosa
-    String payload = http.getString();
-    Serial.println("M8AX - Noticias Obtenidas. Procesando...");
+  int total = 9;
+  int inicio = esp_random() % total;
+  bool hayNoticias = false;
 
-    int itemIndex = 0;
-    int startIndex = 0;
-    int endIndex = 0;
-
-    // Extraer hasta 5 titulares
-    while (itemIndex < 5)
+  for (int intento = 0; intento < total && !hayNoticias; intento++)
+  {
+    HTTPClient http;
+    int indice = (inicio + intento) % total;
+    String urlnot = urls[indice];
+    http.begin(urlnot);
+    http.useHTTP10(true);
+    int httpCode = http.GET();
+    cadenanoti = "";
+    if (httpCode == HTTP_CODE_OK)
     {
-      // Buscar la etiqueta <item> que marca una nueva noticia
-      startIndex = payload.indexOf("<item>", endIndex); // Encuentra <item>
-      if (startIndex == -1)
-        break;
+      WiFiClient *stream = http.getStreamPtr();
+      stream->setTimeout(3000);
+      Serial.println("M8AX - Noticias Obtenidas. Procesando...");
+      int itemIndex = 0;
 
-      endIndex = payload.indexOf("</item>", startIndex); // Encuentra </item>
-      if (endIndex == -1)
-        break;
-
-      // Extraer el título dentro de <title> de cada <item>
-      int titleStart = payload.indexOf("<title>", startIndex);
-      int titleEnd = payload.indexOf("</title>", titleStart);
-      String title = payload.substring(titleStart + 7, titleEnd); // Extrae el título
-
-      // Eliminar la parte CDATA si está presente
-      int cdataStart = title.indexOf("<![CDATA[");
-      int cdataEnd = title.indexOf("]]>");
-      if (cdataStart != -1 && cdataEnd != -1)
+      while (itemIndex < 5)
       {
-        title = title.substring(cdataStart + 9, cdataEnd); // Elimina CDATA
+        if (!stream->find("<item>"))
+          break;
+        if (!stream->find("<title>"))
+          break;
+
+        String title = "";
+        bool completo = false;
+        uint32_t t0 = millis();
+
+        while (millis() - t0 < 3000 && title.length() < 300)
+        {
+          if (!stream->available())
+          {
+            if (!http.connected())
+              break;
+            delay(1);
+            continue;
+          }
+          title += (char)stream->read();
+          if (title.endsWith("</title>"))
+          {
+            title.remove(title.length() - 8);
+            completo = true;
+            break;
+          }
+        }
+
+        if (!completo)
+          break;
+
+        int cdataStart = title.indexOf("<![CDATA[");
+        int cdataEnd = title.indexOf("]]>");
+        if (cdataStart != -1 && cdataEnd != -1)
+        {
+          title = title.substring(cdataStart + 9, cdataEnd);
+        }
+
+        if (title.indexOf("Cointelegraph.com News") != -1)
+        {
+          continue;
+        }
+
+        Serial.println(String(itemIndex + 1) + ". " + title);
+        cadenanoti += String(itemIndex + 1) + ". " + title + "\n\n";
+        itemIndex++;
+        taskYIELD();
       }
 
-      // Si el título es del canal (ej. "Cointelegraph.com News"), busca otra noticia
-      if (title.indexOf("Cointelegraph.com News") != -1)
+      if (itemIndex > 0)
       {
-        continue; // Si el título es del canal, salta a la siguiente noticia
+        hayNoticias = true;
+        tft.setCursor(1, 26);
+        tft.setTextSize(1);
+        colorI = esp_random() % (sizeof(colors) / sizeof(colors[0]));
+        tft.setTextColor(colors[colorI]);
+        tft.print(quitarAcentos(cadenanoti));
       }
-
-      // Si llegamos aquí, es una noticia válida, la mostramos
-      Serial.println(String(itemIndex + 1) + ". " + title);
-      cadenanoti += String(itemIndex + 1) + ". " + title + "\n\n";
-      itemIndex++;
-      taskYIELD();
+      else
+      {
+        Serial.println("M8AX - No Se Encontraron Noticias Válidas.");
+      }
+      cadenanoti = "";
+      cadenanoti.reserve(0);
     }
-    payload = "";
-    payload.reserve(0);
+    else
+    {
+      Serial.println("M8AX - Error Al Obtener El Feed RSS. Código HTTP: " + String(httpCode));
+    }
+
+    http.end();
+  }
+
+  if (!hayNoticias)
+  {
+    Serial.println("M8AX - Ningún Feed Ha Dado Noticias.");
     tft.setCursor(1, 26);
     tft.setTextSize(1);
     colorI = esp_random() % (sizeof(colors) / sizeof(colors[0]));
     tft.setTextColor(colors[colorI]);
-    tft.print(quitarAcentos(cadenanoti));
-    cadenanoti = "";
-    cadenanoti.reserve(0);
-
-    // Si no se encontraron 5 noticias válidas, avisa al usuario
-    if (itemIndex == 0)
-    {
-      Serial.println("M8AX - No Se Encontraron Noticias Válidas.");
-    }
+    tft.print("POR MUCHAS VUELTAS QUE DEMOS, SIEMPRE TENDREMOS EL CULO ATRAS...");
   }
-  else
-  {
-    Serial.println("M8AX - Error Al Obtener El Feed RSS. Código HTTP: " + String(httpCode));
-  }
-  http.end(); // Finaliza la solicitud HTTP
 }
 
 String getPublicIP()
@@ -2006,20 +2036,28 @@ bool bottomScreenBlue = true;
 
 void printheap()
 {
-  Serial.print("M8AX - $$ Free Heap:");
-  Serial.println(ESP.getFreeHeap());
-  // Serial.printf("### stack WMark usage: %d\n", uxTaskGetStackHighWaterMark(NULL));
+  Serial.printf("M8AX - $$ Free Heap: %u  Max bloque: %u\n", ESP.getFreeHeap(), ESP.getMaxAllocHeap());
 }
 
 bool createBackgroundSprite(int16_t wdt, int16_t hgt)
-{                                    // Set the background and link the render, used multiple times to fit in heap
-  background.createSprite(wdt, hgt); // Background Sprite
-  // printheap();
+{
+  // Si ya hay un sprite de otro tamaño, se libera. Si es del mismo tamaño, se reutiliza.
+  if (background.created() && (background.width() != wdt || background.height() != hgt))
+    background.deleteSprite();
+
+  // Si no hay RAM contigua, reintenta hasta ~3 s (deja que termine el TLS de otra tarea)
+  for (int intento = 0; intento < 30 && !background.created(); intento++)
+  {
+    background.setColorDepth(16); // antes de crear, nunca con el sprite ya creado
+    background.createSprite(wdt, hgt);
+    if (!background.created())
+      vTaskDelay(pdMS_TO_TICKS(100));
+  }
+
   if (background.created())
   {
-    background.setColorDepth(16);
     background.setSwapBytes(true);
-    render.setDrawer(background); // Link drawing object to background instance (so font will be rendered on background)
+    render.setDrawer(background);
     render.setLineSpaceRatio(0.9);
   }
   else
@@ -2033,48 +2071,241 @@ bool createBackgroundSprite(int16_t wdt, int16_t hgt)
 
 extern unsigned long mPoolUpdate;
 
+struct Cripto
+{
+  const char *par;     // par de Binance, ej. BTCUSDT
+  const char *simbolo; // texto que se ve en pantalla
+  float precio;        // último precio (0 = sin datos)
+  int8_t tendencia;    // 0 = sin datos, 1 = sube, -1 = baja
+};
+
+const int NUM_CRIPTOS = 18; // 3 páginas de 6
+int paginaCriptos = 0;      // página que se está enseñando (0, 1 o 2)
+
+// Cada página tiene 6 monedas: [recuadro 1: 2] [recuadro 2: 2] [recuadro 3: 2]
+Cripto criptos[NUM_CRIPTOS] = {
+    // Página 0
+    {"BTCUSDT", "BTC", 0},
+    {"ETHUSDT", "ETH", 0},
+    {"XRPUSDT", "XRP", 0},
+    {"ADAUSDT", "ADA", 0},
+    {"SOLUSDT", "SOL", 0},
+    {"BNBUSDT", "BNB", 0},
+    // Página 1
+    {"DOGEUSDT", "DOGE", 0},
+    {"TRXUSDT", "TRX", 0},
+    {"AVAXUSDT", "AVAX", 0},
+    {"LINKUSDT", "LINK", 0},
+    {"SUIUSDT", "SUI", 0},
+    {"DOTUSDT", "DOT", 0},
+    // Página 2
+    {"LTCUSDT", "LTC", 0},
+    {"BCHUSDT", "BCH", 0},
+    {"XLMUSDT", "XLM", 0},
+    {"UNIUSDT", "UNI", 0},
+    {"NEARUSDT", "NEAR", 0},
+    {"ATOMUSDT", "ATOM", 0}};
+
+unsigned long ultimaActualizacionCriptos = 0;
+
+bool obtenerPreciosCriptos()
+{
+  if (WiFi.status() != WL_CONNECTED)
+    return false;
+
+  String query = "/api/v3/ticker/price?symbols=%5B";
+  for (int i = 0; i < NUM_CRIPTOS; i++)
+  {
+    query += "%22";
+    query += criptos[i].par;
+    query += "%22";
+    if (i < NUM_CRIPTOS - 1)
+      query += ",";
+  }
+  query += "%5D";
+
+  const char *hosts[] = {"https://api.binance.com", "https://data-api.binance.vision"};
+  for (int h = 0; h < 2; h++)
+  {
+    WiFiClientSecure client;
+    client.setInsecure();
+    HTTPClient http;
+    http.setTimeout(4000);
+    if (!http.begin(client, String(hosts[h]) + query))
+      continue;
+    int httpCode = http.GET();
+    if (httpCode == HTTP_CODE_OK)
+    {
+      String payload = http.getString();
+      http.end();
+      DynamicJsonDocument doc(4096);
+      if (!deserializeJson(doc, payload))
+      {
+        bool ok = false;
+        for (JsonObject o : doc.as<JsonArray>())
+        {
+          const char *sym = o["symbol"];
+          const char *pr = o["price"];
+          if (!sym || !pr)
+            continue;
+          for (int j = 0; j < NUM_CRIPTOS; j++)
+          {
+            if (strcmp(sym, criptos[j].par) == 0)
+            {
+              float nuevo = atof(pr);
+              if (criptos[j].precio > 0)
+              {
+                if (nuevo > criptos[j].precio)
+                  criptos[j].tendencia = 1;
+                else if (nuevo < criptos[j].precio)
+                  criptos[j].tendencia = -1;
+              }
+              criptos[j].precio = nuevo;
+              ok = true;
+            }
+          }
+        }
+        if (ok)
+        {
+          Serial.println("M8AX - Precios De Criptos Actualizados (Binance)");
+          for (int j = 0; j < NUM_CRIPTOS; j++)
+          {
+            const char *flecha = criptos[j].tendencia > 0 ? "SUBE" : (criptos[j].tendencia < 0 ? "BAJA" : "----");
+            Serial.printf("  %-5s %12.4f USDT  %s\n", criptos[j].simbolo, criptos[j].precio, flecha);
+          }
+          return true;
+        }
+      }
+    }
+    else
+    {
+      Serial.printf("M8AX - Error HTTP Binance (%s): %d\n", hosts[h], httpCode);
+      http.end();
+    }
+  }
+  return false;
+}
+
+String formatoPrecio(float p)
+{
+  if (p <= 0)
+    return "---";
+  char buf[16];
+  if (p >= 1000)
+    snprintf(buf, sizeof(buf), "%.0f", p);
+  else if (p >= 100)
+    snprintf(buf, sizeof(buf), "%.1f", p);
+  else if (p >= 10)
+    snprintf(buf, sizeof(buf), "%.2f", p);
+  else if (p >= 1)
+    snprintf(buf, sizeof(buf), "%.3f", p);
+  else
+    snprintf(buf, sizeof(buf), "%.4f", p);
+  return String(buf);
+}
+
+const int BARRA_CX[3] = {54, 159, 266}; // centro horizontal de cada recuadro
+const int BARRA_MEDIO_ANCHO = 44;       // mitad del ancho útil dentro de cada recuadro
+const int BARRA_SPR_Y = 186;            // y real donde empieza el sprite de texto
+const int BARRA_SPR_H = 42;             // alto del sprite
+const int BARRA_FILA_Y[2] = {190, 204}; // y real de cada moneda (arriba, abajo)
+const int BARRA_PIE_Y = 220;            // y real de la línea de abajo (webs / By M8AX)
+const int BARRA_PRECIO_TAM = 8;         // tamaño de la letra digital del precio
+const bool BARRA_MOSTRAR_USDT = true;   // false = quita el "USDT" de cada línea
+const int BARRA_ETIQ_DY = 3;            // bajada extra de símbolo y USDT para alinearlos con el precio
+// Textos de abajo de cada recuadro (máx. 14 letras para que quepan). Cámbialos por tus webs.
+const uint16_t BARRA_COLOR_SUBE = 0x07E0; // verde brillante
+const uint16_t BARRA_COLOR_BAJA = 0xFC00; // naranja brillante
+const char *BARRA_PIE[3] = {"opensea.io/m8ax", " youtube.com/m8ax", "\\\\\\ By M8AX ///"};
+const unsigned long BARRA_REFRESCO_MS = 60000; // cada cuántos ms se repinta la barra y se piden precios (60000 = 60 s)
+
 void printPoolData()
 {
-  if ((hasChangedScreen) || (mPoolUpdate == 0) || (millis() - mPoolUpdate > UPDATE_POOL_min * 60 * 1000))
+  if ((hasChangedScreen) || (mPoolUpdate == 0) || (millis() - mPoolUpdate > BARRA_REFRESCO_MS))
   {
     if (Settings.PoolAddress != "tn.vkbit.com")
     {
-      pData = getPoolData();
-      background.createSprite(320, 50); // Background Sprite
+      background.deleteSprite(); // libera un sprite viejo que haya dejado otra pantalla
+      // Precios: como mucho 1 petición cada 60 segundos. Cada petición cambia de página.
+      if (ultimaActualizacionCriptos == 0 || millis() - ultimaActualizacionCriptos > BARRA_REFRESCO_MS)
+      {
+        bool ok = obtenerPreciosCriptos();
+        Serial.printf("M8AX - Stack Libre Minimo: %u Bytes\n", (unsigned)uxTaskGetStackHighWaterMark(NULL));
+        if (ok && ultimaActualizacionCriptos != 0) // solo cambia de página si llegaron precios nuevos
+          paginaCriptos = (paginaCriptos + 1) % (NUM_CRIPTOS / 6);
+        ultimaActualizacionCriptos = millis();
+      }
+      mPoolUpdate = millis();
+
+      // 1) Fondo completo de la barra (borra todo lo anterior)
+      if (bottomScreenBlue)
+        tft.pushImage(0, 170, 320, 70, bottonPoolScreen);
+      else
+        tft.pushImage(0, 170, 320, 70, bottonPoolScreen_g);
+
+      // 2) Sprite solo con la zona de los recuadros, para escribir sin parpadeo
+      background.createSprite(320, BARRA_SPR_H);
       if (!background.created())
       {
         Serial.println("M8AX - ###### POOL SPRITE ERROR ######");
-        // Serial.printf("Pool data W:%d H:%s D:%s\n", pData.workersCount, pData.workersHash, pData.bestDifficulty);
         printheap();
-      }
-      background.setSwapBytes(true);
-      if (bottomScreenBlue)
-      {
-        background.pushImage(0, -20, 320, 70, bottonPoolScreen);
-        tft.pushImage(0, 170, 320, 20, bottonPoolScreen);
       }
       else
       {
-        background.pushImage(0, -20, 320, 70, bottonPoolScreen_g);
-        tft.pushImage(0, 170, 320, 20, bottonPoolScreen_g);
+        background.setSwapBytes(true);
+        if (bottomScreenBlue)
+          background.pushImage(0, -(BARRA_SPR_Y - 170), 320, 70, bottonPoolScreen);
+        else
+          background.pushImage(0, -(BARRA_SPR_Y - 170), 320, 70, bottonPoolScreen_g);
+
+        render.setDrawer(background);
+        render.setLineSpaceRatio(1);
+        render.setAlignment(Align::TopLeft);
+        render.setFontSize(BARRA_PRECIO_TAM);
+        background.setFreeFont(NULL);
+        background.setTextFont(1);
+        background.setTextSize(1);
+
+        for (int col = 0; col < 3; col++)
+        {
+          int cx = BARRA_CX[col];
+          for (int fila = 0; fila < 2; fila++)
+          {
+            Cripto &c = criptos[paginaCriptos * 6 + col * 2 + fila];
+            int y = BARRA_FILA_Y[fila] - BARRA_SPR_Y;
+            int xl = cx - BARRA_MEDIO_ANCHO; // borde izquierdo útil
+            int xr = cx + BARRA_MEDIO_ANCHO; // borde derecho útil
+            int ini = xl + strlen(c.simbolo) * 6 + 1;
+            int fin = xr;
+            // Símbolo a la izquierda
+            background.setTextDatum(TL_DATUM);
+            background.setTextColor(TFT_YELLOW);
+            background.drawString(c.simbolo, xl, y + BARRA_ETIQ_DY);
+            // USDT a la derecha
+            if (BARRA_MOSTRAR_USDT)
+            {
+              background.setTextDatum(TR_DATUM);
+              background.setTextColor(TFT_CYAN);
+              background.drawString("USDT", xr, y + BARRA_ETIQ_DY);
+              fin = xr - 24 - 1;
+            }
+            // Precio digital centrado entre los dos
+            uint16_t colorPrecio = TFT_WHITE;
+            if (c.tendencia > 0)
+              colorPrecio = BARRA_COLOR_SUBE;
+            else if (c.tendencia < 0)
+              colorPrecio = BARRA_COLOR_BAJA;
+            render.cdrawString(formatoPrecio(c.precio).c_str(), (ini + fin) / 2, y, colorPrecio);
+          }
+          // Línea de abajo del recuadro (web / By M8AX)
+          background.setTextDatum(TC_DATUM);
+          colorM8 = esp_random() % (sizeof(colors) / sizeof(colors[0]));
+          background.setTextColor(colors[colorM8]);
+          background.drawString(BARRA_PIE[col], cx, BARRA_PIE_Y - BARRA_SPR_Y);
+        }
+        background.pushSprite(0, BARRA_SPR_Y);
+        background.deleteSprite();
       }
-      render.setDrawer(background); // Link drawing object to background instance (so font will be rendered on background)
-      render.setLineSpaceRatio(1);
-      render.setFontSize(24);
-      render.cdrawString(String(pData.workersCount).c_str(), 157, 16, TFT_BLACK);
-      render.setFontSize(18);
-      render.setAlignment(Align::BottomRight);
-      render.cdrawString(pData.workersHash.c_str(), 265, 14, TFT_BLACK);
-      render.setAlignment(Align::BottomLeft);
-      render.cdrawString(pData.bestDifficulty.c_str(), 54, 14, TFT_BLACK);
-      background.pushSprite(0, 190);
-      background.deleteSprite();
-      tft.setTextSize(1);
-      tft.setTextColor(TFT_BLACK);
-      tft.setCursor(tft.width() - tft.textWidth("By M8AX") - 5, tft.height() - tft.fontHeight() - 2);
-      tft.print("By M8AX");
-      tft.setCursor(5, tft.height() - tft.fontHeight() - 2);
-      tft.print("youtube.com/m8ax");
     }
     else
     {
@@ -2082,12 +2313,12 @@ void printPoolData()
       pData.workersHash = "TESTNET";
       pData.workersCount = 1;
       tft.fillRect(0, 170, 320, 70, TFT_DARKGREEN);
-      background.createSprite(320, 40); // Background Sprite
+      background.deleteSprite(); // libera un sprite viejo que haya dejado otra pantalla
+      background.createSprite(320, 40);
       background.fillSprite(TFT_DARKGREEN);
       if (!background.created())
       {
         Serial.println("M8AX - ###### POOL SPRITE ERROR ######");
-        // Serial.printf("Pool data W:%d H:%s D:%s\n", pData.workersCount, pData.workersHash, pData.bestDifficulty);
         printheap();
       }
       background.setFreeFont(FF24);
@@ -2150,7 +2381,7 @@ void esp32_2432S028R_MinerScreen(unsigned long mElapsed)
   // Valid Blocks
   render.setFontSize(24);
   render.setAlignment(Align::TopCenter);
-  render.drawString(mineria.valids.c_str(), 287 - wdtOffset, 56, 0xDEDB);
+  render.drawString(mineria.valids.c_str(), 287 - wdtOffset, 56, (mineria.valids.toInt() == 0) ? 0xF00F : 0x07E0);
   // Print Temp
   render.setFontSize(10);
   render.rdrawString(mineria.temp.c_str(), 239 - wdtOffset, 1, TFT_BLACK);
@@ -2181,8 +2412,30 @@ void esp32_2432S028R_MinerScreen(unsigned long mElapsed)
   tft.setTextColor(colors[colorI]);
   tft.setCursor(33, 107);
   tft.print("             ");
-  tft.setCursor(33, 107);
-  tft.print(segundos % 2 == 0 ? "- EHD-MDDD -" : "- MvIiIaX -");
+  String pool = Settings.PoolAddress;
+  const char *prefijos[] = {"stratum+tcp://", "pool.", "web.", "eu.", "stratum."};
+  for (int i = 0; i < 5; i++)
+    if (pool.startsWith(prefijos[i]))
+      pool = pool.substring(strlen(prefijos[i]));
+  if (pool.length() > 15)
+    pool = pool.substring(0, 15);
+  String extra = "";
+  int ciclo = segundos % 20;
+  if (ciclo < 5 && pool.length() > 0)
+    extra = pool; // 5 s la pool
+  else if (ciclo >= 10 && ciclo < 15)
+    extra = "Heap " + String(ESP.getFreeHeap() / 1024) + "/" + String(ESP.getMaxAllocHeap() / 1024) + "KB"; // 5 s la RAM
+
+  if (extra.length() > 0)
+  {
+    tft.setCursor(69 - (int)extra.length() * 3, 107); // centrado, mismo hueco
+    tft.print(extra);
+  }
+  else
+  {
+    tft.setCursor(33, 107);
+    tft.print(segundos % 2 == 0 ? "- EHD-MDDD -" : "- MvIiIaX -");
+  }
   int X_INICIO = 155;
   int X_FINAL = 310;
   int Y_POS = 104;
@@ -3595,9 +3848,7 @@ void esp32_2432S028R_BTCprice(unsigned long mElapsed)
   colorI = esp_random() % (sizeof(colors) / sizeof(colors[0]));
   tft.fillRect(X_INICIO, Y_POS - 1, longitud_total + 1, 4, TFT_DARKGREY);
   tft.fillRect(X_INICIO, Y_POS - 1, longitud_pintada, 4, colors[colorI]);
-  X_INICIO = 124;
-  X_FINAL = 312;
-  Y_POS = 32;
+  X_INICIO = 124, X_FINAL = 312, Y_POS = 32;
   longitud_total = X_FINAL - X_INICIO;
   longitud_pintada = (longitud_total * segundo) / 59;
   colorI = esp_random() % (sizeof(colors) / sizeof(colors[0]));
@@ -3726,6 +3977,65 @@ void tDisplay_granHash(unsigned long mElapsed)
 #endif
 }
 
+const int HASHG_ANCHO_MAX = 308;        // ancho máximo del texto (pantalla = 320)
+const int HASHG_ALTO_MAX = 150;         // alto máximo del texto (zona de arriba = 170)
+const int HASHG_TAM_MAX = 130;          // tamaño de letra máximo a probar
+const bool HASHG_MOSTRAR_UNIDAD = true; // false = quita el "KH/s" pequeñito
+String hashgUltimo = "";
+
+void tDisplay_hashGigante(unsigned long mElapsed)
+{
+  mineria = getMiningData(mElapsed);
+  detectar = 0;
+
+  // Barra de criptos de abajo (ella sola decide cuándo repintarse)
+  printPoolData();
+
+  bool repintar = hasChangedScreen;
+  hasChangedScreen = false;
+
+  String hr = mineria.currentHashRate;
+
+  // Solo repinta si cambió el valor o si acabamos de entrar en la pantalla (evita parpadeo)
+  if (repintar || hr != hashgUltimo)
+  {
+    hashgUltimo = hr;
+
+    tft.fillRect(0, 0, 320, 170, TFT_BLACK);
+
+    render.setDrawer(tft); // dibuja directo en la pantalla, sin sprite (ahorra RAM)
+    render.setAlignment(Align::TopCenter);
+
+    // Busca el tamaño de letra más grande que quepa
+    int tam = HASHG_TAM_MAX;
+    while (tam > 10)
+    {
+      render.setFontSize(tam);
+      if (render.getTextWidth("%s", hr.c_str()) <= HASHG_ANCHO_MAX &&
+          render.getTextHeight("%s", hr.c_str()) <= HASHG_ALTO_MAX)
+        break;
+      tam -= 2;
+    }
+
+    int alto = render.getTextHeight("%s", hr.c_str());
+    int y = (170 - alto) / 2 - 13;
+    if (y < 0)
+      y = 0;
+    render.drawString(hr.c_str(), 160, y, TFT_WHITE);
+
+    if (HASHG_MOSTRAR_UNIDAD)
+    {
+      tft.setTextFont(1);
+      tft.setTextSize(1);
+      tft.setTextColor(TFT_DARKGREY, TFT_BLACK);
+      tft.setCursor(290, 160);
+      tft.print("KH/s");
+    }
+  }
+
+  manejandoLeds(mineria.currentHashRate.toFloat());
+}
+
 void esp32_2432S028R_LoadingScreen(void)
 {
   int effect = esp_random() % 10;
@@ -3775,6 +4085,1321 @@ void esp32_2432S028R_SetupScreen(void)
 {
   tft.fillScreen(TFT_BLACK);
   tft.pushImage(0, 33, setupModeWidth, setupModeHeight, setupModeScreen);
+}
+
+extern unsigned long previousTouchMillis; // se define mas abajo, la reutilizo para no duplicar toques
+
+#define PONG_YT 34  // linea superior del campo
+#define PONG_YB 148 // linea inferior del campo
+#define PONG_PW 4   // ancho de pala
+#define PONG_PH 24  // alto de pala
+#define PONG_BS 5   // tamaño de la bola
+#define PONG_LX 8   // x de la pala izquierda (CPU2)
+#define PONG_RX 308 // x de la pala derecha (CPU1)
+#define PONG_SPEED0 2.4f
+#define PONG_SPEEDMAX 6.0f
+#define PONG_PADDLE_SPEED 3.0f
+#define PONG_SLICE_MS 5000 // tandas largas = menos cortes entre tandas (el tactil se atiende dentro)
+
+struct PongState
+{
+  bool init;
+  float bx, by, vx, vy; // bola (esquina superior izquierda)
+  float lp, rp;         // y (arriba) de cada pala
+  float lerr, rerr;     // error de punteria de cada CPU en este golpe
+  int sL, sR;           // sL = CPU2 (izquierda), sR = CPU1 (derecha)
+  unsigned long serveAt;
+};
+static PongState pg = {false};
+
+// Donde llegara la bola (centro) a la x indicada, contando rebotes en las paredes
+static float pongPredict(float bx, float by, float vx, float vy, float tx)
+{
+  float top = PONG_YT + 2;
+  float h = (PONG_YB - PONG_BS) - top;
+  float t = (tx - bx) / vx;
+  float y = by + vy * t - top;
+  float r = fmodf(y, 2.0f * h);
+  if (r < 0)
+    r += 2.0f * h;
+  if (r > h)
+    r = 2.0f * h - r;
+  return top + r + PONG_BS / 2.0f;
+}
+
+// Error de punteria: mas rapida la bola, mas impreciso; de vez en cuando se despista del todo
+static float pongNewErr()
+{
+  float sp = fabsf(pg.vx);
+  float amp = 5.0f + (sp - PONG_SPEED0) * 2.0f;
+  if (amp > 11.0f)
+    amp = 11.0f;
+  float e = ((int)(esp_random() % 2001) - 1000) / 1000.0f * amp;
+  if (esp_random() % 100 < 9)
+    e += ((esp_random() & 1) ? 1.0f : -1.0f) * 20.0f;
+  return e;
+}
+
+static void pongServe(int dir)
+{
+  pg.bx = 160 - PONG_BS / 2;
+  pg.by = (PONG_YT + PONG_YB) / 2 - PONG_BS / 2 + (int)(esp_random() % 41) - 20;
+  float ang = ((int)(esp_random() % 101) - 50) / 50.0f; // -1..1
+  pg.vx = PONG_SPEED0 * dir;
+  pg.vy = ang * 1.8f;
+  pg.lerr = pongNewErr();
+  pg.rerr = pongNewErr();
+  pg.serveAt = millis() + 700;
+}
+
+static void pongCenterLine()
+{
+  for (int y = PONG_YT + 2; y < PONG_YB; y += 8)
+    tft.fillRect(159, y, 2, 4, TFT_WHITE);
+}
+
+static void pongDrawField()
+{
+  tft.fillRect(0, 0, 320, 170, TFT_BLACK);
+  tft.fillRect(0, PONG_YT, 320, 2, TFT_WHITE);
+  tft.fillRect(0, PONG_YB, 320, 2, TFT_WHITE);
+  pongCenterLine();
+}
+
+static void pongDrawScores()
+{
+  char b[16];
+  tft.setFreeFont(NULL);
+  tft.setTextFont(1);
+  tft.setTextSize(2);
+  tft.setTextColor(TFT_WHITE, TFT_BLACK);
+  tft.setTextPadding(144);
+  tft.setTextDatum(TL_DATUM);
+  snprintf(b, sizeof(b), "CPU-1 %06d", pg.sL);
+  tft.drawString(b, 4, 153);
+  tft.setTextDatum(TR_DATUM);
+  snprintf(b, sizeof(b), "CPU-2 %06d", pg.sR);
+  tft.drawString(b, 316, 153);
+  tft.setTextPadding(0);
+  tft.setTextDatum(TL_DATUM);
+}
+
+static void pongDrawHud(const char *hash, const char *hora)
+{
+  tft.setFreeFont(NULL);
+  tft.setTextFont(1);
+  tft.setTextSize(2);
+  tft.setTextColor(TFT_WHITE, TFT_BLACK);
+  // Hora arriba a la izquierda
+  tft.setTextPadding(100);
+  tft.setTextDatum(TL_DATUM);
+  tft.drawString(hora, 4, 9);
+  // Hashrate arriba a la derecha
+  char b[24];
+  snprintf(b, sizeof(b), "%s KH/s", hash);
+  tft.setTextPadding(150);
+  tft.setTextDatum(TR_DATUM);
+  tft.drawString(b, 316, 9);
+  tft.setTextPadding(0);
+  tft.setTextDatum(TL_DATUM);
+}
+
+// Mueve una pala repintando solo lo que cambia (sin parpadeo)
+static void pongMovePaddle(int x, int oldY, int newY)
+{
+  if (oldY == newY)
+    return;
+  int d = abs(newY - oldY);
+  if (d >= PONG_PH)
+  {
+    tft.fillRect(x, oldY, PONG_PW, PONG_PH, TFT_BLACK);
+    tft.fillRect(x, newY, PONG_PW, PONG_PH, TFT_WHITE);
+  }
+  else if (newY > oldY)
+  {
+    tft.fillRect(x, oldY, PONG_PW, d, TFT_BLACK);
+    tft.fillRect(x, oldY + PONG_PH, PONG_PW, d, TFT_WHITE);
+  }
+  else
+  {
+    tft.fillRect(x, newY + PONG_PH, PONG_PW, d, TFT_BLACK);
+    tft.fillRect(x, newY, PONG_PW, d, TFT_WHITE);
+  }
+}
+
+static inline float pongClampPaddle(float p)
+{
+  if (p < PONG_YT + 2)
+    return PONG_YT + 2;
+  if (p > PONG_YB - PONG_PH)
+    return PONG_YB - PONG_PH;
+  return p;
+}
+
+// IA de una pala. toward = la bola viene hacia ella
+static void pongMoveAI(float &p, bool toward, float contactX, float err, float dt)
+{
+  float target;
+  float spd;
+  if (toward)
+  {
+    float c = pongPredict(pg.bx, pg.by, pg.vx, pg.vy, contactX);
+    target = c + err - PONG_PH / 2.0f;
+    spd = PONG_PADDLE_SPEED;
+  }
+  else
+  {
+    target = (PONG_YT + 2 + PONG_YB - PONG_PH) / 2.0f; // vuelve al centro
+    spd = 1.2f;
+  }
+  target = pongClampPaddle(target);
+  float d = target - p;
+  float m = spd * dt;
+  if (d > m)
+    d = m;
+  else if (d < -m)
+    d = -m;
+  p = pongClampPaddle(p + d);
+}
+
+// Un paso de fisica (dt <= 1)
+static bool pongStep(float dt)
+{
+  bool scored = false;
+  pg.bx += pg.vx * dt;
+  pg.by += pg.vy * dt;
+
+  // Paredes
+  float ymin = PONG_YT + 2, ymax = PONG_YB - PONG_BS;
+  if (pg.by < ymin)
+  {
+    pg.by = ymin + (ymin - pg.by);
+    pg.vy = -pg.vy;
+  }
+  else if (pg.by > ymax)
+  {
+    pg.by = ymax - (pg.by - ymax);
+    pg.vy = -pg.vy;
+  }
+
+  float c = pg.by + PONG_BS / 2.0f;
+
+  // Pala izquierda (CPU2)
+  if (pg.vx < 0 && pg.bx <= PONG_LX + PONG_PW && pg.bx + PONG_BS >= PONG_LX &&
+      c >= pg.lp - 1 && c <= pg.lp + PONG_PH + 1)
+  {
+    float off = (c - (pg.lp + PONG_PH / 2.0f)) / (PONG_PH / 2.0f);
+    float sp = fabsf(pg.vx) * 1.04f;
+    if (sp > PONG_SPEEDMAX)
+      sp = PONG_SPEEDMAX;
+    pg.bx = PONG_LX + PONG_PW;
+    pg.vx = sp;
+    pg.vy = pg.vy * 0.4f + off * 3.0f;
+    pg.rerr = pongNewErr();
+  }
+  // Pala derecha (CPU1)
+  else if (pg.vx > 0 && pg.bx + PONG_BS >= PONG_RX && pg.bx <= PONG_RX + PONG_PW &&
+           c >= pg.rp - 1 && c <= pg.rp + PONG_PH + 1)
+  {
+    float off = (c - (pg.rp + PONG_PH / 2.0f)) / (PONG_PH / 2.0f);
+    float sp = fabsf(pg.vx) * 1.04f;
+    if (sp > PONG_SPEEDMAX)
+      sp = PONG_SPEEDMAX;
+    pg.bx = PONG_RX - PONG_BS;
+    pg.vx = -sp;
+    pg.vy = pg.vy * 0.4f + off * 3.0f;
+    pg.lerr = pongNewErr();
+  }
+  else
+  {
+    // Evita tiros demasiado planos y limita el angulo
+    if (fabsf(pg.vy) > 3.4f)
+      pg.vy = (pg.vy > 0) ? 3.4f : -3.4f;
+    if (pg.bx + PONG_BS < 0) // se le escapa a CPU2 -> punto de CPU1
+    {
+      pg.sR++;
+      scored = true;
+      pongServe(-1);
+    }
+    else if (pg.bx > 320) // se le escapa a CPU1 -> punto de CPU2
+    {
+      pg.sL++;
+      scored = true;
+      pongServe(1);
+    }
+  }
+  if (fabsf(pg.vy) > 3.4f)
+    pg.vy = (pg.vy > 0) ? 3.4f : -3.4f;
+  if (fabsf(pg.vy) < 0.35f)
+    pg.vy = (esp_random() & 1) ? 0.8f : -0.8f;
+  return scored;
+}
+
+#define PONG_LED_MS 80 // cuanto dura el destello (ms)
+static void pongLeds(bool encendidos)
+{
+  digitalWrite(LED_PIN, encendidos ? LOW : HIGH);
+  digitalWrite(LED_PIN_G, encendidos ? LOW : HIGH);
+  digitalWrite(LED_PIN_B, encendidos ? LOW : HIGH);
+}
+
+void esp32_2432S028R_PongScreen(unsigned long mElapsed)
+{
+  mineria = getMiningData(mElapsed);
+  Serial.printf("M8AX - %s >>> Completados %s Share(s), %s Khashes, Prom. Hashrate %s KH/s %s°\n",
+                mineria.currentTime, mineria.completedShares.c_str(), mineria.totalKHashes.c_str(), mineria.currentHashRate.c_str(), mineria.temp.c_str());
+
+  bool redraw = hasChangedScreen;
+  if (!pg.init)
+  {
+    pg.init = true;
+    pg.lp = pg.rp = (PONG_YT + 2 + PONG_YB - PONG_PH) / 2.0f;
+    pg.sL = pg.sR = 0;
+    pongServe((esp_random() & 1) ? 1 : -1);
+    redraw = true;
+  }
+
+  if (redraw)
+    pongDrawField();
+  printPoolData(); // pie de las criptos (solo se repinta cuando toca)
+  hasChangedScreen = false;
+
+  char horaStr[9] = "";
+  char lastHora[9] = "";
+  char hashStr[16];
+  char lastHash[16] = "";
+  int lastSL = -1, lastSR = -1;
+  if (redraw)
+  {
+    lastHora[0] = 0;
+    lastHash[0] = 0;
+  }
+
+  int olx = (int)pg.lp, orx = (int)pg.rp;
+  int obx = (int)pg.bx, oby = (int)pg.by;
+  // Palas y bola en su sitio al empezar cada tanda
+  tft.fillRect(PONG_LX, olx, PONG_PW, PONG_PH, TFT_WHITE);
+  tft.fillRect(PONG_RX, orx, PONG_PW, PONG_PH, TFT_WHITE);
+  tft.fillRect(obx, oby, PONG_BS, PONG_BS, TFT_WHITE);
+
+  unsigned long start = millis();
+  unsigned long last = start;
+  unsigned long lastHud = 0;
+  unsigned long lastMiningUpdate = 0;
+  unsigned long lastTouchChk = 0;
+  unsigned long ledApagarEn = 0; // 0 = LEDs apagados
+  bool golpePala = false;
+  pongLeds(false); // empieza con los LEDs apagados
+
+  while (millis() - start < PONG_SLICE_MS)
+  {
+    unsigned long now = millis();
+    float dt = (now - last) / 16.667f;
+    if (dt > 3.0f)
+      dt = 3.0f;
+    last = now;
+
+    // ---- Tactil (misma logica que esp32_2432S028R_DoLedStuff) ----
+    if (now - lastTouchChk >= 40 && now - previousTouchMillis >= 500)
+    {
+      lastTouchChk = now;
+      int16_t t_x, t_y;
+      if (touch.getXY(t_x, t_y))
+      {
+        previousTouchMillis = now;
+        if (((t_x > 109) && (t_x < 211)) && ((t_y > 185) && (t_y < 241)))
+        {
+          bottomScreenBlue ^= true;
+          hasChangedScreen = true;
+        }
+        else if ((t_x > 235) && ((t_y > 0) && (t_y < 16)))
+        {
+          esp32_2432S028R_AlternateScreenState();
+        }
+        else if (t_x > 160)
+        {
+          currentDisplayDriver->current_cyclic_screen = (currentDisplayDriver->current_cyclic_screen + 1) % currentDisplayDriver->num_cyclic_screens;
+        }
+        else
+        {
+          currentDisplayDriver->current_cyclic_screen = currentDisplayDriver->current_cyclic_screen - 1;
+          if (currentDisplayDriver->current_cyclic_screen < 0)
+            currentDisplayDriver->current_cyclic_screen = currentDisplayDriver->num_cyclic_screens - 1;
+        }
+        break;
+      }
+    }
+
+    // ---- IA ----
+    bool serving = (now < pg.serveAt);
+    pongMoveAI(pg.lp, !serving && pg.vx < 0, PONG_LX + PONG_PW, pg.lerr, dt);
+    pongMoveAI(pg.rp, !serving && pg.vx > 0, PONG_RX - PONG_BS, pg.rerr, dt);
+
+    // ---- Fisica (subpasos para que no atraviese las palas) ----
+    bool scored = false;
+    if (!serving)
+    {
+      int steps = (int)ceilf(dt * fabsf(pg.vx) / 3.0f);
+      if (steps < 1)
+        steps = 1;
+      for (int i = 0; i < steps; i++)
+      {
+        float vxAntes = pg.vx;
+        bool punto = pongStep(dt / steps);
+        // Si la bola cambia de sentido y no hay punto, ha rebotado en una pala
+        if (!punto && ((vxAntes < 0) != (pg.vx < 0)))
+          golpePala = true;
+        if (punto)
+        {
+          scored = true;
+          break;
+        }
+      }
+    }
+    if (pg.sL > 999999 || pg.sR > 999999)
+    {
+      pg.sL = pg.sR = 0;
+      scored = true;
+    }
+
+    // ---- LEDs: golpe de pala -> todos a tope y se apagan enseguida ----
+    if (ledApagarEn && now >= ledApagarEn)
+    {
+      pongLeds(false);
+      ledApagarEn = 0;
+    }
+    if (golpePala)
+    {
+      pongLeds(true);
+      ledApagarEn = now + PONG_LED_MS;
+      golpePala = false;
+    }
+
+    // ---- Dibujo ----
+    int nlx = (int)(pg.lp + 0.5f), nrx = (int)(pg.rp + 0.5f);
+    int nbx = (int)pg.bx, nby = (int)pg.by;
+
+    pongMovePaddle(PONG_LX, olx, nlx);
+    pongMovePaddle(PONG_RX, orx, nrx);
+    olx = nlx;
+    orx = nrx;
+
+    if (scored)
+    {
+      // La bola vieja se borra y se repinta el campo entre las lineas
+      tft.fillRect(0, PONG_YT + 2, 320, PONG_YB - PONG_YT - 2, TFT_BLACK);
+      pongCenterLine();
+      tft.fillRect(PONG_LX, olx, PONG_PW, PONG_PH, TFT_WHITE);
+      tft.fillRect(PONG_RX, orx, PONG_PW, PONG_PH, TFT_WHITE);
+      tft.fillRect(nbx, nby, PONG_BS, PONG_BS, TFT_WHITE);
+      obx = nbx;
+      oby = nby;
+    }
+    else if (nbx != obx || nby != oby)
+    {
+      tft.fillRect(obx, oby, PONG_BS, PONG_BS, TFT_BLACK);
+      if (abs(obx - 160) < 10 || abs(nbx - 160) < 10)
+        pongCenterLine();
+      if (obx <= PONG_LX + PONG_PW + 6 || obx + PONG_BS >= PONG_RX - 6)
+      {
+        tft.fillRect(PONG_LX, olx, PONG_PW, PONG_PH, TFT_WHITE);
+        tft.fillRect(PONG_RX, orx, PONG_PW, PONG_PH, TFT_WHITE);
+      }
+      tft.fillRect(nbx, nby, PONG_BS, PONG_BS, TFT_WHITE);
+      obx = nbx;
+      oby = nby;
+    }
+
+    // ---- Marcadores ----
+    if (pg.sL != lastSL || pg.sR != lastSR || redraw)
+    {
+      pongDrawScores();
+      lastSL = pg.sL;
+      lastSR = pg.sR;
+      redraw = false;
+    }
+
+    // ---- Hashrate y hora (arriba a la derecha) ----
+    if (now - lastMiningUpdate >= 1000)
+    {
+      lastMiningUpdate = now;
+
+      // Consultar nuevamente los datos de mineria
+      mineria = getMiningData(mElapsed);
+
+      // Actualizar hashrate
+      snprintf(hashStr, sizeof(hashStr), "%s",
+               mineria.currentHashRate.c_str());
+
+      // Actualizar hora
+      time_t epoch = (time_t)timeClient.getEpochTime();
+      struct tm *ti = localtime(&epoch);
+
+      snprintf(horaStr, sizeof(horaStr), "%02d:%02d:%02d",
+               ti->tm_hour, ti->tm_min, ti->tm_sec);
+
+      if (strcmp(horaStr, lastHora) != 0 ||
+          strcmp(hashStr, lastHash) != 0)
+      {
+        pongDrawHud(hashStr, horaStr);
+
+        strcpy(lastHora, horaStr);
+        strcpy(lastHash, hashStr);
+      }
+    }
+
+    delay(10);
+  }
+
+  pongLeds(false); // por si salimos con los LEDs encendidos
+  tft.setTextPadding(0);
+  tft.setTextDatum(TL_DATUM);
+
+  cuentita++;
+  if (cuentita == 15)
+  {
+    ajustarZonaHoraria();
+    obtenerLocYTemp();
+    obtenerVariacionesBTC(variacion1dia, variacion1semana);
+  }
+}
+
+#define LIFE_CS 4          // tamano de celda en pixeles
+#define LIFE_W 80          // 320 / 4
+#define LIFE_H 38          // 152 / 4 (abajo quedan 18 px para los textos)
+#define LIFE_STEP_MS 120   // ms entre generaciones
+#define LIFE_SLICE_MS 5000 // tandas largas, como en el Pong
+#define LIFE_HIST 24       // generaciones recordadas para detectar repeticion
+#define LIFE_MAX_GEN 3000  // reinicia aunque no se repita
+#define LIFE_PAUSE_MS 2500 // pausa mostrando el dibujo final antes de reiniciar
+
+struct LifeState
+{
+  bool init;
+  bool needSeed;
+  uint8_t age[LIFE_W * LIFE_H];   // 0 = muerta, 1..255 = edad
+  uint8_t shown[LIFE_W * LIFE_H]; // banda de color pintada ahora (0 = negro)
+  uint32_t gen;
+  uint32_t hist[LIFE_HIST];
+  uint8_t histN;
+  unsigned long pauseUntil;
+};
+static LifeState lf = {false};
+
+static const uint16_t LIFE_COLORS[7] = {0x0000, 0xFFFF, 0x07FF, 0x07E0, 0xFFE0, 0xFD20, 0xF81F};
+
+static inline uint8_t lifeBand(uint8_t a)
+{
+  if (a == 0)
+    return 0;
+  if (a == 1)
+    return 1;
+  if (a <= 3)
+    return 2;
+  if (a <= 8)
+    return 3;
+  if (a <= 20)
+    return 4;
+  if (a <= 60)
+    return 5;
+  return 6;
+}
+
+// Semilla simetrica: se rellena un cuarto al azar y se refleja en los otros tres
+static void lifeSeed()
+{
+  memset(lf.age, 0, sizeof(lf.age));
+  for (int y = 0; y < LIFE_H / 2; y++)
+  {
+    for (int x = 0; x < LIFE_W / 2; x++)
+    {
+      if (esp_random() % 100 < 25)
+      {
+        int x2 = LIFE_W - 1 - x;
+        int y2 = LIFE_H - 1 - y;
+        lf.age[y * LIFE_W + x] = 1;
+        lf.age[y * LIFE_W + x2] = 1;
+        lf.age[y2 * LIFE_W + x] = 1;
+        lf.age[y2 * LIFE_W + x2] = 1;
+      }
+    }
+  }
+  lf.gen = 0;
+  lf.histN = 0;
+  memset(lf.hist, 0, sizeof(lf.hist));
+}
+
+// Una generacion (mundo toroidal: lo que sale por un borde entra por el contrario).
+// Devuelve cuantas celdas hay vivas y un hash del estado para detectar repeticiones.
+static int lifeStep(uint32_t &hash)
+{
+  static uint8_t nx[LIFE_W * LIFE_H];
+  int alive = 0;
+  hash = 2166136261u;
+  for (int y = 0; y < LIFE_H; y++)
+  {
+    int yu = ((y + LIFE_H - 1) % LIFE_H) * LIFE_W;
+    int yc = y * LIFE_W;
+    int yd = ((y + 1) % LIFE_H) * LIFE_W;
+    for (int x = 0; x < LIFE_W; x++)
+    {
+      int xl = (x + LIFE_W - 1) % LIFE_W;
+      int xr = (x + 1) % LIFE_W;
+      int n = (lf.age[yu + xl] > 0) + (lf.age[yu + x] > 0) + (lf.age[yu + xr] > 0) +
+              (lf.age[yc + xl] > 0) + (lf.age[yc + xr] > 0) +
+              (lf.age[yd + xl] > 0) + (lf.age[yd + x] > 0) + (lf.age[yd + xr] > 0);
+      uint8_t a = lf.age[yc + x];
+      uint8_t r;
+      if (a)
+        r = (n == 2 || n == 3) ? (a < 255 ? a + 1 : 255) : 0;
+      else
+        r = (n == 3) ? 1 : 0;
+      nx[yc + x] = r;
+      if (r)
+        alive++;
+      hash = (hash ^ (r ? 1u : 0u)) * 16777619u;
+    }
+  }
+  memcpy(lf.age, nx, sizeof(nx));
+  return alive;
+}
+
+// Pinta solo las celdas cuyo color ha cambiado (sin parpadeo)
+static void lifeDrawCells(bool force)
+{
+  if (force)
+  {
+    tft.fillRect(0, 0, 320, LIFE_H * LIFE_CS, TFT_BLACK);
+    memset(lf.shown, 0, sizeof(lf.shown));
+  }
+  for (int y = 0; y < LIFE_H; y++)
+  {
+    for (int x = 0; x < LIFE_W; x++)
+    {
+      int i = y * LIFE_W + x;
+      uint8_t b = lifeBand(lf.age[i]);
+      if (b != lf.shown[i])
+      {
+        tft.fillRect(x * LIFE_CS, y * LIFE_CS, LIFE_CS - 1, LIFE_CS - 1, LIFE_COLORS[b]);
+        lf.shown[i] = b;
+      }
+    }
+  }
+}
+
+static void lifeDrawHud(const char *izq, const char *der)
+{
+  tft.setFreeFont(NULL);
+  tft.setTextFont(1);
+  tft.setTextSize(2);
+  tft.setTextColor(TFT_WHITE, TFT_BLACK);
+  tft.setTextPadding(150);
+  tft.setTextDatum(TL_DATUM);
+  tft.drawString(izq, 4, 153);
+  tft.setTextDatum(TR_DATUM);
+  tft.drawString(der, 316, 153);
+  tft.setTextPadding(0);
+  tft.setTextDatum(TL_DATUM);
+}
+
+void esp32_2432S028R_LifeScreen(unsigned long mElapsed)
+{
+  mineria = getMiningData(mElapsed);
+  Serial.printf("M8AX - %s >>> Completados %s Share(s), %s Khashes, Prom. Hashrate %s KH/s %s°\n",
+                mineria.currentTime, mineria.completedShares.c_str(), mineria.totalKHashes.c_str(), mineria.currentHashRate.c_str(), mineria.temp.c_str());
+
+  bool redraw = hasChangedScreen;
+  if (!lf.init)
+  {
+    lf.init = true;
+    lf.needSeed = false;
+    lifeSeed();
+    redraw = true;
+  }
+
+  if (redraw)
+  {
+    tft.fillRect(0, 0, 320, 170, TFT_BLACK);
+    lifeDrawCells(true);
+  }
+  printPoolData(); // pie de las criptos (solo se repinta cuando toca)
+  hasChangedScreen = false;
+
+  char hashStr[16];
+  snprintf(hashStr, sizeof(hashStr), "%s", mineria.currentHashRate.c_str());
+  char izq[24], der[24];
+  char lastIzq[24] = "", lastDer[24] = "";
+
+  unsigned long start = millis();
+  unsigned long lastStep = 0;
+  unsigned long lastHud = 0;
+  unsigned long lastMiningUpdate = 0;
+  unsigned long lastTouchChk = 0;
+  unsigned long ledApagarEn = 0; // 0 = LEDs apagados
+  pongLeds(false);
+
+  while (millis() - start < LIFE_SLICE_MS)
+  {
+    unsigned long now = millis();
+
+    // ---- Tactil (misma logica que esp32_2432S028R_DoLedStuff) ----
+    if (now - lastTouchChk >= 40 && now - previousTouchMillis >= 500)
+    {
+      lastTouchChk = now;
+      int16_t t_x, t_y;
+      if (touch.getXY(t_x, t_y))
+      {
+        previousTouchMillis = now;
+        if (((t_x > 109) && (t_x < 211)) && ((t_y > 185) && (t_y < 241)))
+        {
+          bottomScreenBlue ^= true;
+          hasChangedScreen = true;
+        }
+        else if ((t_x > 235) && ((t_y > 0) && (t_y < 16)))
+        {
+          esp32_2432S028R_AlternateScreenState();
+        }
+        else if (t_x > 160)
+        {
+          currentDisplayDriver->current_cyclic_screen = (currentDisplayDriver->current_cyclic_screen + 1) % currentDisplayDriver->num_cyclic_screens;
+        }
+        else
+        {
+          currentDisplayDriver->current_cyclic_screen = currentDisplayDriver->current_cyclic_screen - 1;
+          if (currentDisplayDriver->current_cyclic_screen < 0)
+            currentDisplayDriver->current_cyclic_screen = currentDisplayDriver->num_cyclic_screens - 1;
+        }
+        break;
+      }
+    }
+
+    // ---- LEDs: destello corto cuando se siembra una vida nueva ----
+    if (ledApagarEn && now >= ledApagarEn)
+    {
+      pongLeds(false);
+      ledApagarEn = 0;
+    }
+
+    // ---- Reinicio: tras la pausa se siembra otra vida ----
+    if (lf.needSeed && now >= lf.pauseUntil)
+    {
+      lifeSeed();
+      lifeDrawCells(true);
+      lf.needSeed = false;
+      pongLeds(true);
+      ledApagarEn = now + PONG_LED_MS;
+    }
+
+    // ---- Una generacion ----
+    if (!lf.needSeed && now - lastStep >= LIFE_STEP_MS)
+    {
+      lastStep = now;
+      uint32_t h;
+      int alive = lifeStep(h);
+
+      // Si el estado ya ha aparecido en las ultimas generaciones, esta estancado u oscila
+      bool repetido = false;
+      for (int i = 0; i < lf.histN; i++)
+      {
+        if (lf.hist[i] == h)
+        {
+          repetido = true;
+          break;
+        }
+      }
+      lf.hist[lf.gen % LIFE_HIST] = h;
+      if (lf.histN < LIFE_HIST)
+        lf.histN++;
+      lf.gen++;
+
+      lifeDrawCells(false);
+
+      if (alive == 0 || repetido || lf.gen >= LIFE_MAX_GEN)
+      {
+        lf.needSeed = true;
+        lf.pauseUntil = now + LIFE_PAUSE_MS;
+      }
+    }
+
+    // ---- Hashrate (cada segundo) ----
+    if (now - lastMiningUpdate >= 1000)
+    {
+      lastMiningUpdate = now;
+      mineria = getMiningData(mElapsed);
+      snprintf(hashStr, sizeof(hashStr), "%s", mineria.currentHashRate.c_str());
+    }
+
+    // ---- Textos de abajo: generacion y hashrate ----
+    if (now - lastHud >= 200)
+    {
+      lastHud = now;
+      snprintf(izq, sizeof(izq), "GEN %lu", (unsigned long)lf.gen);
+      snprintf(der, sizeof(der), "%s KH/s", hashStr);
+      if (strcmp(izq, lastIzq) != 0 || strcmp(der, lastDer) != 0)
+      {
+        lifeDrawHud(izq, der);
+        strcpy(lastIzq, izq);
+        strcpy(lastDer, der);
+      }
+    }
+
+    delay(10);
+  }
+
+  pongLeds(false); // por si salimos con los LEDs encendidos
+  tft.setTextPadding(0);
+  tft.setTextDatum(TL_DATUM);
+
+  cuentita++;
+  if (cuentita == 15)
+  {
+    ajustarZonaHoraria();
+    obtenerLocYTemp();
+    obtenerVariacionesBTC(variacion1dia, variacion1semana);
+  }
+}
+
+#define BRK_COLS 16
+#define BRK_ROWS 7
+#define BRK_W 20          // ancho de ladrillo (16 * 20 = 320)
+#define BRK_H 8           // alto de ladrillo
+#define BRK_Y0 12         // y donde empiezan los ladrillos
+#define BRK_PY 140        // y de la pala
+#define BRK_PH 5          // alto de la pala
+#define BRK_PW 40         // ancho de la pala
+#define BRK_BS 4          // tamano de la bola
+#define BRK_SLICE_MS 5000 // tandas largas, como en el Pong
+#define BRK_LIVES 3
+
+struct BrkState
+{
+  bool init;
+  uint8_t br[BRK_ROWS * BRK_COLS]; // 0 = vacio, 1 = ladrillo, 2 = ladrillo duro
+  float bx, by, vx, vy;            // bola (esquina superior izquierda)
+  float px;                        // x (izquierda) de la pala
+  float aim, err;                  // punteria de la CPU para el proximo golpe
+  int lives, level, left;
+  unsigned long score;
+  unsigned long serveAt;
+  unsigned long clearUntil; // 0 = jugando; si no, pausa de nivel completado
+};
+static BrkState bk = {false};
+
+static const uint16_t BRK_COLORS[BRK_ROWS] = {0xF800, 0xFD20, 0xFFE0, 0x07E0, 0x07FF, 0x041F, 0xF81F};
+#define BRK_HARD_COLOR 0xC618
+
+static float brkSpeed()
+{
+  float s = 2.6f + 0.18f * (bk.level - 1);
+  return s > 4.6f ? 4.6f : s;
+}
+
+// Dibujo de cada nivel (se repite cada 6 niveles, pero mas rapido)
+static uint8_t brkPattern(int level, int r, int c)
+{
+  int cm = c < BRK_COLS - 1 - c ? c : BRK_COLS - 1 - c; // columna espejada
+  bool on;
+  switch ((level - 1) % 6)
+  {
+  case 0: // lleno
+    on = true;
+    break;
+  case 1: // ajedrez
+    on = ((r + c) % 2) == 0;
+    break;
+  case 2: // piramide invertida
+    on = (c >= r && c < BRK_COLS - r);
+    break;
+  case 3: // columnas con huecos
+    on = (c % 4) != 3;
+    break;
+  case 4: // marco + bloque central
+    on = (r == 0 || r == BRK_ROWS - 1 || c == 0 || c == BRK_COLS - 1 ||
+          (r >= 2 && r <= 4 && c >= 5 && c <= 10));
+    break;
+  default: // simetrico irregular
+    on = ((r * 7 + cm * 13 + level * 5) % 5) != 0;
+    break;
+  }
+  if (!on)
+    return 0;
+  if (level >= 8 && r <= 1)
+    return 2;
+  if (level >= 4 && r == 0)
+    return 2;
+  return 1;
+}
+
+static void brkDrawBrick(int r, int c)
+{
+  int x = c * BRK_W, y = BRK_Y0 + r * BRK_H;
+  uint8_t h = bk.br[r * BRK_COLS + c];
+  if (h == 0)
+    tft.fillRect(x, y, BRK_W, BRK_H, TFT_BLACK);
+  else
+    tft.fillRect(x + 1, y + 1, BRK_W - 2, BRK_H - 2, h == 2 ? BRK_HARD_COLOR : BRK_COLORS[r]);
+}
+
+static void brkDrawAllBricks()
+{
+  for (int r = 0; r < BRK_ROWS; r++)
+    for (int c = 0; c < BRK_COLS; c++)
+      if (bk.br[r * BRK_COLS + c])
+        brkDrawBrick(r, c);
+}
+
+static void brkBuildLevel()
+{
+  bk.left = 0;
+  for (int r = 0; r < BRK_ROWS; r++)
+    for (int c = 0; c < BRK_COLS; c++)
+    {
+      uint8_t h = brkPattern(bk.level, r, c);
+      bk.br[r * BRK_COLS + c] = h;
+      if (h)
+        bk.left++;
+    }
+}
+
+static void brkNewAim()
+{
+  bk.aim = ((int)(esp_random() % 1401) - 700) / 1000.0f;                    // -0.7..0.7
+  bk.err = ((int)(esp_random() % 1001) - 500) / 1000.0f * (BRK_PW * 0.16f); // fallo pequeno
+  if (esp_random() % 100 < 2)                                               // a veces se despista
+    bk.err = ((esp_random() & 1) ? 1.0f : -1.0f) * BRK_PW * 0.85f;
+}
+
+// Bola pegada a la pala esperando para salir
+static void brkServe()
+{
+  bk.bx = bk.px + BRK_PW / 2.0f - BRK_BS / 2.0f;
+  bk.by = BRK_PY - BRK_BS;
+  float sp = brkSpeed();
+  float a = ((int)(esp_random() % 1001) - 500) / 1000.0f * 0.9f; // -0.45..0.45 rad
+  bk.vx = sp * sinf(a);
+  bk.vy = -sp * cosf(a);
+  bk.serveAt = millis() + 700;
+  brkNewAim();
+}
+
+// Comprueba las 4 esquinas de la bola; si toca un ladrillo lo golpea y devuelve true
+static bool brkHitBricks(float x, float y)
+{
+  float cx[4] = {x, x + BRK_BS - 1, x, x + BRK_BS - 1};
+  float cy[4] = {y, y, y + BRK_BS - 1, y + BRK_BS - 1};
+  for (int i = 0; i < 4; i++)
+  {
+    int py = (int)cy[i] - BRK_Y0;
+    int px = (int)cx[i];
+    if (py < 0 || px < 0 || px >= 320)
+      continue;
+    int r = py / BRK_H, c = px / BRK_W;
+    if (r >= BRK_ROWS)
+      continue;
+    uint8_t &h = bk.br[r * BRK_COLS + c];
+    if (h)
+    {
+      h--;
+      if (h == 0)
+      {
+        bk.left--;
+        bk.score += (BRK_ROWS - r) * 10;
+        if (bk.score > 999999)
+          bk.score = 0;
+      }
+      brkDrawBrick(r, c);
+      return true;
+    }
+  }
+  return false;
+}
+
+// Donde llegara el centro de la bola a la altura de la pala (con rebotes en las paredes)
+static float brkPredict()
+{
+  float w = 320 - BRK_BS;
+  float t = (BRK_PY - BRK_BS - bk.by) / bk.vy;
+  float x = bk.bx + bk.vx * t;
+  float r = fmodf(x, 2.0f * w);
+  if (r < 0)
+    r += 2.0f * w;
+  if (r > w)
+    r = 2.0f * w - r;
+  return r + BRK_BS / 2.0f;
+}
+
+#define BRK_EV_PALA 1
+#define BRK_EV_LADRILLO 2
+#define BRK_EV_PERDIDA 4
+
+static int brkStep(float dt)
+{
+  int ev = 0;
+  float ox = bk.bx, oy = bk.by;
+
+  // Eje X
+  bk.bx += bk.vx * dt;
+  if (bk.bx < 0)
+  {
+    bk.bx = -bk.bx;
+    bk.vx = -bk.vx;
+  }
+  else if (bk.bx > 320 - BRK_BS)
+  {
+    bk.bx = 2 * (320 - BRK_BS) - bk.bx;
+    bk.vx = -bk.vx;
+  }
+  if (brkHitBricks(bk.bx, bk.by))
+  {
+    bk.bx = ox;
+    bk.vx = -bk.vx;
+    ev |= BRK_EV_LADRILLO;
+  }
+
+  // Eje Y
+  bk.by += bk.vy * dt;
+  if (bk.by < 0)
+  {
+    bk.by = -bk.by;
+    bk.vy = -bk.vy;
+  }
+  if (brkHitBricks(bk.bx, bk.by))
+  {
+    bk.by = oy;
+    bk.vy = -bk.vy;
+    ev |= BRK_EV_LADRILLO;
+  }
+
+  // Pala
+  if (bk.vy > 0 && bk.by + BRK_BS >= BRK_PY && bk.by <= BRK_PY + BRK_PH &&
+      bk.bx + BRK_BS >= bk.px && bk.bx <= bk.px + BRK_PW)
+  {
+    float off = (bk.bx + BRK_BS / 2.0f - (bk.px + BRK_PW / 2.0f)) / (BRK_PW / 2.0f);
+    if (off > 1)
+      off = 1;
+    if (off < -1)
+      off = -1;
+    float sp = sqrtf(bk.vx * bk.vx + bk.vy * bk.vy) * 1.012f;
+    if (sp > 5.2f)
+      sp = 5.2f;
+    float ang = off * 1.05f; // hasta ~60 grados
+    bk.vx = sp * sinf(ang);
+    bk.vy = -sp * cosf(ang);
+    bk.by = BRK_PY - BRK_BS;
+    brkNewAim();
+    ev |= BRK_EV_PALA;
+  }
+  else if (bk.by > BRK_PY + BRK_PH + 1)
+  {
+    ev |= BRK_EV_PERDIDA;
+  }
+  return ev;
+}
+
+// Mueve la pala repintando solo lo que cambia (sin parpadeo)
+static void brkMovePaddle(int oldX, int newX)
+{
+  if (oldX == newX)
+    return;
+  int d = abs(newX - oldX);
+  if (d >= BRK_PW)
+  {
+    tft.fillRect(oldX, BRK_PY, BRK_PW, BRK_PH, TFT_BLACK);
+    tft.fillRect(newX, BRK_PY, BRK_PW, BRK_PH, TFT_WHITE);
+  }
+  else if (newX > oldX)
+  {
+    tft.fillRect(oldX, BRK_PY, d, BRK_PH, TFT_BLACK);
+    tft.fillRect(oldX + BRK_PW, BRK_PY, d, BRK_PH, TFT_WHITE);
+  }
+  else
+  {
+    tft.fillRect(newX + BRK_PW, BRK_PY, d, BRK_PH, TFT_BLACK);
+    tft.fillRect(newX, BRK_PY, d, BRK_PH, TFT_WHITE);
+  }
+}
+
+static void brkDrawHud(const char *izq, const char *der)
+{
+  tft.setFreeFont(NULL);
+  tft.setTextFont(1);
+  tft.setTextSize(2);
+  tft.setTextColor(TFT_WHITE, TFT_BLACK);
+  tft.setTextPadding(160);
+  tft.setTextDatum(TL_DATUM);
+  tft.drawString(izq, 4, 153);
+  tft.setTextPadding(150);
+  tft.setTextDatum(TR_DATUM);
+  tft.drawString(der, 316, 153);
+  tft.setTextPadding(0);
+  tft.setTextDatum(TL_DATUM);
+}
+
+static void brkNewGame()
+{
+  bk.level = 1;
+  bk.lives = BRK_LIVES;
+  bk.score = 0;
+  bk.px = (320 - BRK_PW) / 2.0f;
+  bk.clearUntil = 0;
+  brkBuildLevel();
+  brkServe();
+}
+
+void esp32_2432S028R_KrakoutScreen(unsigned long mElapsed)
+{
+  mineria = getMiningData(mElapsed);
+  Serial.printf("M8AX - %s >>> Completados %s Share(s), %s Khashes, Prom. Hashrate %s KH/s %s°\n",
+                mineria.currentTime, mineria.completedShares.c_str(), mineria.totalKHashes.c_str(), mineria.currentHashRate.c_str(), mineria.temp.c_str());
+
+  bool redraw = hasChangedScreen;
+  if (!bk.init)
+  {
+    bk.init = true;
+    brkNewGame();
+    redraw = true;
+  }
+
+  if (redraw)
+  {
+    tft.fillRect(0, 0, 320, 170, TFT_BLACK);
+    brkDrawAllBricks();
+  }
+  printPoolData(); // pie de las criptos (solo se repinta cuando toca)
+  hasChangedScreen = false;
+
+  char hashStr[16];
+  snprintf(hashStr, sizeof(hashStr), "%s", mineria.currentHashRate.c_str());
+  char izq[28], der[28];
+  char lastIzq[28] = "", lastDer[28] = "";
+
+  int opx = (int)(bk.px + 0.5f);
+  int obx = (int)bk.bx, oby = (int)bk.by;
+  // Pala y bola en su sitio al empezar cada tanda
+  tft.fillRect(opx, BRK_PY, BRK_PW, BRK_PH, TFT_WHITE);
+  tft.fillRect(obx, oby, BRK_BS, BRK_BS, TFT_WHITE);
+
+  unsigned long start = millis();
+  unsigned long last = start;
+  unsigned long lastHud = 0;
+  unsigned long lastMiningUpdate = 0;
+  unsigned long lastTouchChk = 0;
+  unsigned long ledApagarEn = 0; // 0 = LEDs apagados
+  pongLeds(false);
+
+  while (millis() - start < BRK_SLICE_MS)
+  {
+    unsigned long now = millis();
+    float dt = (now - last) / 16.667f;
+    if (dt > 3.0f)
+      dt = 3.0f;
+    last = now;
+
+    // ---- Tactil (misma logica que esp32_2432S028R_DoLedStuff) ----
+    if (now - lastTouchChk >= 40 && now - previousTouchMillis >= 500)
+    {
+      lastTouchChk = now;
+      int16_t t_x, t_y;
+      if (touch.getXY(t_x, t_y))
+      {
+        previousTouchMillis = now;
+        if (((t_x > 109) && (t_x < 211)) && ((t_y > 185) && (t_y < 241)))
+        {
+          bottomScreenBlue ^= true;
+          hasChangedScreen = true;
+        }
+        else if ((t_x > 235) && ((t_y > 0) && (t_y < 16)))
+        {
+          esp32_2432S028R_AlternateScreenState();
+        }
+        else if (t_x > 160)
+        {
+          currentDisplayDriver->current_cyclic_screen = (currentDisplayDriver->current_cyclic_screen + 1) % currentDisplayDriver->num_cyclic_screens;
+        }
+        else
+        {
+          currentDisplayDriver->current_cyclic_screen = currentDisplayDriver->current_cyclic_screen - 1;
+          if (currentDisplayDriver->current_cyclic_screen < 0)
+            currentDisplayDriver->current_cyclic_screen = currentDisplayDriver->num_cyclic_screens - 1;
+        }
+        break;
+      }
+    }
+
+    // ---- LEDs: se apagan solos tras el destello ----
+    if (ledApagarEn && now >= ledApagarEn)
+    {
+      pongLeds(false);
+      ledApagarEn = 0;
+    }
+
+    bool serving = (now < bk.serveAt);
+
+    // ---- Nivel completado: pausa y nivel nuevo ----
+    if (bk.clearUntil)
+    {
+      if (now >= bk.clearUntil)
+      {
+        bk.clearUntil = 0;
+        bk.level++;
+        if (bk.lives < BRK_LIVES)
+          bk.lives++; // premio: una vida extra (hasta 3)
+        tft.fillRect(0, 0, 320, 152, TFT_BLACK);
+        brkBuildLevel();
+        brkDrawAllBricks();
+        brkServe();
+        serving = true;
+        opx = -1000; // fuerza repintar la pala
+        obx = (int)bk.bx;
+        oby = (int)bk.by;
+        tft.fillRect(obx, oby, BRK_BS, BRK_BS, TFT_WHITE);
+      }
+    }
+
+    // ---- IA de la pala ----
+    {
+      float tc, spd;
+      if (serving || bk.clearUntil)
+      {
+        tc = 160;
+        spd = 2.0f;
+      }
+      else if (bk.vy > 0)
+      {
+        tc = brkPredict() - bk.aim * (BRK_PW / 2.0f) + bk.err;
+        spd = 5.0f;
+      }
+      else
+      {
+        tc = bk.bx + BRK_BS / 2.0f; // la bola sube: sigue su x con calma
+        spd = 2.2f;
+      }
+      float tx = tc - BRK_PW / 2.0f;
+      if (tx < 0)
+        tx = 0;
+      if (tx > 320 - BRK_PW)
+        tx = 320 - BRK_PW;
+      float d = tx - bk.px;
+      float m = spd * dt;
+      if (d > m)
+        d = m;
+      else if (d < -m)
+        d = -m;
+      bk.px += d;
+      if (bk.px < 0)
+        bk.px = 0;
+      if (bk.px > 320 - BRK_PW)
+        bk.px = 320 - BRK_PW;
+    }
+
+    // ---- Fisica ----
+    if (serving)
+    {
+      // la bola va pegada a la pala hasta que sale
+      bk.bx = bk.px + BRK_PW / 2.0f - BRK_BS / 2.0f;
+      bk.by = BRK_PY - BRK_BS;
+    }
+    else if (!bk.clearUntil)
+    {
+      float sp = sqrtf(bk.vx * bk.vx + bk.vy * bk.vy);
+      int steps = (int)ceilf(dt * sp / 2.0f);
+      if (steps < 1)
+        steps = 1;
+      for (int i = 0; i < steps; i++)
+      {
+        int ev = brkStep(dt / steps);
+        if (ev & BRK_EV_PALA)
+        {
+          pongLeds(true);
+          ledApagarEn = now + PONG_LED_MS;
+        }
+        if (ev & BRK_EV_PERDIDA)
+        {
+          bk.lives--;
+          if (bk.lives < 0)
+          {
+            // sin vidas: empieza otra partida desde el nivel 1
+            bk.level = 1;
+            bk.lives = BRK_LIVES;
+            bk.score = 0;
+            tft.fillRect(0, 0, 320, 152, TFT_BLACK);
+            brkBuildLevel();
+            brkDrawAllBricks();
+            opx = -1000;
+          }
+          brkServe();
+          break;
+        }
+        if (bk.left <= 0)
+        {
+          bk.clearUntil = now + 1200;
+          pongLeds(true); // destello largo al limpiar el nivel
+          ledApagarEn = now + 400;
+          break;
+        }
+      }
+    }
+
+    // ---- Dibujo ----
+    int npx = (int)(bk.px + 0.5f);
+    int nbx = (int)bk.bx, nby = (int)bk.by;
+    if (opx == -1000)
+    {
+      tft.fillRect(npx, BRK_PY, BRK_PW, BRK_PH, TFT_WHITE);
+      opx = npx;
+    }
+    else
+    {
+      brkMovePaddle(opx, npx);
+      opx = npx;
+    }
+    if (nbx != obx || nby != oby)
+    {
+      tft.fillRect(obx, oby, BRK_BS, BRK_BS, TFT_BLACK);
+      if (oby + BRK_BS >= BRK_PY - 2) // la bola borrada pudo rozar la pala
+        tft.fillRect(npx, BRK_PY, BRK_PW, BRK_PH, TFT_WHITE);
+      tft.fillRect(nbx, nby, BRK_BS, BRK_BS, TFT_WHITE);
+      obx = nbx;
+      oby = nby;
+    }
+
+    // ---- Hashrate (cada segundo) ----
+    if (now - lastMiningUpdate >= 1000)
+    {
+      lastMiningUpdate = now;
+      mineria = getMiningData(mElapsed);
+      snprintf(hashStr, sizeof(hashStr), "%s", mineria.currentHashRate.c_str());
+    }
+
+    // ---- Textos de abajo: nivel, vidas, puntos y hashrate ----
+    if (now - lastHud >= 200)
+    {
+      lastHud = now;
+      int vidas = bk.lives < 0 ? 0 : bk.lives;
+      snprintf(izq, sizeof(izq), "N%02d V%d %lu", bk.level, vidas, bk.score);
+      snprintf(der, sizeof(der), "%s KH/s", hashStr);
+      if (strcmp(izq, lastIzq) != 0 || strcmp(der, lastDer) != 0)
+      {
+        brkDrawHud(izq, der);
+        strcpy(lastIzq, izq);
+        strcpy(lastDer, der);
+      }
+    }
+
+    delay(10);
+  }
+
+  pongLeds(false); // por si salimos con los LEDs encendidos
+  tft.setTextPadding(0);
+  tft.setTextDatum(TL_DATUM);
+
+  cuentita++;
+  if (cuentita == 15)
+  {
+    ajustarZonaHoraria();
+    obtenerLocYTemp();
+    obtenerVariacionesBTC(variacion1dia, variacion1semana);
+  }
 }
 
 void analiCadaSegundo(unsigned long frame)
@@ -3923,7 +5548,7 @@ void esp32_2432S028R_DoLedStuff(unsigned long frame)
   }
 }
 
-CyclicScreenFunction esp32_2432S028RCyclicScreens[] = {esp32_2432S028R_MinerScreen, tDisplay_granHash, esp32_2432S028R_BTCprice, esp32_2432S028R_ClockScreen, RelojDeNumeros, tDisplay_m8axScreen7, esp32_2432S028R_m8axScreen1, esp32_2432S028R_m8axScreen2, tDisplay_m8axScreenMegaNerd, tDisplay_m8axScreen5, tDisplay_m8axScreen6, tDisplay_m8axScreen3, tDisplay_m8axScreen4};
+CyclicScreenFunction esp32_2432S028RCyclicScreens[] = {esp32_2432S028R_MinerScreen, tDisplay_granHash, tDisplay_hashGigante, esp32_2432S028R_BTCprice, esp32_2432S028R_ClockScreen, RelojDeNumeros, tDisplay_m8axScreen7, esp32_2432S028R_m8axScreen1, esp32_2432S028R_m8axScreen2, tDisplay_m8axScreenMegaNerd, tDisplay_m8axScreen5, tDisplay_m8axScreen6, esp32_2432S028R_PongScreen, esp32_2432S028R_KrakoutScreen, esp32_2432S028R_LifeScreen, tDisplay_m8axScreen3, tDisplay_m8axScreen4};
 
 DisplayDriver esp32_2432S028RDriver = {
     esp32_2432S028R_Init,
