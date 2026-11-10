@@ -71,7 +71,7 @@
  *   5 - "Forma De Almacenar Valor Que No Depende De Gobiernos Ni Instituciones." – Barry Silbert, CEO De Digital Currency Group.
  *
  *
- *              ///\\\ --- Minimizando Código, Maximizando Funcionalidad. Solo 2200 Líneas De Código En 7h --- ///\\\
+ *              ///\\\ --- Minimizando Código, Maximizando Funcionalidad. Solo 2240 Líneas De Código En 7h --- ///\\\
  *
  *                                                     .M8AX Corp. - ¡A Minar!
  *
@@ -819,15 +819,21 @@ void fiestaLED()
 void cumpleLED()
 {
   vTaskDelay(pdMS_TO_TICKS(600));
-  const int ritmo[][2] = {{120, 80}, {120, 80}, {250, 80}, {500, 80}, {250, 80}, {900, 300}};
-  for (int i = 0; i < 6; i++)
+  digitalWrite(m8ax, LOW);
+  const int ritmo[][2] = {{130, 140}, {130, 140}, {260, 140}, {520, 140}, {260, 240}, {900, 300}};
+  for (int vez = 0; vez < 2; vez++)
   {
-    digitalWrite(m8ax, HIGH);
-    vTaskDelay(pdMS_TO_TICKS(ritmo[i][0]));
-    digitalWrite(m8ax, LOW);
-    vTaskDelay(pdMS_TO_TICKS(ritmo[i][1]));
+    for (int i = 0; i < 6; i++)
+    {
+      digitalWrite(m8ax, HIGH);
+      vTaskDelay(pdMS_TO_TICKS(ritmo[i][0]));
+      digitalWrite(m8ax, LOW);
+      vTaskDelay(pdMS_TO_TICKS(ritmo[i][1]));
+    }
+    if (vez == 0)
+      vTaskDelay(pdMS_TO_TICKS(700));
   }
-  totalparpadeosled += 6;
+  totalparpadeosled += 12;
 }
 
 void sincroLED()
@@ -1201,6 +1207,36 @@ void calculate_operations(int numbers[], int target, char *result)
   if (!c.done)
     cifras_search(c, numbers, MAX_NUMBERS, 0);
 
+  bool usado[CIFRAS_MAX_STEPS];
+  bool gastado[CIFRAS_MAX_STEPS];
+  for (int k = 0; k < CIFRAS_MAX_STEPS; k++)
+  {
+    usado[k] = false;
+    gastado[k] = false;
+  }
+  if (c.bestCount > 0)
+  {
+    usado[c.bestCount - 1] = true;
+    for (int k = c.bestCount - 1; k >= 0; k--)
+    {
+      if (!usado[k])
+        continue;
+      int ops[2] = {c.best[k].a, c.best[k].b};
+      for (int q = 0; q < 2; q++)
+      {
+        for (int j = k - 1; j >= 0; j--)
+        {
+          if (!gastado[j] && c.best[j].r == ops[q])
+          {
+            gastado[j] = true;
+            usado[j] = true;
+            break;
+          }
+        }
+      }
+    }
+  }
+
   size_t len = 0;
   result[0] = '\0';
   if (c.bestCount == 0)
@@ -1209,10 +1245,14 @@ void calculate_operations(int numbers[], int target, char *result)
   }
   else
   {
+    bool primero = true;
     for (int k = 0; k < c.bestCount && len < MAX_RESULT_LENGTH - 60; k++)
     {
+      if (!usado[k])
+        continue;
       len += snprintf(result + len, MAX_RESULT_LENGTH - len, "%s(%d %c %d) = %d",
-                      k ? " -> " : "", c.best[k].a, c.best[k].op, c.best[k].b, c.best[k].r);
+                      primero ? "" : " -> ", c.best[k].a, c.best[k].op, c.best[k].b, c.best[k].r);
+      primero = false;
     }
   }
   snprintf(result + len, MAX_RESULT_LENGTH - len, "\n>>> M8AX - Resultado - %d", c.bestVal);

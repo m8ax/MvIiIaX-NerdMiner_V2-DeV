@@ -47,7 +47,7 @@
  *
  *                              PARA MÁS INFORMACIÓN LEER PDF
  *
- *                     Tmp. De Programación 16H - 6540 Líneas De Código
+ *                     Tmp. De Programación 16H - 6700 Líneas De Código
  *                     ------------------------------------------------
  *
  ********************************************************************************************/
@@ -190,12 +190,6 @@ unsigned long startTime = 0;                   // Para guardar Epoch de inicio
 unsigned long arrankito = 0;                   // Para guardar millis al arrancar
 const unsigned long interval = 60 * 2 * 60;    // 2 horas en segundos (2 horas * 60 minutos * 60 segundos)
 const unsigned long minStartupTime = interval; // Segundos para que no envíe mensaje a telegram si esta configurado, nada más arrancar
-
-typedef struct
-{
-  int value;
-  char operation[500];
-} State;
 
 template <typename T, typename T2>
 
@@ -659,135 +653,303 @@ void borrarDesdeUltimoGuion(char *str)
   }
 }
 
-// Función recursiva para encontrar operaciones matemáticas
+// Tiempo máximo en milisegundos que dejo al buscador para encontrar la mejor cuenta.
+// Pasado este tiempo corto la búsqueda y me quedo con lo mejor que haya encontrado hasta ese momento.
+// Si en la pantalla se me queda congelado mucho rato, bajo este valor ( 800 - 1000 ).
 
-void find_operations(int numbers[], int target, State current, State *best, int depth, int used[])
+#define CIFRAS_TIME_BUDGET_MS 2500
+
+// Número máximo de pasos que puede tener una cuenta. Con 6 números solo puedo hacer 5 operaciones,
+// porque cada operación gasta 2 números y devuelve 1.
+
+#define CIFRAS_MAX_STEPS (MAX_NUMBERS - 1)
+
+// Estructura que guarda un paso de la cuenta. Ejemplo: ( 45 + 3 ) = 48
+// - a  : Primer número de la operación ( siempre el mayor de los dos ).
+// - op : Operación realizada ( + - * / ).
+// - b  : Segundo número de la operación.
+// - r  : Resultado de la operación.
+
+struct CifraPaso
 {
-  // Si alcanzamos el objetivo, actualizamos el mejor resultado
+  int a;
+  char op;
+  int b;
+  int r;
+};
 
-  if (current.value == target)
+// Estructura con todo el contexto de la búsqueda. Así no necesito variables globales
+// ni pasar 10 parámetros a la función recursiva.
+// - target    : Número objetivo que quiero alcanzar.
+// - bestVal   : Mejor valor que he conseguido hasta ahora ( el más cercano al objetivo ).
+// - bestDiff  : Diferencia entre el mejor valor y el objetivo ( 0 = exacto ).
+// - bestCount : Cuántos pasos tiene la mejor cuenta encontrada.
+// - best[]    : Pasos de la mejor cuenta encontrada.
+// - cur[]     : Pasos de la cuenta que estoy probando ahora mismo.
+// - nodes     : Contador de operaciones probadas, lo uso para mirar el reloj de vez en cuando.
+// - deadline  : Momento ( millis ) en el que tengo que dejar de buscar.
+// - done      : Si es true paro la búsqueda ( exacto encontrado o tiempo agotado ).
+
+struct CifrasCtx
+{
+  int target;
+  int bestVal;
+  int bestDiff;
+  int bestCount;
+  CifraPaso best[CIFRAS_MAX_STEPS];
+  CifraPaso cur[CIFRAS_MAX_STEPS];
+  uint32_t nodes;
+  uint32_t deadline;
+  bool done;
+};
+
+// Función que comprueba si un valor que acabo de calcular es mejor que el mejor que tengo guardado.
+// Si está más cerca del objetivo, me lo quedo y copio los pasos de la cuenta actual a la mejor.
+// Si la diferencia es 0 es que he dado con el número exacto, así que marco done = true y paro todo.
+
+// Parámetros:
+// - c     : Contexto de la búsqueda.
+// - value : Valor que acabo de obtener con la última operación.
+// - steps : Número de pasos que lleva la cuenta actual.
+
+static inline void cifras_candidate(CifrasCtx &c, int value, int steps)
+{
+  int diff = abs(value - c.target);
+  if (diff < c.bestDiff)
   {
-    *best = current;
-    return;
+    c.bestDiff = diff;
+    c.bestVal = value;
+    c.bestCount = steps;
+    for (int k = 0; k < steps; k++)
+      c.best[k] = c.cur[k];
+    if (diff == 0)
+      c.done = true;
   }
+}
 
-  // Si hemos usado todos los números o hemos alcanzado la profundidad máxima, verificamos si este resultado es mejor
+// Función recursiva que es el cerebro del juego de las cifras. Prueba todas las combinaciones posibles.
 
-  if (depth == MAX_DEPTH)
+// Procedimiento:
+// 1. Cojo todas las parejas posibles de números de la lista ( i, j ).
+// 2. Salto las parejas repetidas ( si tengo dos 7, probar el primero o el segundo es lo mismo ).
+// 3. Pongo siempre el mayor delante ( x >= y ), así la resta nunca da negativo.
+// 4. Apunto en 'rest' los números que no he usado en esta pareja.
+// 5. Pruebo las 4 operaciones ( + - * / ), descartando las inútiles:
+//    - Resta con números iguales ( da 0 ).
+//    - Multiplicar o dividir por 1 ( no cambia nada ).
+//    - División que no sea exacta ( nada de decimales ).
+// 6. Cada 1024 operaciones miro el reloj. Si me he pasado de tiempo paro, y si no, cedo el procesador
+//    un instante con vTaskDelay para no petar el watchdog del ESP32.
+// 7. Guardo el paso, miro si es el mejor resultado hasta ahora y si me quedan números,
+//    meto el resultado en la lista y me llamo a mí misma con un número menos.
+
+// Parámetros:
+// - c     : Contexto de la búsqueda.
+// - vals  : Lista de números disponibles en este nivel.
+// - n     : Cuántos números hay en la lista.
+// - depth : Profundidad actual ( cuántas operaciones llevo hechas ).
+
+static void cifras_search(CifrasCtx &c, const int *vals, int n, int depth)
+{
+  for (int i = 0; i < n - 1 && !c.done; i++)
   {
-    int diff = abs(current.value - target);
-    int mejor_diff = abs(best->value - target);
-    if (diff < mejor_diff)
+    bool dupI = false;
+    for (int k = 0; k < i; k++)
+      if (vals[k] == vals[i])
+      {
+        dupI = true;
+        break;
+      }
+    if (dupI)
+      continue;
+    for (int j = i + 1; j < n && !c.done; j++)
     {
-      *best = current;
-    }
-    return;
-  }
-
-  // Iterar sobre todos los números disponibles
-
-  for (int i = 0; i < MAX_NUMBERS; i++)
-  {
-    if (!used[i])
-    {
-      used[i] = 1; // Marcar el número como usado
-
-      // Suma
-      int new_value = current.value + numbers[i];
-
-      // No se permiten resultados negativos
-      if (new_value >= 0)
+      bool dupJ = false;
+      for (int k = i + 1; k < j; k++)
+        if (vals[k] == vals[j])
+        {
+          dupJ = true;
+          break;
+        }
+      if (dupJ)
+        continue;
+      int x = vals[i], y = vals[j];
+      if (x < y)
       {
-        State new_state;
-        new_state.value = new_value;
-        snprintf(new_state.operation, sizeof(new_state.operation), "%s -> (%d + %d) = %d", current.operation, current.value, numbers[i], new_value);
-        find_operations(numbers, target, new_state, best, depth + 1, used);
+        int t = x;
+        x = y;
+        y = t;
       }
-
-      // Resta (solo si no genera negativos)
-      if (current.value - numbers[i] >= 0)
+      int rest[MAX_NUMBERS];
+      int m = 0;
+      for (int k = 0; k < n; k++)
+        if (k != i && k != j)
+          rest[m++] = vals[k];
+      for (int o = 0; o < 4 && !c.done; o++)
       {
-        State new_state;
-        new_state.value = current.value - numbers[i];
-        snprintf(new_state.operation, sizeof(new_state.operation), "%s -> (%d - %d) = %d", current.operation, current.value, numbers[i], new_state.value);
-        find_operations(numbers, target, new_state, best, depth + 1, used);
+        int r;
+        char op;
+        switch (o)
+        {
+        case 0:
+          r = x + y;
+          op = '+';
+          break;
+        case 1:
+          if (x == y)
+            continue;
+          r = x - y;
+          op = '-';
+          break;
+        case 2:
+          if (x == 1 || y == 1)
+            continue;
+          r = x * y;
+          op = '*';
+          break;
+        default:
+          if (y == 1 || x % y != 0)
+            continue;
+          r = x / y;
+          op = '/';
+          break;
+        }
+        if ((++c.nodes & 0x3FF) == 0)
+        {
+          if (millis() > c.deadline)
+          {
+            c.done = true;
+            return;
+          }
+          vTaskDelay(1);
+        }
+        c.cur[depth] = {x, op, y, r};
+        cifras_candidate(c, r, depth + 1);
+        if (c.done)
+          return;
+        if (m >= 1)
+        {
+          rest[m] = r;
+          cifras_search(c, rest, m + 1, depth + 1);
+        }
       }
-
-      // Multiplicación (solo si no es innecesario)
-      int mult_value = current.value * numbers[i];
-
-      // Limitar el rango de multiplicación
-      if (mult_value >= 0 && mult_value <= target + 100)
-      {
-        State new_state;
-        new_state.value = mult_value;
-        snprintf(new_state.operation, sizeof(new_state.operation), "%s -> (%d * %d) = %d", current.operation, current.value, numbers[i], mult_value);
-        find_operations(numbers, target, new_state, best, depth + 1, used);
-      }
-
-      // División exacta (solo si no genera fracciones)
-      if (numbers[i] != 0 && current.value % numbers[i] == 0)
-      {
-        State new_state;
-        new_state.value = current.value / numbers[i];
-        snprintf(new_state.operation, sizeof(new_state.operation), "%s -> (%d / %d) = %d", current.operation, current.value, numbers[i], new_state.value);
-        find_operations(numbers, target, new_state, best, depth + 1, used);
-      }
-      used[i] = 0; // Desmarcar el número
     }
   }
 }
 
-// Función para calcular las operaciones que transforman un conjunto de números en un valor objetivo.
-// Se realiza una búsqueda recursiva para encontrar la mejor combinación de operaciones y números,
-// registrando el mejor resultado obtenido. Al final, se devuelve el resultado con un mensaje indicando
-// si se alcanzó el valor exacto o no, junto con el porcentaje de aciertos acumulado.
+// Función principal del juego de las cifras. Intenta llegar al número objetivo usando los 6 números
+// y las 4 operaciones básicas. Si no llega exacto, se queda con el resultado más cercano.
+// Deja en 'result' el texto con la cuenta completa, el resultado, la diferencia y el porcentaje
+// de aciertos acumulado. También actualiza los contadores globales aciertos, fallos y totalci.
+
+// Procedimiento:
+// 1. Preparo el contexto: objetivo, tiempo límite y como mejor valor inicial el primer número.
+// 2. Miro si alguno de los 6 números ya es el objetivo o está más cerca que el que tengo.
+// 3. Si no he dado con el exacto, lanzo la búsqueda recursiva con cifras_search.
+// 4. Limpio la cuenta: el buscador guarda todos los pasos que lleva hasta dar con el mejor resultado,
+//    y alguno puede no servir para nada. Empiezo por el último paso, que seguro se usa, y voy hacia
+//    atrás marcando los pasos de los que salen sus números. Los que no queden marcados no los imprimo.
+// 5. Construyo el texto: los pasos que sí se usan separados por ' -> ' y debajo el resultado.
+//    Si no hizo falta ninguna operación pongo 'Inicio - X'.
+// 6. Actualizo aciertos, fallos, totalci y el porcentaje.
+// 7. Añado al final ' ( EXACTO ) ' o ' Dif. - ( n ) ' junto con el porcentaje de aciertos.
+
+// Parámetros:
+// - numbers : Lista con los 6 números disponibles.
+// - target  : Número objetivo.
+// - result  : Cadena donde dejo el texto final ( tamaño MAX_RESULT_LENGTH ).
 
 void calculate_operations(int numbers[], int target, char *result)
 {
-  int used[MAX_NUMBERS] = {0};   // Para rastrear números usados
-  State best = {numbers[0], ""}; // Inicializamos con el primer número
-
-  // Empezamos probando con cada número en la lista como punto de inicio
-  for (int i = 0; i < MAX_NUMBERS; i++)
+  static CifrasCtx c;
+  c.target = target;
+  c.bestVal = numbers[0];
+  c.bestDiff = abs(numbers[0] - target);
+  c.bestCount = 0;
+  c.nodes = 0;
+  c.done = false;
+  c.deadline = millis() + CIFRAS_TIME_BUDGET_MS;
+  for (int i = 0; i < MAX_NUMBERS && c.bestDiff != 0; i++)
   {
-    State current;
-    current.value = numbers[i]; // Probar cada número como inicio
-    snprintf(current.operation, sizeof(current.operation), "Inicio: %d", numbers[i]);
+    int d = abs(numbers[i] - target);
+    if (d < c.bestDiff)
+    {
+      c.bestDiff = d;
+      c.bestVal = numbers[i];
+    }
+  }
+  if (c.bestDiff == 0)
+    c.done = true;
+  if (!c.done)
+    cifras_search(c, numbers, MAX_NUMBERS, 0);
 
-    // Marcar el número actual como usado
-    memset(used, 0, sizeof(used));
-    used[i] = 1;
+  // Marco los pasos que de verdad se usan para llegar al resultado final.
+  // Empiezo por el último y voy hacia atrás buscando de qué pasos salen sus números.
 
-    // Buscar las mejores operaciones desde el número actual
-    find_operations(numbers, target, current, &best, 1, used);
+  bool usado[CIFRAS_MAX_STEPS];
+  bool gastado[CIFRAS_MAX_STEPS];
+  for (int k = 0; k < CIFRAS_MAX_STEPS; k++)
+  {
+    usado[k] = false;
+    gastado[k] = false;
+  }
+  if (c.bestCount > 0)
+  {
+    usado[c.bestCount - 1] = true;
+    for (int k = c.bestCount - 1; k >= 0; k--)
+    {
+      if (!usado[k])
+        continue;
+      int ops[2] = {c.best[k].a, c.best[k].b};
+      for (int q = 0; q < 2; q++)
+      {
+        for (int j = k - 1; j >= 0; j--)
+        {
+          if (!gastado[j] && c.best[j].r == ops[q])
+          {
+            gastado[j] = true;
+            usado[j] = true;
+            break;
+          }
+        }
+      }
+    }
   }
 
-  // Añadir información sobre si es exacto o no
-  snprintf(result, 500, "%s\nResultado: %d", best.operation, best.value);
-  // Verificar si se ha alcanzado el objetivo exacto
-  totalci = (totalci == 0) ? 1 : totalci;
-  porcentaje = (static_cast<float>(aciertos) * 100) / totalci;
-  if (best.value == target)
+  size_t len = 0;
+  result[0] = '\0';
+  len = snprintf(result, MAX_RESULT_LENGTH, "Pasos -> ");
+  if (c.bestCount == 0)
   {
-    aciertos++;
-    strcat(result, ", ( EXACTO ) -");
-    char porcentaje_str[20];
-    snprintf(porcentaje_str, sizeof(porcentaje_str), " ( AC %.2f%% )", porcentaje);
-    strcat(result, porcentaje_str);
+    len += snprintf(result + len, MAX_RESULT_LENGTH - len, "Inicio - %d", c.bestVal);
   }
   else
   {
-    fallos++;
-    int diff = abs(best.value - target);
-    char diff_str[50];
-    snprintf(diff_str, sizeof(diff_str), ", Dif. - ( %d ) -", diff);
-    strcat(result, diff_str);
-    char porcentaje_str[20];
-    snprintf(porcentaje_str, sizeof(porcentaje_str), " ( AC %.2f%% )", porcentaje);
-    strcat(result, porcentaje_str);
+    bool primero = true;
+    for (int k = 0; k < c.bestCount && len < MAX_RESULT_LENGTH - 60; k++)
+    {
+      if (!usado[k])
+        continue;
+      len += snprintf(result + len, MAX_RESULT_LENGTH - len, "%s(%d %c %d) = %d",
+                      primero ? "" : " -> ", c.best[k].a, c.best[k].op, c.best[k].b, c.best[k].r);
+      primero = false;
+    }
   }
+  snprintf(result + len, MAX_RESULT_LENGTH - len, "\nResultado - %d", c.bestVal);
+
+  bool exacto = (c.bestVal == target);
+  if (exacto)
+    aciertos++;
+  else
+    fallos++;
   totalci++;
+  porcentaje = (static_cast<float>(aciertos) * 100) / totalci;
+  char extra[64];
+  if (exacto)
+    snprintf(extra, sizeof(extra), ", ( EXACTO ) - ( AC %.2f%% )", porcentaje);
+  else
+    snprintf(extra, sizeof(extra), ", Dif. - ( %d ) - ( AC %.2f%% )", abs(c.bestVal - target), porcentaje);
+  strncat(result, extra, MAX_RESULT_LENGTH - strlen(result) - 1);
 }
 
 // Genera una serie de números aleatorios dentro de un rango especificado
@@ -3723,8 +3885,7 @@ void tDisplay_m8axScreen1(unsigned long mElapsed)
   moonData_t moon;
   incrementCounter();
   actualizarcalen = 0;
-  actualizarc = 0;
-  mirarTiempo = 0;
+  actualizarc = 0, mirarTiempo = 0;
   std::string quediase = obtenerDiaSemana(std::string(dataa.currentDate.c_str()));
   String fechita = dataa.currentDate + " " + String(quediase.c_str());
   String fechacondiasemana = dataa.currentDate + " " + String(quediase.c_str());
@@ -5637,7 +5798,7 @@ void tDisplay_m8axScreen18(unsigned long mElapsed)
   colorI = esp_random() % (sizeof(colors) / sizeof(colors[0]));
   tft.setTextSize(1);
   tft.setCursor(1, 90);
-  tft.print("'Las Cifras' Num - " + String(totalci) + ". AC - " + String(aciertos) + " FA - " + String(fallos));
+  tft.print("'M8AX - Las Cifras' Num - " + String(totalci) + ". AC - " + String(aciertos) + " FA - " + String(fallos));
   tft.drawLine(0, 100, 320, 100, colors[colorI]); // Dibujar línea de (0, y) a (320, y)
   int numeritos[6];
   int destino = 1 + (esp_random() % 1000);
@@ -5901,8 +6062,7 @@ void tDisplay_m8axvida(unsigned long mElapsed)
     }
   }
   actualizarcalen = 0;
-  actualizarc = 0;
-  actual = 0;
+  actualizarc = 0, actual = 0;
 }
 
 // Función que gestiona la visualización de un reloj en formato de números romanos en la pantalla TFT,

@@ -2213,7 +2213,7 @@ const int BARRA_PIE_Y = 220;            // y real de la línea de abajo (webs / 
 const int BARRA_PRECIO_TAM = 8;         // tamaño de la letra digital del precio
 const bool BARRA_MOSTRAR_USDT = true;   // false = quita el "USDT" de cada línea
 const int BARRA_ETIQ_DY = 3;            // bajada extra de símbolo y USDT para alinearlos con el precio
-// Textos de abajo de cada recuadro (máx. 14 letras para que quepan). Cámbialos por tus webs.
+// Textos de abajo de cada recuadro (máx. 14 letras para que quepan).
 const uint16_t BARRA_COLOR_SUBE = 0x07E0; // verde brillante
 const uint16_t BARRA_COLOR_BAJA = 0xFC00; // naranja brillante
 const char *BARRA_PIE[3] = {"opensea.io/m8ax", " youtube.com/m8ax", "\\\\\\ By M8AX ///"};
