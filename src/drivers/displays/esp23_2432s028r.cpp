@@ -2,8 +2,8 @@
  *
  *   Escrito por: M8AX
  *
- *   Descripción:
- *   ------------
+ *   Descripción: ESP23_2432S028R Con Logo M8AX
+ *   ------------------------------------------
  *
  *   Expansión de las pantallas del NerdMinerV2 con aún más datos y mucho más "nerd"
  *   de lo que ya era xD...
@@ -56,7 +56,7 @@
  *           a la cadena. A cambio, reciben bitcoins recién creados como recompensa.
  *
  *
- *                     Tmp. De Programación 4H - 5590 Líneas De Código
+ *                     Tmp. De Programación 4H - 6065 Líneas De Código
  *                     -----------------------------------------------
  *
  ****************************************************************************************************************/
@@ -224,7 +224,7 @@ String preciob(void)
 {
   String bitcoin_price = "";
   if (WiFi.status() != WL_CONNECTED)
-    return String("https://api.coinbase.com/v2/prices/BTC-USD/spot") + "$";
+    return String("---") + "$";
   HTTPClient http;
   try
   {
@@ -351,7 +351,11 @@ String numeroAEscrito(int num, bool esDecimal = false)
     {
       // Para números del 20 al 29, usamos la forma correcta "Veinti" + unidades
 
-      if (num < 30)
+      if (num == 20)
+      {
+        resultado += "Veinte";
+      }
+      else if (num < 30)
       {
         resultado += "Veinti";
         if (num % 10 > 0)
@@ -724,6 +728,7 @@ std::pair<String, String> obtenerCiudadYTemperatura(const String &ip)
     if (error)
     {
       Serial.println("M8AX - Error Al Parsear JSON De Geolocalización");
+      http.end();
       return std::make_pair(ciudad, temperatura);
     }
     ciudad = doc["city"].as<String>();
@@ -734,6 +739,7 @@ std::pair<String, String> obtenerCiudadYTemperatura(const String &ip)
   else
   {
     Serial.println("M8AX - Error Al Obtener Datos De Geolocalización");
+    http.end();
     return std::make_pair(ciudad, temperatura);
   }
   http.end();
@@ -775,8 +781,7 @@ void obtenerLocYTemp()
 void dibujaAnalogKH(float khs)
 {
   int centerX = 160;
-  int centerY = 85;
-  int radius = 60;
+  int centerY = 85, radius = 60;
   tft.setTextSize(1);
   tft.drawCircle(centerX, centerY, radius, TFT_WHITE);
   for (int i = 0; i < 360; i += 15)
@@ -1014,7 +1019,7 @@ void relojAnalogicoM8AX(int hours, int minutes, int seconds)
 
 const char *obtenerEstadoTemperatura(int temperatura)
 {
-  if (temperatura >= 20 && temperatura <= 45)
+  if (temperatura <= 45)
   {
     return "Temperatura Baja";
   }
@@ -1144,7 +1149,7 @@ void M8AXTicker()
   tft.setTextColor(colors[colorI], TFT_BLACK);
   tft.setTextSize(2);
   drawCenteredText("M v I i I a X", 50, 100);
-  drawCenteredText("NerdMiner V2", 990, 100);
+  drawCenteredText("NerdMiner V2", 90, 100);
   drawCenteredText("V  10 . 03 . 77", 130, 100);
   delay(500);
   television();
@@ -1527,6 +1532,11 @@ const char *factorize(uint32_t number)
   uint32_t factors[16];  // Almacena factores primos
   uint8_t exponents[16]; // Almacena exponentes
   uint8_t count = 0;     // Número de factores encontrados
+  if (number < 2)
+  {
+    strcpy(result, number == 0 ? "0 ( SIN FACTORES )" : "1 ( SIN FACTORES )");
+    return result;
+  }
 
   // Factorización por 2
   if (number % 2 == 0)
@@ -3672,7 +3682,7 @@ void tDisplay_m8axScreenMegaNerd(unsigned long mElapsed)
   tft.setTextColor(TFT_WHITE);
   float tflops = ((hashRa * 1000) * 2560) / 1000000000000;
   tft.setCursor(4, 100);
-  char buffer[10];               // Buffer para almacenar el número formateado
+  char buffer[20];               // Buffer para almacenar el número formateado
   dtostrf(tflops, 8, 6, buffer); // (valor, ancho mínimo, decimales, buffer)
   tft.print(buffer);
   tft.setCursor(4, 115);
@@ -3699,7 +3709,7 @@ void tDisplay_m8axScreenMegaNerd(unsigned long mElapsed)
   tft.setTextColor(TFT_WHITE);
   float Mops = ((hashRa * 1000) * 2560) / 1000000;
   tft.setCursor(230, 50);
-  char bufferrr[10];             // Buffer para almacenar el número formateado
+  char bufferrr[20];             // Buffer para almacenar el número formateado
   dtostrf(Mops, 8, 6, bufferrr); // (valor, ancho mínimo, decimales, buffer)
   tft.print(bufferrr);
   tft.setCursor(230, 65);
@@ -3708,7 +3718,7 @@ void tDisplay_m8axScreenMegaNerd(unsigned long mElapsed)
   tft.setTextColor(TFT_WHITE);
   float Tops = ((hashRa * 1000) * 2560) / 1000000000;
   tft.setCursor(230, 75);
-  char bufferr[10];
+  char bufferr[20];
   dtostrf(Tops, 8, 6, bufferr);
   tft.print(bufferr);
   tft.drawLine(230, 90, 310, 90, TFT_WHITE);
@@ -4343,6 +4353,13 @@ static void pongLeds(bool encendidos)
   digitalWrite(LED_PIN_B, encendidos ? LOW : HIGH);
 }
 
+static void pongLedRojo(bool encendido)
+{
+  digitalWrite(LED_PIN, encendido ? LOW : HIGH);
+  digitalWrite(LED_PIN_G, HIGH);
+  digitalWrite(LED_PIN_B, HIGH);
+}
+
 void esp32_2432S028R_PongScreen(unsigned long mElapsed)
 {
   mineria = getMiningData(mElapsed);
@@ -4567,11 +4584,11 @@ void esp32_2432S028R_PongScreen(unsigned long mElapsed)
 #define LIFE_CS 4          // tamano de celda en pixeles
 #define LIFE_W 80          // 320 / 4
 #define LIFE_H 38          // 152 / 4 (abajo quedan 18 px para los textos)
-#define LIFE_STEP_MS 120   // ms entre generaciones
+#define LIFE_STEP_MS 15    // ms entre generaciones
 #define LIFE_SLICE_MS 5000 // tandas largas, como en el Pong
 #define LIFE_HIST 24       // generaciones recordadas para detectar repeticion
 #define LIFE_MAX_GEN 3000  // reinicia aunque no se repita
-#define LIFE_PAUSE_MS 2500 // pausa mostrando el dibujo final antes de reiniciar
+#define LIFE_PAUSE_MS 1000 // pausa mostrando el dibujo final antes de reiniciar
 
 struct LifeState
 {
@@ -5308,6 +5325,11 @@ void esp32_2432S028R_KrakoutScreen(unsigned long mElapsed)
       for (int i = 0; i < steps; i++)
       {
         int ev = brkStep(dt / steps);
+        if (ev & BRK_EV_LADRILLO)
+        {
+          pongLedRojo(true);
+          ledApagarEn = now + PONG_LED_MS;
+        }
         if (ev & BRK_EV_PALA)
         {
           pongLeds(true);
@@ -5392,6 +5414,459 @@ void esp32_2432S028R_KrakoutScreen(unsigned long mElapsed)
   pongLeds(false); // por si salimos con los LEDs encendidos
   tft.setTextPadding(0);
   tft.setTextDatum(TL_DATUM);
+
+  cuentita++;
+  if (cuentita == 15)
+  {
+    ajustarZonaHoraria();
+    obtenerLocYTemp();
+    obtenerVariacionesBTC(variacion1dia, variacion1semana);
+  }
+}
+
+#define CIF_MAX_NUMBERS 6
+#define CIF_MAX_STEPS (CIF_MAX_NUMBERS - 1)
+#define CIF_BUDGET_MS 1200 // tiempo maximo buscando la mejor cuenta (baja a 800 si lo notas lento)
+#define CIF_PAUSA_MS 0     // pausa entre cuenta y cuenta (0 = a toda pastilla)
+#define CIF_SLICE_MS 5000  // tandas largas, como en Pong/Life/Krakout
+
+struct CifPaso
+{
+  int a;
+  char op;
+  int b;
+  int r;
+  int ia; // -1 = numero original, si no indice del paso que lo produjo
+  int ib;
+};
+
+struct CifCtx
+{
+  int target;
+  int bestVal;
+  int bestDiff;
+  int bestCount;
+  CifPaso best[CIF_MAX_STEPS];
+  CifPaso cur[CIF_MAX_STEPS];
+  uint32_t nodes;
+  uint32_t deadline;
+  bool done;
+};
+
+struct CifState
+{
+  bool init;
+  bool tiene; // ya hay una cuenta calculada para pintar
+  int nums[CIF_MAX_NUMBERS];
+  int target;
+  CifPaso pasos[CIF_MAX_STEPS]; // solo los pasos que de verdad se usan
+  int nPasos;
+  int valor;
+  bool exacto;
+  int ac, fa;
+  unsigned long nextAt;
+};
+static CifState cf = {false};
+
+static inline void cif_candidate(CifCtx &c, int value, int steps)
+{
+  int diff = abs(value - c.target);
+  if (diff < c.bestDiff)
+  {
+    c.bestDiff = diff;
+    c.bestVal = value;
+    c.bestCount = steps;
+    for (int k = 0; k < steps; k++)
+      c.best[k] = c.cur[k];
+    if (diff == 0)
+      c.done = true;
+  }
+}
+
+static void cif_search(CifCtx &c, const int *vals, const int *ids, int n, int depth)
+{
+  for (int i = 0; i < n - 1 && !c.done; i++)
+  {
+    bool dupI = false;
+    for (int k = 0; k < i; k++)
+      if (vals[k] == vals[i])
+      {
+        dupI = true;
+        break;
+      }
+    if (dupI)
+      continue;
+    for (int j = i + 1; j < n && !c.done; j++)
+    {
+      bool dupJ = false;
+      for (int k = i + 1; k < j; k++)
+        if (vals[k] == vals[j])
+        {
+          dupJ = true;
+          break;
+        }
+      if (dupJ)
+        continue;
+      int x = vals[i], y = vals[j];
+      int ix = ids[i], iy = ids[j];
+      if (x < y)
+      {
+        int t = x;
+        x = y;
+        y = t;
+        t = ix;
+        ix = iy;
+        iy = t;
+      }
+      int rest[CIF_MAX_NUMBERS];
+      int restId[CIF_MAX_NUMBERS];
+      int m = 0;
+      for (int k = 0; k < n; k++)
+        if (k != i && k != j)
+        {
+          rest[m] = vals[k];
+          restId[m] = ids[k];
+          m++;
+        }
+      for (int o = 0; o < 4 && !c.done; o++)
+      {
+        int r;
+        char op;
+        switch (o)
+        {
+        case 0:
+          r = x + y;
+          op = '+';
+          break;
+        case 1:
+          if (x == y)
+            continue;
+          r = x - y;
+          op = '-';
+          break;
+        case 2:
+          if (x == 1 || y == 1)
+            continue;
+          r = x * y;
+          op = '*';
+          break;
+        default:
+          if (y == 1 || x % y != 0)
+            continue;
+          r = x / y;
+          op = '/';
+          break;
+        }
+        if ((++c.nodes & 0x3FF) == 0)
+        {
+          if (millis() > c.deadline)
+          {
+            c.done = true;
+            return;
+          }
+          vTaskDelay(1); // cede CPU al minero / watchdog
+        }
+        c.cur[depth] = {x, op, y, r, ix, iy};
+        cif_candidate(c, r, depth + 1);
+        if (c.done)
+          return;
+        if (m >= 1)
+        {
+          rest[m] = r;
+          restId[m] = depth;
+          cif_search(c, rest, restId, m + 1, depth + 1);
+        }
+      }
+    }
+  }
+}
+
+// Genera numeros y objetivo nuevos, busca la mejor cuenta y deja todo en cf
+static void cifNuevaCuenta()
+{
+  static CifCtx c;
+  for (int i = 0; i < CIF_MAX_NUMBERS; i++)
+    cf.nums[i] = 1 + (esp_random() % 100);
+  cf.target = 1 + (esp_random() % 1000);
+
+  c.target = cf.target;
+  c.bestVal = cf.nums[0];
+  c.bestDiff = abs(cf.nums[0] - cf.target);
+  c.bestCount = 0;
+  c.nodes = 0;
+  c.done = false;
+  c.deadline = millis() + CIF_BUDGET_MS;
+  for (int i = 0; i < CIF_MAX_NUMBERS && c.bestDiff != 0; i++)
+  {
+    int d = abs(cf.nums[i] - cf.target);
+    if (d < c.bestDiff)
+    {
+      c.bestDiff = d;
+      c.bestVal = cf.nums[i];
+    }
+  }
+  if (c.bestDiff == 0)
+    c.done = true;
+  if (!c.done)
+  {
+    int ids0[CIF_MAX_NUMBERS];
+    for (int k = 0; k < CIF_MAX_NUMBERS; k++)
+      ids0[k] = -1;
+    cif_search(c, cf.nums, ids0, CIF_MAX_NUMBERS, 0);
+  }
+
+  // Quedarse solo con los pasos que de verdad se usan
+  bool usado[CIF_MAX_STEPS];
+  for (int k = 0; k < CIF_MAX_STEPS; k++)
+    usado[k] = false;
+  if (c.bestCount > 0)
+  {
+    usado[c.bestCount - 1] = true;
+    for (int k = c.bestCount - 1; k >= 0; k--)
+    {
+      if (!usado[k])
+        continue;
+      if (c.best[k].ia >= 0)
+        usado[c.best[k].ia] = true;
+      if (c.best[k].ib >= 0)
+        usado[c.best[k].ib] = true;
+    }
+  }
+  cf.nPasos = 0;
+  for (int k = 0; k < c.bestCount; k++)
+    if (usado[k])
+      cf.pasos[cf.nPasos++] = c.best[k];
+
+  cf.valor = c.bestVal;
+  cf.exacto = (c.bestVal == cf.target);
+  if (cf.exacto)
+    cf.ac++;
+  else
+    cf.fa++;
+  cf.tiene = true;
+}
+
+// Cuerpo de la pantalla (numeros, objetivo y resolucion). Deja libre la linea de arriba y el pie.
+static void cifDrawAll()
+{
+  tft.fillRect(0, 23, 320, 129, TFT_BLACK);
+  tft.setFreeFont(NULL);
+  tft.setTextFont(1);
+  tft.setTextPadding(0);
+  tft.drawFastHLine(0, 22, 320, TFT_DARKGREY);
+
+  // Numeros seleccionados
+  tft.setTextSize(1);
+  tft.setTextDatum(TL_DATUM);
+  tft.setTextColor(TFT_CYAN, TFT_BLACK);
+  tft.drawString("NUMEROS", 4, 27);
+  tft.setTextSize(2);
+  tft.setTextDatum(MC_DATUM);
+  for (int i = 0; i < CIF_MAX_NUMBERS; i++)
+  {
+    int x = 4 + i * 52;
+    tft.drawRect(x, 38, 48, 24, TFT_CYAN);
+    tft.setTextColor(TFT_WHITE, TFT_BLACK);
+    tft.drawString(String(cf.nums[i]), x + 24, 51);
+  }
+
+  // Objetivo
+  tft.setTextDatum(TL_DATUM);
+  tft.setTextSize(2);
+  tft.setTextColor(TFT_YELLOW, TFT_BLACK);
+  tft.drawString("OBJETIVO", 4, 70);
+  tft.setTextSize(3);
+  tft.setTextColor(TFT_YELLOW, TFT_BLACK);
+  tft.drawString(String(cf.target), 150, 67);
+  tft.drawFastHLine(0, 92, 320, TFT_DARKGREY);
+
+  // Resolucion paso a paso (2 columnas)
+  tft.setTextSize(1);
+  tft.setTextColor(TFT_GREEN, TFT_BLACK);
+  if (cf.nPasos == 0)
+  {
+    tft.drawString("Sin Operaciones: Ya Hay Un Numero Asi", 4, 98);
+  }
+  else
+  {
+    char b[32];
+    for (int i = 0; i < cf.nPasos; i++)
+    {
+      snprintf(b, sizeof(b), "%d) %d %c %d = %d", i + 1, cf.pasos[i].a, cf.pasos[i].op, cf.pasos[i].b, cf.pasos[i].r);
+      tft.drawString(b, 4 + (i % 2) * 160, 98 + (i / 2) * 12);
+    }
+  }
+
+  // Resultado
+  char r[40];
+  tft.setTextSize(2);
+  if (cf.exacto)
+  {
+    snprintf(r, sizeof(r), "= %d  EXACTO", cf.valor);
+    tft.setTextColor(TFT_GREEN, TFT_BLACK);
+  }
+  else
+  {
+    snprintf(r, sizeof(r), "= %d  DIF %d", cf.valor, abs(cf.valor - cf.target));
+    tft.setTextColor(TFT_ORANGE, TFT_BLACK);
+  }
+  tft.drawString(r, 4, 134);
+  tft.setTextSize(1);
+}
+
+// Linea de arriba: hora a la izquierda, hashrate a la derecha
+static void cifDrawTop(const char *hora, const char *hash)
+{
+  tft.setFreeFont(NULL);
+  tft.setTextFont(1);
+  tft.setTextSize(2);
+  tft.setTextColor(TFT_WHITE, TFT_BLACK);
+  tft.setTextPadding(110);
+  tft.setTextDatum(TL_DATUM);
+  tft.drawString(hora, 4, 4);
+  char b[24];
+  snprintf(b, sizeof(b), "%s KH/s", hash);
+  tft.setTextPadding(190);
+  tft.setTextDatum(TR_DATUM);
+  tft.drawString(b, 316, 4);
+  tft.setTextPadding(0);
+  tft.setTextDatum(TL_DATUM);
+}
+
+// Pie: aciertos / fallos y porcentaje
+static void cifDrawFoot()
+{
+  char izq[28], der[16];
+  int tot = cf.ac + cf.fa;
+  float pct = tot > 0 ? (cf.ac * 100.0f) / tot : 0.0f;
+  snprintf(izq, sizeof(izq), "AC %d FA %d", cf.ac, cf.fa);
+  snprintf(der, sizeof(der), "%.1f%%", pct);
+  tft.setFreeFont(NULL);
+  tft.setTextFont(1);
+  tft.setTextSize(2);
+  tft.setTextColor(TFT_WHITE, TFT_BLACK);
+  tft.setTextPadding(200);
+  tft.setTextDatum(TL_DATUM);
+  tft.drawString(izq, 4, 153);
+  tft.setTextPadding(100);
+  tft.setTextDatum(TR_DATUM);
+  tft.drawString(der, 316, 153);
+  tft.setTextPadding(0);
+  tft.setTextDatum(TL_DATUM);
+}
+
+// Misma logica tactil que Pong/Life/Krakout. Devuelve true si hay que salir de la tanda.
+static bool cifTouch(unsigned long now)
+{
+  int16_t t_x, t_y;
+  if (!touch.getXY(t_x, t_y))
+    return false;
+  previousTouchMillis = now;
+  if (((t_x > 109) && (t_x < 211)) && ((t_y > 185) && (t_y < 241)))
+  {
+    bottomScreenBlue ^= true;
+    hasChangedScreen = true;
+  }
+  else if ((t_x > 235) && ((t_y > 0) && (t_y < 16)))
+  {
+    esp32_2432S028R_AlternateScreenState();
+  }
+  else if (t_x > 160)
+  {
+    currentDisplayDriver->current_cyclic_screen = (currentDisplayDriver->current_cyclic_screen + 1) % currentDisplayDriver->num_cyclic_screens;
+  }
+  else
+  {
+    currentDisplayDriver->current_cyclic_screen = currentDisplayDriver->current_cyclic_screen - 1;
+    if (currentDisplayDriver->current_cyclic_screen < 0)
+      currentDisplayDriver->current_cyclic_screen = currentDisplayDriver->num_cyclic_screens - 1;
+  }
+  return true;
+}
+
+void esp32_2432S028R_CifrasScreen(unsigned long mElapsed)
+{
+  mineria = getMiningData(mElapsed);
+  Serial.printf("M8AX - %s >>> Completados %s Share(s), %s Khashes, Prom. Hashrate %s KH/s %s°\n",
+                mineria.currentTime, mineria.completedShares.c_str(), mineria.totalKHashes.c_str(), mineria.currentHashRate.c_str(), mineria.temp.c_str());
+
+  bool redraw = hasChangedScreen;
+  if (!cf.init)
+  {
+    cf.init = true;
+    cf.tiene = false;
+    cf.ac = cf.fa = 0;
+    cf.nextAt = 0;
+    redraw = true;
+  }
+
+  if (redraw)
+  {
+    tft.fillRect(0, 0, 320, 170, TFT_BLACK);
+    if (cf.tiene)
+      cifDrawAll();
+  }
+  printPoolData(); // barra de criptos de abajo
+  hasChangedScreen = false;
+
+  char hashStr[16];
+  char horaStr[9];
+  snprintf(hashStr, sizeof(hashStr), "%s", mineria.currentHashRate.c_str());
+  {
+    time_t ep = (time_t)timeClient.getEpochTime();
+    struct tm *ti = localtime(&ep);
+    snprintf(horaStr, sizeof(horaStr), "%02d:%02d:%02d", ti->tm_hour, ti->tm_min, ti->tm_sec);
+  }
+  cifDrawTop(horaStr, hashStr);
+  cifDrawFoot();
+
+  unsigned long start = millis();
+  unsigned long lastMining = start;
+  unsigned long lastTouchChk = 0;
+  pongLeds(false);
+
+  while (millis() - start < CIF_SLICE_MS)
+  {
+    unsigned long now = millis();
+
+    // ---- Tactil ----
+    if (now - lastTouchChk >= 40 && now - previousTouchMillis >= 500)
+    {
+      lastTouchChk = now;
+      if (cifTouch(now))
+        break;
+    }
+
+    // ---- Cuenta nueva (la busqueda cede CPU con vTaskDelay, no bloquea al minero) ----
+    if (now >= cf.nextAt)
+    {
+      cifNuevaCuenta();
+      cifDrawAll();
+      cifDrawFoot();
+      Serial.printf("M8AX - Cifras %d %d %d %d %d %d -> %d | Resultado %d (%s)\n",
+                    cf.nums[0], cf.nums[1], cf.nums[2], cf.nums[3], cf.nums[4], cf.nums[5],
+                    cf.target, cf.valor, cf.exacto ? "EXACTO" : "DIF");
+      cf.nextAt = millis() + CIF_PAUSA_MS;
+    }
+
+    // ---- Hora y hashrate cada segundo ----
+    if (now - lastMining >= 1000)
+    {
+      lastMining = now;
+      mineria = getMiningData(mElapsed);
+      snprintf(hashStr, sizeof(hashStr), "%s", mineria.currentHashRate.c_str());
+      time_t ep = (time_t)timeClient.getEpochTime();
+      struct tm *ti = localtime(&ep);
+      snprintf(horaStr, sizeof(horaStr), "%02d:%02d:%02d", ti->tm_hour, ti->tm_min, ti->tm_sec);
+      cifDrawTop(horaStr, hashStr);
+      manejandoLeds(mineria.currentHashRate.toFloat());
+    }
+
+    delay(10);
+  }
+
+  pongLeds(false);
+  tft.setTextPadding(0), tft.setTextDatum(TL_DATUM);
 
   cuentita++;
   if (cuentita == 15)
@@ -5548,7 +6023,7 @@ void esp32_2432S028R_DoLedStuff(unsigned long frame)
   }
 }
 
-CyclicScreenFunction esp32_2432S028RCyclicScreens[] = {esp32_2432S028R_MinerScreen, tDisplay_granHash, tDisplay_hashGigante, esp32_2432S028R_BTCprice, esp32_2432S028R_ClockScreen, RelojDeNumeros, tDisplay_m8axScreen7, esp32_2432S028R_m8axScreen1, esp32_2432S028R_m8axScreen2, tDisplay_m8axScreenMegaNerd, tDisplay_m8axScreen5, tDisplay_m8axScreen6, esp32_2432S028R_PongScreen, esp32_2432S028R_KrakoutScreen, esp32_2432S028R_LifeScreen, tDisplay_m8axScreen3, tDisplay_m8axScreen4};
+CyclicScreenFunction esp32_2432S028RCyclicScreens[] = {esp32_2432S028R_MinerScreen, tDisplay_granHash, tDisplay_hashGigante, esp32_2432S028R_BTCprice, esp32_2432S028R_ClockScreen, RelojDeNumeros, tDisplay_m8axScreen7, esp32_2432S028R_m8axScreen1, esp32_2432S028R_m8axScreen2, tDisplay_m8axScreenMegaNerd, tDisplay_m8axScreen5, tDisplay_m8axScreen6, esp32_2432S028R_CifrasScreen, esp32_2432S028R_PongScreen, esp32_2432S028R_KrakoutScreen, esp32_2432S028R_LifeScreen, tDisplay_m8axScreen3, tDisplay_m8axScreen4};
 
 DisplayDriver esp32_2432S028RDriver = {
     esp32_2432S028R_Init,

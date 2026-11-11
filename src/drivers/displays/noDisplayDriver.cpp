@@ -71,7 +71,7 @@
  *   5 - "Forma De Almacenar Valor Que No Depende De Gobiernos Ni Instituciones." – Barry Silbert, CEO De Digital Currency Group.
  *
  *
- *              ///\\\ --- Minimizando Código, Maximizando Funcionalidad. Solo 2240 Líneas De Código En 7h --- ///\\\
+ *              ///\\\ --- Minimizando Código, Maximizando Funcionalidad. Solo 2265 Líneas De Código En 7h --- ///\\\
  *
  *                                                     .M8AX Corp. - ¡A Minar!
  *
@@ -199,9 +199,10 @@ void MostrarComportamientoLED()
   Serial.println(" XIII                - Parpadeo Rápido Corto + Pausa 2s + Parpadeo Rápido Corto Después De Enviar Mensaje A Telegram → Error En Envío :(");
   Serial.println(" XIV                 - Parpadeos Largos → Temperatura Superior A 75°C.");
   Serial.println(" XV                  - Share Enviado A La Pool → 5 Ticks Rápidos Del LED.");
-  Serial.println(" XVI                 - Nota - Si La Temperatura Pasa De 80°C, El Dispositivo Entrará En Deep Sleep 10 Min. Pasados Los 10 Min, Rearrancará.");
-  Serial.println(" XVII                - Espero Que Os Guste Y Minéis Un Bloque Y Si Es Así ¡Dadme Algo, Coño!");
-  Serial.println(" XVIII               - 👽 👽 👽  ¡A Minar!  👽 👽 👽");
+  Serial.println(" XVI                 - Ritmo 'TA TA RI ROO RI ROOOO' ( Cumpleaños Feliz ) → ¡Es El Cumpleaños De M8AX! ( 10 De Marzo, De 8h A 20h ). Sale Tras Los Ticks De Minado, Cada 20s.");
+  Serial.println(" XVII                - Nota - Si La Temperatura Pasa De 80°C, El Dispositivo Entrará En Deep Sleep 10 Min. Pasados Los 10 Min, Rearrancará.");
+  Serial.println(" XVIII               - Espero Que Os Guste Y Minéis Un Bloque Y Si Es Así ¡Dadme Algo, Coño!");
+  Serial.println(" XIX                 - 👽 👽 👽  ¡A Minar!  👽 👽 👽");
   Serial.println();
   Serial.println("--------------------------------------------------");
 }
@@ -365,6 +366,7 @@ std::pair<String, String> obtenerCiudadYTemperatura(const String &ip)
     if (error)
     {
       Serial.println("M8AX - Error Al Parsear JSON De Geolocalización");
+      http.end();
       return std::make_pair(ciudad, temperatura);
     }
     ciudad = doc["city"].as<String>();
@@ -376,6 +378,7 @@ std::pair<String, String> obtenerCiudadYTemperatura(const String &ip)
   else
   {
     Serial.println("M8AX - Error Al Obtener Datos De Geolocalización");
+    http.end();
     return std::make_pair(ciudad, temperatura);
   }
   http.end();
@@ -710,7 +713,7 @@ String getPublicIP()
 
 const char *obtenerEstadoTemperatura(int temperatura)
 {
-  if (temperatura >= 20 && temperatura <= 45)
+  if (temperatura <= 45)
   {
     return "Temperatura Baja | ";
   }
@@ -961,7 +964,11 @@ String numeroAEscrito(int num, bool esDecimal = false)
   {
     if (num >= 20)
     {
-      if (num < 30)
+      if (num == 20)
+      {
+        resultado += "Veinte";
+      }
+      else if (num < 30)
       {
         resultado += "Veinti";
         if (num % 10 > 0)
@@ -1005,9 +1012,7 @@ int obtenerDiaSemanaInicio(int annio, int mes)
     mes += 12;
     annio -= 1;
   }
-  int k = annio % 100;
-  int j = annio / 100;
-  int dia = 1;
+  int k = annio % 100, j = annio / 100, dia = 1;
   int h = (dia + (13 * (mes + 1)) / 5 + k + (k / 4) + (j / 4) + (5 * j)) % 7;
   return (h + 5) % 7;
 }
@@ -1065,6 +1070,8 @@ struct CifraPaso
   char op;
   int b;
   int r;
+  int ia;
+  int ib;
 };
 
 struct CifrasCtx
@@ -1095,7 +1102,7 @@ static inline void cifras_candidate(CifrasCtx &c, int value, int steps)
   }
 }
 
-static void cifras_search(CifrasCtx &c, const int *vals, int n, int depth)
+static void cifras_search(CifrasCtx &c, const int *vals, const int *ids, int n, int depth)
 {
   for (int i = 0; i < n - 1 && !c.done; i++)
   {
@@ -1120,17 +1127,26 @@ static void cifras_search(CifrasCtx &c, const int *vals, int n, int depth)
       if (dupJ)
         continue;
       int x = vals[i], y = vals[j];
+      int ix = ids[i], iy = ids[j];
       if (x < y)
       {
         int t = x;
         x = y;
         y = t;
+        t = ix;
+        ix = iy;
+        iy = t;
       }
       int rest[MAX_NUMBERS];
+      int restId[MAX_NUMBERS];
       int m = 0;
       for (int k = 0; k < n; k++)
         if (k != i && k != j)
-          rest[m++] = vals[k];
+        {
+          rest[m] = vals[k];
+          restId[m] = ids[k];
+          m++;
+        }
       for (int o = 0; o < 4 && !c.done; o++)
       {
         int r;
@@ -1169,14 +1185,15 @@ static void cifras_search(CifrasCtx &c, const int *vals, int n, int depth)
           }
           vTaskDelay(1);
         }
-        c.cur[depth] = {x, op, y, r};
+        c.cur[depth] = {x, op, y, r, ix, iy};
         cifras_candidate(c, r, depth + 1);
         if (c.done)
           return;
         if (m >= 1)
         {
           rest[m] = r;
-          cifras_search(c, rest, m + 1, depth + 1);
+          restId[m] = depth;
+          cifras_search(c, rest, restId, m + 1, depth + 1);
         }
       }
     }
@@ -1205,15 +1222,16 @@ void calculate_operations(int numbers[], int target, char *result)
   if (c.bestDiff == 0)
     c.done = true;
   if (!c.done)
-    cifras_search(c, numbers, MAX_NUMBERS, 0);
+  {
+    int ids0[MAX_NUMBERS];
+    for (int k = 0; k < MAX_NUMBERS; k++)
+      ids0[k] = -1;
+    cifras_search(c, numbers, ids0, MAX_NUMBERS, 0);
+  }
 
   bool usado[CIFRAS_MAX_STEPS];
-  bool gastado[CIFRAS_MAX_STEPS];
   for (int k = 0; k < CIFRAS_MAX_STEPS; k++)
-  {
     usado[k] = false;
-    gastado[k] = false;
-  }
   if (c.bestCount > 0)
   {
     usado[c.bestCount - 1] = true;
@@ -1221,19 +1239,10 @@ void calculate_operations(int numbers[], int target, char *result)
     {
       if (!usado[k])
         continue;
-      int ops[2] = {c.best[k].a, c.best[k].b};
-      for (int q = 0; q < 2; q++)
-      {
-        for (int j = k - 1; j >= 0; j--)
-        {
-          if (!gastado[j] && c.best[j].r == ops[q])
-          {
-            gastado[j] = true;
-            usado[j] = true;
-            break;
-          }
-        }
-      }
+      if (c.best[k].ia >= 0)
+        usado[c.best[k].ia] = true;
+      if (c.best[k].ib >= 0)
+        usado[c.best[k].ib] = true;
     }
   }
 
@@ -1320,8 +1329,14 @@ void sincronizarTiempo()
   configTime(offset, 0, "pool.ntp.org", "time.nist.gov");
   Serial.println("M8AX - Esperando Sincronización Con NTP...");
   time_t now;
+  unsigned long inicioEspera = millis();
   while ((now = time(nullptr)) < 100000)
   {
+    if (millis() - inicioEspera > 30000)
+    {
+      Serial.println("\nM8AX - NTP No Responde, Se Reintentará Más Tarde...");
+      return;
+    }
     Serial.print(".");
     delay(200);
   }
@@ -1338,6 +1353,11 @@ const char *FactorizaM8AX(uint32_t number)
   uint32_t factors[16];
   uint8_t exponents[16];
   uint8_t count = 0;
+  if (number < 2)
+  {
+    strcpy(result, number == 0 ? "0 ( SIN FACTORES )" : "1 ( SIN FACTORES )");
+    return result;
+  }
   if (number % 2 == 0)
   {
     factors[count] = 2;
@@ -1535,7 +1555,7 @@ void recopilaTelegram()
   }
   cadenaEnvio += "M.RAM Libre - " + String(ESP.getFreeHeap()) + " Bytes\n";
   cadenaEnvio += "Parpadeos Del Led - " + String(totalparpadeosled) + " | Media De Parpadeos/s - " + String(parpadeosPorSegundo, 4) + "\n";
-  cadenaEnvio += "Precio De BTC - " + String(precioDeBTC, 2) + " USD | En 2H -> " + subebaja + " | En 24H -> " + subebaja2 + "\n";
+  cadenaEnvio += "Precio De BTC - " + String(precioDeBTC, 2) + " USD | En 2H -> " + subebaja + " | Ayer -> " + subebaja2 + "\n";
   char output[50];
   convertirTiempo(data.timeMining.c_str(), output);
   cadenaEnvio += "Tiempo Minando - " + String(output) + "\n";
@@ -1643,7 +1663,7 @@ void recopilaTelegram()
   int numeritos[6];
   int destino = 1 + (esp_random() % 1000);
   generate_random_numbers(numeritos, 6, 1, 100);
-  cadenaEnvio += ("Juego De Cifras Número - " + String(totalci) + "\n");
+  cadenaEnvio += ("Juego De Cifras Número - " + String(totalci + 1) + "\n");
   cadenaEnvio += ("Aciertos - " + String(aciertos) + " | Fallos - " + String(fallos) + "\n");
   cadenaEnvio += ("Números - ");
   for (int i = 0; i < 6; i++)
@@ -1705,8 +1725,11 @@ void noDisplay_NoScreen(unsigned long mElapsed)
     precioDeBTC = getPrecioBTC();
     vTaskDelay(pdMS_TO_TICKS(250));
     Tresultado = obtenerCiudadYTemperatura(ipPublica);
-    anterBTC = precioDeBTC;
-    anterBTC2 = precioDeBTC;
+    if (precioDeBTC > 0)
+    {
+      anterBTC = precioDeBTC;
+      anterBTC2 = precioDeBTC;
+    }
     zonilla = Settings.Timezone;
     BOT_TOKEN = Settings.botTelegram;
     CHAT_ID = Settings.ChanelIDTelegram;
@@ -1895,7 +1918,7 @@ void noDisplay_NoScreen(unsigned long mElapsed)
       parpadeosPorSegundo = (double)totalparpadeosled / ((double)tiempoTranscurrido / 1000.0);
     }
     Serial.printf(">>> M8AX - M.RAM Libre - %d Bytes | Parpadeos Del Led - %u | Media De Parpadeos/s - %.4f\n", ESP.getFreeHeap(), totalparpadeosled, parpadeosPorSegundo);
-    Serial.printf(">>> M8AX - Precio De BTC - %.2f USD | En 2H -> %s | En 24H -> %s\n", precioDeBTC, subebaja.c_str(), subebaja2.c_str());
+    Serial.printf(">>> M8AX - Precio De BTC - %.2f USD | En 2H -> %s | Ayer -> %s\n", precioDeBTC, subebaja.c_str(), subebaja2.c_str());
     Serial.printf(">>> M8AX - Bloques Válidos - %s\n", data.valids.c_str());
     Serial.printf(">>> M8AX - Plantillas De Bloques - %s\n", data.templates.c_str());
     Serial.printf(">>> M8AX - Mejor Dificultad Alcanzada - %s\n", data.bestDiff.c_str());
@@ -2002,7 +2025,7 @@ void noDisplay_NoScreen(unsigned long mElapsed)
     rndnumero = esp_random();
     Serial.print(">>> M8AX - El Número - 3 - " + String(rndnumero) + " -> " + abinyprimo(rndnumero) + "\n");
     Serial.print("--------------------------------------------------------------------------------------------------------------\n");
-    Serial.print(">>> M8AX - Juego De Cifras Número - " + String(totalci) + "\n");
+    Serial.print(">>> M8AX - Juego De Cifras Número - " + String(totalci + 1) + "\n");
     Serial.print(">>> M8AX - Aciertos - " + String(aciertos) + " | Fallos - " + String(fallos) + "\n");
     Serial.print(">>> M8AX - Números - ");
     for (int i = 0; i < 6; i++)
@@ -2091,7 +2114,8 @@ void noDisplay_NoScreen(unsigned long mElapsed)
     cambioDeDia = dia;
     float variacion2 = (anterBTC2 > 0) ? ((precioDeBTC - anterBTC2) / anterBTC2) * 100 : 0;
     subebaja2 = (anterBTC2 > 0 && precioDeBTC > 0) ? ((variacion2 >= 0) ? "+" : "-") + String(fabs(variacion2), 5) + "%" : "... ERROR ...";
-    anterBTC2 = precioDeBTC;
+    if (precioDeBTC > 0)
+      anterBTC2 = precioDeBTC;
   }
   if (epochTime - startTime >= minStartupTime && epochTime - lastTelegramEpochTime >= interval)
   {
@@ -2117,7 +2141,8 @@ void noDisplay_NoScreen(unsigned long mElapsed)
         recopilaTelegram();
       }
     }
-    anterBTC = precioDeBTC;
+    if (precioDeBTC > 0)
+      anterBTC = precioDeBTC;
     lastTelegramEpochTime = epochTime;
   }
 }

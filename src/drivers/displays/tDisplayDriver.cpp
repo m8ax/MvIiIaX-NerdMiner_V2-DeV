@@ -47,7 +47,7 @@
  *
  *                              PARA MÁS INFORMACIÓN LEER PDF
  *
- *                     Tmp. De Programación 16H - 6700 Líneas De Código
+ *                     Tmp. De Programación 16H - 6720 Líneas De Código
  *                     ------------------------------------------------
  *
  ********************************************************************************************/
@@ -669,6 +669,12 @@ void borrarDesdeUltimoGuion(char *str)
 // - op : Operación realizada ( + - * / ).
 // - b  : Segundo número de la operación.
 // - r  : Resultado de la operación.
+// - ia : De dónde sale 'a'. Si es -1, es uno de los 6 números originales. Si no, es el
+//        índice del paso anterior que lo produjo ( 0 = primer paso, 1 = segundo, etc. ).
+// - ib : Lo mismo que 'ia', pero para 'b'.
+//
+// ia e ib sirven para saber con exactitud qué pasos hacen falta de verdad, sin tener que
+// adivinarlo comparando valores. Así no se imprime ninguna cuenta que luego no se use.
 
 struct CifraPaso
 {
@@ -676,6 +682,8 @@ struct CifraPaso
   char op;
   int b;
   int r;
+  int ia;
+  int ib;
 };
 
 // Estructura con todo el contexto de la búsqueda. Así no necesito variables globales
@@ -749,7 +757,7 @@ static inline void cifras_candidate(CifrasCtx &c, int value, int steps)
 // - n     : Cuántos números hay en la lista.
 // - depth : Profundidad actual ( cuántas operaciones llevo hechas ).
 
-static void cifras_search(CifrasCtx &c, const int *vals, int n, int depth)
+static void cifras_search(CifrasCtx &c, const int *vals, const int *ids, int n, int depth)
 {
   for (int i = 0; i < n - 1 && !c.done; i++)
   {
@@ -774,17 +782,26 @@ static void cifras_search(CifrasCtx &c, const int *vals, int n, int depth)
       if (dupJ)
         continue;
       int x = vals[i], y = vals[j];
+      int ix = ids[i], iy = ids[j];
       if (x < y)
       {
         int t = x;
         x = y;
         y = t;
+        t = ix;
+        ix = iy;
+        iy = t;
       }
       int rest[MAX_NUMBERS];
+      int restId[MAX_NUMBERS];
       int m = 0;
       for (int k = 0; k < n; k++)
         if (k != i && k != j)
-          rest[m++] = vals[k];
+        {
+          rest[m] = vals[k];
+          restId[m] = ids[k];
+          m++;
+        }
       for (int o = 0; o < 4 && !c.done; o++)
       {
         int r;
@@ -823,14 +840,15 @@ static void cifras_search(CifrasCtx &c, const int *vals, int n, int depth)
           }
           vTaskDelay(1);
         }
-        c.cur[depth] = {x, op, y, r};
+        c.cur[depth] = {x, op, y, r, ix, iy};
         cifras_candidate(c, r, depth + 1);
         if (c.done)
           return;
         if (m >= 1)
         {
           rest[m] = r;
-          cifras_search(c, rest, m + 1, depth + 1);
+          restId[m] = depth;
+          cifras_search(c, rest, restId, m + 1, depth + 1);
         }
       }
     }
@@ -881,18 +899,19 @@ void calculate_operations(int numbers[], int target, char *result)
   if (c.bestDiff == 0)
     c.done = true;
   if (!c.done)
-    cifras_search(c, numbers, MAX_NUMBERS, 0);
+  {
+    int ids0[MAX_NUMBERS];
+    for (int k = 0; k < MAX_NUMBERS; k++)
+      ids0[k] = -1;
+    cifras_search(c, numbers, ids0, MAX_NUMBERS, 0);
+  }
 
   // Marco los pasos que de verdad se usan para llegar al resultado final.
   // Empiezo por el último y voy hacia atrás buscando de qué pasos salen sus números.
 
   bool usado[CIFRAS_MAX_STEPS];
-  bool gastado[CIFRAS_MAX_STEPS];
   for (int k = 0; k < CIFRAS_MAX_STEPS; k++)
-  {
     usado[k] = false;
-    gastado[k] = false;
-  }
   if (c.bestCount > 0)
   {
     usado[c.bestCount - 1] = true;
@@ -900,19 +919,10 @@ void calculate_operations(int numbers[], int target, char *result)
     {
       if (!usado[k])
         continue;
-      int ops[2] = {c.best[k].a, c.best[k].b};
-      for (int q = 0; q < 2; q++)
-      {
-        for (int j = k - 1; j >= 0; j--)
-        {
-          if (!gastado[j] && c.best[j].r == ops[q])
-          {
-            gastado[j] = true;
-            usado[j] = true;
-            break;
-          }
-        }
-      }
+      if (c.best[k].ia >= 0)
+        usado[c.best[k].ia] = true;
+      if (c.best[k].ib >= 0)
+        usado[c.best[k].ib] = true;
     }
   }
 
@@ -979,6 +989,13 @@ const char *factorize(uint32_t number)
   uint32_t factors[16];  // Almacena factores primos
   uint8_t exponents[16]; // Almacena exponentes
   uint8_t count = 0;     // Número de factores encontrados
+
+  // Si número menor que 2
+  if (number < 2)
+  {
+    strcpy(result, number == 0 ? "0 ( SIN FACTORES )" : "1 ( SIN FACTORES )");
+    return result;
+  }
 
   // Factorización por 2
   if (number % 2 == 0)
@@ -1288,6 +1305,7 @@ std::pair<String, String> obtenerCiudadYTemperatura(const String &ip)
     if (error)
     {
       Serial.println("M8AX - Error Al Parsear JSON De Geolocalización");
+      http.end();
       return std::make_pair(ciudad, temperatura); // Devolver vacías en caso de error
     }
     ciudad = doc["city"].as<String>();           // Ciudad obtenida
@@ -1297,6 +1315,7 @@ std::pair<String, String> obtenerCiudadYTemperatura(const String &ip)
   else
   {
     Serial.println("M8AX - Error Al Obtener Datos De Geolocalización");
+    http.end();
     return std::make_pair(ciudad, temperatura); // Devolver vacías si hay error
   }
 
@@ -1502,27 +1521,28 @@ String numeroAEscrito(int num, bool esDecimal = false)
   {
     if (num >= 20)
     {
-      // Para números del 20 al 29, usamos la forma correcta "Veinti" + unidades
-
-      if (num < 30)
+      if (num == 20)
+      {
+        resultado += "Veinte";
+      }
+      else if (num < 30)
       {
         resultado += "Veinti";
         if (num % 10 > 0)
-          resultado += unidades[num % 10]; // "VeintiUno", "VeintiTres", etc.
+          resultado += unidades[num % 10];
       }
       else
       {
         resultado += capitalizar(decenas[num / 10]);
         if (num % 10 > 0)
-          resultado += " Y " + capitalizar(unidades[num % 10]); // "Treinta Y Uno", "Cuarenta Y Cinco"
+          resultado += " Y " + capitalizar(unidades[num % 10]);
       }
     }
     else if (num > 0)
     {
-      resultado += capitalizar(unidades[num]); // Unidades solas
+      resultado += capitalizar(unidades[num]);
     }
   }
-
   return resultado;
 }
 
@@ -2309,7 +2329,7 @@ float obtenerPrecio(String currency_pair)
   while (client.available() == 0)
   {
     if (millis() - timeout > 2000)
-    { // Timeout de 5 segundos
+    { // Timeout de 2 segundos
       Serial.println("M8AX - Error: Se Pasó El Tiempo De Espera");
       client.stop();
       return -1;
@@ -2604,8 +2624,7 @@ void dibujarReloj(int horas, int minutos, int segundos, String dia, String mes, 
   int diaa = dia.toInt();
   int mess = mes.toInt();
   int anioo = anio.toInt();
-  int horaa = horas;
-  int minutoo = minutos;
+  int horaa = horas, minutoo = minutos;
   unsigned long segundo = timeClient.getSeconds();
   String mesecillo = obtenerNombreMes(mess).substring(0, 3);
   // Inicializar la estructura tm
@@ -5446,7 +5465,7 @@ void tDisplay_m8axScreen15(unsigned long mElapsed)
   tft.setTextColor(TFT_WHITE);
   float Mops = ((hashRa * 1000) * 2560) / 1000000;
   tft.setCursor(230, 50);
-  char bufferrr[10];             // Buffer para almacenar el número formateado
+  char bufferrr[20];             // Buffer para almacenar el número formateado
   dtostrf(Mops, 8, 6, bufferrr); // (valor, ancho mínimo, decimales, buffer)
   tft.print(bufferrr);
   tft.setCursor(230, 65);
@@ -5455,7 +5474,7 @@ void tDisplay_m8axScreen15(unsigned long mElapsed)
   tft.setTextColor(TFT_WHITE);
   float Tops = ((hashRa * 1000) * 2560) / 1000000000;
   tft.setCursor(230, 75);
-  char bufferr[10];
+  char bufferr[20];
   dtostrf(Tops, 8, 6, bufferr);
   tft.print(bufferr);
   tft.drawLine(230, 90, 310, 90, TFT_WHITE);
@@ -5798,7 +5817,7 @@ void tDisplay_m8axScreen18(unsigned long mElapsed)
   colorI = esp_random() % (sizeof(colors) / sizeof(colors[0]));
   tft.setTextSize(1);
   tft.setCursor(1, 90);
-  tft.print("'M8AX - Las Cifras' Num - " + String(totalci) + ". AC - " + String(aciertos) + " FA - " + String(fallos));
+  tft.print("'M8AX - Las Cifras' Num - " + String(totalci + 1) + ". AC - " + String(aciertos) + " FA - " + String(fallos));
   tft.drawLine(0, 100, 320, 100, colors[colorI]); // Dibujar línea de (0, y) a (320, y)
   int numeritos[6];
   int destino = 1 + (esp_random() % 1000);
@@ -5972,8 +5991,8 @@ void monedaYdado(unsigned long mElapsed)
   tft.setCursor(0, 132);
   tft.setTextSize(2);
   tft.setTextDatum(MC_DATUM); // Centra el texto
-  tft.print(numeroAEscrito(parteEntera, false) + " Con ");
-  tft.print(numeroAEscrito(parteDecimal, true) + " KH/s.");
+  tft.print(quitarAcentos(numeroAEscrito(parteEntera, false)) + " Con ");
+  tft.print(quitarAcentos(numeroAEscrito(parteDecimal, true)) + " KH/s.");
   tft.setCursor(115, 50);
   tft.setTextSize(2);
   tft.print(cadena);
@@ -6583,7 +6602,8 @@ void analiCadaSegundo(unsigned long frame)
     diadecambios = dia;
     float variacion = (anterBTC > 0) ? ((monedilla.btcPrice.toFloat() - anterBTC) / anterBTC) * 100 : 0;
     subebaja = (anterBTC > 0 && monedilla.btcPrice.toFloat() > 0) ? ((variacion >= 0) ? "+" : "-") + String(fabs(variacion), 5) + "%" : ". ERROR .";
-    anterBTC = monedilla.btcPrice.toFloat();
+    if (monedilla.btcPrice.toFloat() > 0)
+      anterBTC = monedilla.btcPrice.toFloat();
   }
 
   // Si ya ha pasado el tiempo de arranque mínimo (por ejemplo, 10 minutos) y han pasado 2 horas desde el último mensaje de Telegram
