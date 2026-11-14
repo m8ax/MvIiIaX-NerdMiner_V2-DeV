@@ -49,7 +49,7 @@ SDCard::~SDCard()
         delete ispi_;
     }
 #endif // BUILD_SDSPI
-    Serial.println("SDCard: Unmounted");
+    Serial.println("SDCard: Desmontada");
 }
 
 /// @brief Check if the card is accessed right now.
@@ -77,7 +77,7 @@ void SDCard::SD2nvMemory(nvMemory *nvMem, TSettings *Settings)
     {
         nvMem->saveConfig(Settings);
         WiFi.begin(Settings->WifiSSID, Settings->WifiPW);
-        Serial.println("SDCard: Settings transfered to internal memory. Restarting now.");
+        Serial.println("SDCard: Configuración Transferida A La Memoria Interna. Reiniciando.");
         ESP.restart();
     }
 }
@@ -103,7 +103,7 @@ bool SDCard::loadConfigFile(TSettings *Settings)
                 DeserializationError error = deserializeJson(json, configFile);
                 configFile.close();
                 cardBusy_ = false;
-                Serial.println("SDCard: Loading config file");
+                Serial.println("SDCard: Cargando Fichero De Configuración.");
                 if (!error)
                 {
                     serializeJsonPretty(json, Serial);
@@ -150,17 +150,17 @@ bool SDCard::loadConfigFile(TSettings *Settings)
                 else
                 {
                     // Error loading JSON data
-                    Serial.println("SDCard: Error parsing config file!");
+                    Serial.println("SDCard: Error Al Procesar El Fichero De Configuración!");
                 }
             }
             else
             {
-                Serial.println("SDCard: Error opening config file!");
+                Serial.println("SDCard: Error Al Abrir El Fichero De Configuración!");
             }
         }
         else
         {
-            Serial.println("SDCard: No config file available!");
+            Serial.println("SDCard: No Hay Ningún Fichero De Configuración Disponible!");
         }
     }
     return false;
@@ -174,17 +174,17 @@ bool SDCard::cardAvailable()
     {
         if (iSD_->cardType() != CARD_NONE)
         {
-            Serial.println("SDCard: Inserted.");
+            Serial.println("SDCard: Tarjeta Insertada.");
             return true;
         }
         else
         {
-            Serial.println("SDCard: Not inserted.");
+            Serial.println("SDCard: Tarjeta No Insertada.");
         }
     }
     else
     {
-        Serial.println("SDCard: Interface not initialized.");
+        Serial.println("SDCard: Interfaz No Inicializada.");
     }
     return false;
 }
@@ -195,11 +195,11 @@ bool SDCard::initSDcard()
 {
     if (!cardAvailable())
     {
-        Serial.println("SDCard: init SD card interface.");
+        Serial.println("SDCard: Iniciando Interfaz SD.");
 #if defined(BUILD_SDMMC_4)
         iSD_->setPins(SDMMC_CLK, SDMMC_CMD, SDMMC_D0, SDMMC_D1, SDMMC_D2, SDMMC_D3);
         cardInitialized_ = iSD_->begin("/sd", false);
-        Serial.println("SDCard: 4-Bit Mode.");
+        Serial.println("SDCard: Modo De 4 Bits.");
     }
 #elif defined(BUILD_SDMMC_1)
 #warning SDMMC : 1 - bit mode is not always working. If you experience issues, try other modes.
@@ -210,15 +210,15 @@ bool SDCard::initSDcard()
 #else
         cardInitialized_ = iSD_->begin("/sd", true);
 #endif
-        Serial.println("SDCard: 1-Bit Mode.");
+        Serial.println("SDCard: Modo De 1 Bit.");
     }
 #elif defined(BUILD_SDSPI)
         ispi_->begin(SDSPI_CLK, SDSPI_MISO, SDSPI_MOSI, SDSPI_CS);
         cardInitialized_ = iSD_->begin(SDSPI_CS, *ispi_);
-        Serial.println("SDCard: SPI mode.");
+        Serial.println("SDCard: Modo SPI.");
     }
 #else
-        Serial.println("SDCard: interface not defined.");
+        Serial.println("SDCard: Interfaz No Definida.");
         return false;
 #endif // dataPinsDefined
     cardAvailable();

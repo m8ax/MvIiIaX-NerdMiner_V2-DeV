@@ -417,6 +417,39 @@
                     max-width: 480px;
                     text-align: center;
                }
+               #avisoNovedad {
+                    display: none;
+                    position: fixed;
+                    top: calc(52px + env(safe-area-inset-top));
+                    right: 12px;
+                    z-index: 19000;
+                    width: min(300px, calc(100vw - 24px));
+                    background: var(--panel);
+                    border: 1px solid var(--btc);
+                    border-radius: 14px;
+                    padding: 12px 34px 12px 14px;
+                    font-size: 0.85rem;
+                    line-height: 1.4;
+                    box-shadow: 0 0 24px rgba(247, 147, 26, 0.3);
+                    animation: pop 0.4s ease-out;
+               }
+               #avisoNovedad.open {
+                    display: block;
+               }
+               #avisoNovedad b {
+                    color: var(--btc);
+               }
+               #avisoNovedad button {
+                    position: absolute;
+                    top: 6px;
+                    right: 8px;
+                    background: none;
+                    border: 0;
+                    color: var(--muted);
+                    font-size: 1.1rem;
+                    cursor: pointer;
+                    line-height: 1;
+               }
                @keyframes pop {
                     from {
                          transform: translateY(-14px) scale(0.96);
@@ -607,16 +640,42 @@
                /></a>
           </div>
 
+          <div id="avisoNovedad" role="status">
+               <button type="button" id="cerrarAviso" aria-label="Cerrar aviso">×</button>
+               <b>🆕 Nueva Versión 10/11/2026 Martes</b><br />
+               Nueva Versión Con Muchas Mejoras Internas Y Sorpresas. El Hashrate Es Más Estable Que En La Versión
+               Original. Corregidos Varios Fallos...
+          </div>
+
           <div class="modal" id="updatePopup">
                <div class="box" role="dialog" aria-modal="true">
                     <h2>🚀 Actualización De Mineros 🚀</h2>
-                    <p>📅 Compilación: 11/11/2026 Miércoles</p>
+                    <p>📅 Compilación: 10/11/2026 Martes</p>
                     <p>✅ Mejoras Importantes:</p>
                     <p>• Velocidad De Minado Estable ( No Más Ralentizaciones )</p>
                     <p>• Algunas Funciones Ocupan La Mitad De Memoria Que En Versiones Anteriores</p>
                     <p>• Añadidas Más Estadísticas A Enviar A Tu Canal De Telegram Si Lo Tienes Configurado</p>
                     <p>• Corregido Bug De Cambio De Hora Automático</p>
-                    <p>• ESP32-2432S028R: Sustituida La Información De La POOL Por Un Panel De Cotizaciones De Criptomonedas</p>
+                    <p>
+                         • ESP32-2432S028R: Sustituida La Información De La POOL Por Un Panel De Cotizaciones De
+                         Criptomonedas
+                    </p>
+                    <p>
+                         • ESP32-2432S028R: Si Metes Una Tarjeta MicroSD, Cada 2 Horas Guarda En Ella Las Estadísticas Del Minero ( Las
+                         Mismas Que Se Envían A Telegram ): Tiempo Minando, Hashrate ( Máx. Y Mín. ), Temperatura, Shares, Mejor Dificultad,
+                         Precio De BTC, Espacio Libre En La MicroSD Y Más. Crea Un Archivo De Texto Por Día En La Carpeta
+                         <code>-M8AX-NerdMinerV2-PG-M8AX-Logs</code> ( <code>M8AX-Telegram-AAAAMMDD.TxT</code> ) Y Va Añadiendo Cada Informe Al
+                         Final. Funciona Aunque No Tengas Telegram Configurado, Y Si No Hay Tarjeta Simplemente No Guarda Nada. El Primer
+                         Informe Se Genera A Las 2 Horas De Arrancar. La Tarjeta Solo Se Monta Un Momento Para Escribir, Así No Gasta RAM.
+                    </p>
+                    <p>
+                         • ESP32-2432S028R: Pantallas Nuevas Donde La CPU Juega Sola: <strong>Tetris</strong>,
+                         <strong>Ajedrez</strong> ( CPU Contra CPU ), <strong>Pong</strong>, <strong>Krakout</strong> Y
+                         <strong>Snake</strong>. Y Otras Pantallas Nuevas: <strong>Juego De La Vida</strong>, <strong>Cifras</strong> ( Resuelve
+                         Solo Cuentas Con 6 Números ), <strong>Primos A Saco</strong> ( Primos Gigantes Hasta 64 Bits ) Y
+                         <strong>Lluvia Matrix</strong> Hexadecimal
+                    </p>
+                    <p>• Telegram: Si Un Envío Falla, Reintenta A Los 5 Minutos ( Hasta 3 Veces ) En Vez De Esperar Otras 2 Horas</p>
                     <p>• Alguna Sorpresa</p>
                     <p>• Mayor Estabilidad General</p>
                     <hr />
@@ -654,18 +713,40 @@
                          <a href="https://opensea.io/m8ax" target="_blank">M8AX - Mis NFT En OpenSea</a>
                          - M8AX - Mis NFT En OpenSea
                     </p>
+                    <p>
+                         •
+                         <a href="https://mviiiaxm8ax.blogspot.com/" target="_blank">M8AX - Mi Blog</a>
+                         - M8AX - Mi Blog
+                    </p>
                     <div class="actions">
                          <button class="btn closeUpdatePopup">Cerrar Ventana</button>
                     </div>
                     <hr />
                     <h2>🚀 Miners Update 🚀</h2>
-                    <p>📅 Build: 11/11/2026 Wednesday</p>
+                    <p>📅 Build: 11/10/2026 Tuesday</p>
                     <p>✅ Major Improvements:</p>
                     <p>• Stable Mining Speed ( No More Slowdowns )</p>
                     <p>• Some Functions Now Use Half The Memory Compared To Previous Versions</p>
                     <p>• Added More Statistics To Send To Your Telegram Channel If Configured</p>
                     <p>• Fixed Automatic Time Change Bug</p>
                     <p>• ESP32-2432S028R: Replaced The POOL Information With A Cryptocurrency Price Display Panel</p>
+                    <p>
+                         • ESP32-2432S028R: If You Insert A MicroSD Card, It Saves The Miner Statistics To It Every 2 Hours ( The Same Ones
+                         Sent To Telegram ): Mining Time, Hashrate ( Max. And Min. ), Temperature, Shares, Best Difficulty, BTC Price, Free
+                         MicroSD Space And More. It Creates One Text File Per Day In The Folder
+                         <code>-M8AX-NerdMinerV2-PG-M8AX-Logs</code> ( <code>M8AX-Telegram-YYYYMMDD.TxT</code> ) And Keeps Appending Each Report
+                         To The End. It Works Even If You Don't Have Telegram Configured, And If There Is No Card It Simply Doesn't Save
+                         Anything. The First Report Is Generated 2 Hours After Boot. The Card Is Only Mounted For A Moment To Write, So It
+                         Doesn't Use Any RAM.
+                    </p>
+                    <p>
+                         • ESP32-2432S028R: New Screens Where The CPU Plays Alone: <strong>Tetris</strong>,
+                         <strong>Chess</strong> ( CPU Vs CPU ), <strong>Pong</strong>, <strong>Krakout</strong> And
+                         <strong>Snake</strong>. And Other New Screens: <strong>Game Of Life</strong>, <strong>Countdown Numbers</strong> ( Solves
+                         Number Puzzles With 6 Numbers By Itself ), <strong>Primes Galore</strong> ( Giant Primes Up To 64 Bits ) And
+                         <strong>Hexadecimal Matrix Rain</strong>
+                    </p>
+                    <p>• Telegram: If A Message Fails To Send, It Retries After 5 Minutes ( Up To 3 Times ) Instead Of Waiting Another 2 Hours</p>
                     <p>• Some Surprise</p>
                     <p>• Enhanced Overall Stability</p>
                     <hr />
@@ -700,6 +781,11 @@
                          •
                          <a href="https://opensea.io/m8ax" target="_blank">M8AX - My NFTs On OpenSea</a>
                          - M8AX - My NFTs On OpenSea
+                    </p>
+                    <p>
+                         •
+                         <a href="https://mviiiaxm8ax.blogspot.com/" target="_blank">M8AX - My Blog</a>
+                         - M8AX - My Blog
                     </p>
                     <hr />
                     <p class="c">¡ Ayúdame A Seguir Con Una Donación xD !</p>
@@ -764,6 +850,16 @@
                     <p>
                          👉
                          <a href="https://opensea.io/m8ax" target="_blank">M8AX - My NFTs On OpenSea</a>
+                         👈
+                    </p>
+                    <p>
+                         👉
+                         <a href="https://mviiiaxm8ax.blogspot.com/" target="_blank">M8AX - Mi Blog</a>
+                         👈
+                    </p>
+                    <p>
+                         👉
+                         <a href="https://mviiiaxm8ax.blogspot.com/" target="_blank">M8AX - My Blog</a>
                          👈
                     </p>
                     <hr style="border-top: 2px solid #f0f0f0" />
@@ -956,6 +1052,20 @@
                const upd = document.getElementById("updatePopup"),
                     ex = document.getElementById("exitPopup");
                window.addEventListener("load", () => upd.classList.add("open"));
+
+               // Aviso pequeño: solo sale POPUP_DIAS dias desde POPUP_DESDE (AAAA-MM-DD). Pasado el plazo desaparece solo.
+               // Para una version nueva cambiar la fecha y el texto del div #avisoNovedad.
+               const POPUP_DESDE = "2026-11-10",
+                    POPUP_DIAS = 60;
+               (function () {
+                    const [a, m, d] = POPUP_DESDE.split("-").map(Number);
+                    const ini = new Date(a, m - 1, d),
+                         fin = new Date(a, m - 1, d + POPUP_DIAS),
+                         ahora = new Date();
+                    const av = document.getElementById("avisoNovedad");
+                    if (ahora >= ini && ahora < fin) av.classList.add("open");
+                    document.getElementById("cerrarAviso").addEventListener("click", () => av.classList.remove("open"));
+               })();
                document
                     .querySelectorAll(".closeUpdatePopup")
                     .forEach((b) => b.addEventListener("click", () => upd.classList.remove("open")));

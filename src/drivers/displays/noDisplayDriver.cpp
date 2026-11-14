@@ -71,7 +71,7 @@
  *   5 - "Forma De Almacenar Valor Que No Depende De Gobiernos Ni Instituciones." – Barry Silbert, CEO De Digital Currency Group.
  *
  *
- *              ///\\\ --- Minimizando Código, Maximizando Funcionalidad. Solo 2265 Líneas De Código En 7h --- ///\\\
+ *              ///\\\ --- Minimizando Código, Maximizando Funcionalidad. Solo 2300 Líneas De Código En 8h --- ///\\\
  *
  *                                                     .M8AX Corp. - ¡A Minar!
  *
@@ -159,7 +159,8 @@ int sumatele = 1, maxtemp = 0, mintemp = 1000, sumacalen = 0, fallos = 0, aciert
 uint32_t nominando = 0, cuenta = 0, rndnumero = 0, alertatemp = 0, totalparpadeosled = 0;
 float maxkh = 0.00, minkh = 1000.00, porcentaje = 0.00, eficiencia = 0.00, consumo = 1.18, costo_mensual = 0.00, distanciaLuna = 384400, distanciaSol = 149600000, distanciadiamsol = 1390900, circumluna = 10921, precioDeBTC = 0.0, anterBTC = 0.0, anterBTC2 = 0.0;
 double parpadeosPorSegundo = 1.0;
-const unsigned long interval = 60 * 2 * 60, minStartupTime = interval;
+const unsigned long interval = 60 * 2 * 60;
+const unsigned long minStartupTime = interval;
 unsigned long lastTelegramEpochTime = 0, startTime = 0, epochTime, tiempoInicio, tiempoTranscurrido;
 mining_data data;
 moonPhase mymoonPhase;
@@ -278,29 +279,43 @@ double radToDeg(double radians)
   return radians * (180.0 / PI);
 }
 
-void calculateSunTimes(int year, int month, int day, double lat, double lng, double &sunrise, double &sunset)
+void calculateSunTimes(int year, int month, int day, double lat, double lng, double &sunrise, double &sunset, int &estado)
 {
-  int N = (int)(367 * year - floor((7 * (year + floor((month + 9) / 12.0))) / 4) + floor((275 * month) / 9) + day - 730531.5);
-  double M = fmod(356.0470 + 0.9856002585 * N, 360);
-  double C = 1.9148 * sin(degToRad(M)) + 0.0200 * sin(degToRad(2 * M)) + 0.0003 * sin(degToRad(3 * M));
-  double lambda = fmod(M + C + 282.634, 360);
-  double delta = asin(sin(degToRad(lambda)) * sin(degToRad(23.44)));
-  double cosH = (sin(degToRad(-0.83)) - sin(degToRad(lat)) * sin(delta)) / (cos(degToRad(lat)) * cos(delta));
+  estado = 0;
+  int a = (14 - month) / 12;
+  int y = year + 4800 - a;
+  int m = month + 12 * a - 3;
+  double jd = day + (153 * m + 2) / 5 + 365.0 * y + y / 4 - y / 100 + y / 400 - 32045;
+  double T = (jd - 2451545.0) / 36525.0;
+  double L0 = fmod(280.46646 + T * (36000.76983 + T * 0.0003032), 360.0);
+  double M = 357.52911 + T * (35999.05029 - 0.0001537 * T);
+  double e = 0.016708634 - T * (0.000042037 + 0.0000001267 * T);
+  double Mr = degToRad(M);
+  double C = sin(Mr) * (1.914602 - T * (0.004817 + 0.000014 * T)) + sin(2 * Mr) * (0.019993 - 0.000101 * T) + sin(3 * Mr) * 0.000289;
+  double omega = 125.04 - 1934.136 * T;
+  double appLong = L0 + C - 0.00569 - 0.00478 * sin(degToRad(omega));
+  double seconds = 21.448 - T * (46.815 + T * (0.00059 - T * 0.001813));
+  double eps = 23.0 + (26.0 + seconds / 60.0) / 60.0 + 0.00256 * cos(degToRad(omega));
+  double decl = asin(sin(degToRad(eps)) * sin(degToRad(appLong)));
+  double yy = tan(degToRad(eps / 2.0));
+  yy = yy * yy;
+  double L0r = degToRad(L0);
+  double eot = 4.0 * radToDeg(yy * sin(2 * L0r) - 2 * e * sin(Mr) + 4 * e * yy * sin(Mr) * cos(2 * L0r) - 0.5 * yy * yy * sin(4 * L0r) - 1.25 * e * e * sin(2 * Mr));
+  double cosH = cos(degToRad(90.833)) / (cos(degToRad(lat)) * cos(decl)) - tan(degToRad(lat)) * tan(decl);
   if (cosH > 1)
   {
-    sunrise = -1, sunset = -1;
+    sunrise = 0, sunset = 0;
+    estado = 1;
     return;
   }
-  else if (cosH < -1)
+  if (cosH < -1)
   {
-    sunrise = 0;
-    sunset = 24;
+    sunrise = 0, sunset = 24, estado = 2;
     return;
   }
   double H = radToDeg(acos(cosH)) / 15.0;
-  double solarNoon = fmod(720 - 4 * lng, 1440) / 60.0;
-  sunrise = solarNoon - H;
-  sunset = solarNoon + H;
+  double noon = (720.0 - 4.0 * lng - eot) / 60.0;
+  sunrise = noon - H, sunset = noon + H;
 }
 
 String getSunriseSunset(double latitude, double longitude)
@@ -313,21 +328,20 @@ String getSunriseSunset(double latitude, double longitude)
   month = timeinfo.tm_mon + 1;
   year = timeinfo.tm_year + 1900;
   double sunriseUTC, sunsetUTC;
-  calculateSunTimes(year, month, day, latitude, longitude, sunriseUTC, sunsetUTC);
+  int estadoSol;
+  calculateSunTimes(year, month, day, latitude, longitude, sunriseUTC, sunsetUTC, estadoSol);
+  if (estadoSol == 1)
+    return "El Sol No Sale Hoy ( Noche Polar )";
+  if (estadoSol == 2)
+    return "Sol Todo El Día ( Día Polar )";
   double timezoneOffset = Settings.Timezone;
   double sunriseLocal = sunriseUTC + timezoneOffset;
   double sunsetLocal = sunsetUTC + timezoneOffset;
-  if (sunriseLocal < 0 || sunsetLocal < 0)
-  {
-    return "El Sol No Sale Hoy ( Noche Polar )";
-  }
-  if (sunriseLocal >= 24 || sunsetLocal >= 24)
-  {
-    return "Sol Todo El Día ( Día Polar )";
-  }
   auto formatTime = [](double time) -> String
   {
     time = fmod(time, 24);
+    if (time < 0)
+      time += 24;
     int hours = (int)time;
     int minutes = (int)((time - hours) * 60 + 0.5);
     if (minutes >= 60)
@@ -356,7 +370,7 @@ std::pair<String, String> obtenerCiudadYTemperatura(const String &ip)
   String urlGeo = "http://ip-api.com/json/" + ip + "?fields=city,lat,lon";
   http.begin(urlGeo);
   int httpCode = http.GET();
-  if (httpCode > 0)
+  if (httpCode == HTTP_CODE_OK)
   {
     String payload = http.getString();
     DynamicJsonDocument doc(1024);
@@ -390,7 +404,7 @@ std::pair<String, String> obtenerCiudadYTemperatura(const String &ip)
     http.begin(client, urlTemp);
     httpCode = http.GET();
     urlTemp.reserve(0);
-    if (httpCode > 0)
+    if (httpCode == HTTP_CODE_OK)
     {
       temperatura = http.getString();
       Serial.println("M8AX - Obtenida Temperatura");
@@ -408,16 +422,7 @@ std::pair<String, String> obtenerCiudadYTemperatura(const String &ip)
   return std::make_pair(ciudad, temperatura);
 }
 
-uint32_t floatToUint32(float num)
-{
-  if (num < 0)
-    return 0;
-  if (num > UINT32_MAX)
-    return UINT32_MAX;
-  return static_cast<uint32_t>(round(num));
-}
-
-float calcularDiferenciaDias()
+uint32_t segundosDesdeCompilacion()
 {
   struct tm compileTime = {0};
   char fechaHoraCompilacion[25];
@@ -425,12 +430,10 @@ float calcularDiferenciaDias()
   strptime(fechaHoraCompilacion, "%b %d %Y %H:%M:%S", &compileTime);
   time_t compiledEpoch = mktime(&compileTime);
   time_t now;
-  struct tm timeinfo;
   time(&now);
-  localtime_r(&now, &timeinfo);
-  time_t currentEpoch = mktime(&timeinfo);
-  float diferenciaDias = (float)(currentEpoch - compiledEpoch) / (60 * 60 * 24);
-  return diferenciaDias;
+  if (now < compiledEpoch)
+    return 0;
+  return (uint32_t)(now - compiledEpoch);
 }
 
 String horaEnIngles(int hora, int minutos, int segundos)
@@ -569,8 +572,7 @@ static double _moon_position(const double &j, const double &ls)
   mm -= i * 360.0;
   ev = 1.2739 * sin((2 * (l - ls) - mm) * DEG_TO_RAD);
   sms = sin(ms * DEG_TO_RAD);
-  ae = 0.1858 * sms;
-  mm += ev - ae - 0.37 * sms;
+  ae = 0.1858 * sms, mm += ev - ae - 0.37 * sms;
   ec = 6.2886 * sin(mm * DEG_TO_RAD);
   l += ev + ec - ae + 0.214 * sin(2 * mm * DEG_TO_RAD);
   l = 0.6583 * sin(2 * (l - ls) * DEG_TO_RAD) + l;
@@ -614,7 +616,7 @@ bool esPrimillo(uint32_t num)
 {
   if (num <= 1)
     return false;
-  for (uint32_t i = 2; i * i <= num; i++)
+  for (uint32_t i = 2; i <= 65535 && i * i <= num; i++)
   {
     if (num % i == 0)
       return false;
@@ -698,7 +700,7 @@ String getPublicIP()
   HTTPClient http;
   http.begin("http://api.ipify.org");
   int httpCode = http.GET();
-  if (httpCode > 0)
+  if (httpCode == HTTP_CODE_OK)
   {
     Serial.println("M8AX - Obtenida IP Pública...");
     publicIP = http.getString();
@@ -784,8 +786,11 @@ String generarBarraHash(float hashrate)
 
 int numSemana(time_t t)
 {
-  struct tm *timeinfo = localtime(&t);
-  return (timeinfo->tm_yday / 7) + 1;
+  struct tm timeinfo;
+  localtime_r(&t, &timeinfo);
+  char buf[4];
+  strftime(buf, sizeof(buf), "%V", &timeinfo);
+  return atoi(buf);
 }
 
 void fiestaLED()
@@ -951,7 +956,7 @@ String numeroAEscrito(int num, bool esDecimal = false)
   }
   if (num >= 100)
   {
-    resultado += capitalizar(centenas[num / 100]);
+    resultado += (num == 100) ? String("Cien") : capitalizar(centenas[num / 100]);
     num %= 100;
     if (num > 0)
       resultado += " ";
@@ -970,9 +975,18 @@ String numeroAEscrito(int num, bool esDecimal = false)
       }
       else if (num < 30)
       {
-        resultado += "Veinti";
-        if (num % 10 > 0)
-          resultado += unidades[num % 10];
+        if (num % 10 == 2)
+          resultado += "Veintidós";
+        else if (num % 10 == 3)
+          resultado += "Veintitrés";
+        else if (num % 10 == 6)
+          resultado += "Veintiséis";
+        else
+        {
+          resultado += "Veinti";
+          if (num % 10 > 0)
+            resultado += unidades[num % 10];
+        }
       }
       else
       {
@@ -1435,8 +1449,9 @@ String convertirARomanos(int num)
   return result;
 }
 
-void enviarMensajeATelegram(String mensaje)
+bool enviarMensajeATelegram(String mensaje)
 {
+  bool ok = false;
   if (WiFi.status() != WL_CONNECTED)
   {
     Serial.println("M8AX - Reconectando WiFi...");
@@ -1447,7 +1462,7 @@ void enviarMensajeATelegram(String mensaje)
     {
       Serial.println("M8AX - No Se Pudo Reconectar WiFi...");
       sincroLED3();
-      return;
+      return false;
     }
   }
   WiFiClientSecure client;
@@ -1471,6 +1486,7 @@ void enviarMensajeATelegram(String mensaje)
     {
       Serial.println("M8AX - Mensaje Enviado A Telegram...");
       sumatele += 1;
+      ok = true;
       sincroLED2();
     }
     else
@@ -1486,9 +1502,10 @@ void enviarMensajeATelegram(String mensaje)
     client.stop();
     sincroLED3();
   }
+  return ok;
 }
 
-void recopilaTelegram()
+bool recopilaTelegram()
 {
   int horas, minutos, segundos, dia, mes, anio;
   int indice = esp_random() % 5;
@@ -1530,7 +1547,7 @@ void recopilaTelegram()
   {
     cadenaEnvio += "Mensaje Número - " + String(sumatele) + " | Semana Del Año Número - " + numdesemana + "\n";
   }
-  cadenaEnvio += "F.C.FW - " + String(__DATE__) + " A Las " + String(__TIME__) + " | Hace - " + String(convertirTiempoNoMinando(floatToUint32(calcularDiferenciaDias() * 86400))).c_str() + "\n";
+  cadenaEnvio += "F.C.FW - " + String(__DATE__) + " A Las " + String(__TIME__) + " | Hace - " + String(convertirTiempoNoMinando(segundosDesdeCompilacion())).c_str() + "\n";
   cadenaEnvio += Tresultado.first + ", " + Tresultado.second + " | " + salidaypuesta.c_str() + " | UTC " + ((zonilla >= 0) ? "+" : "") + String(zonilla) + "\n";
   String horaFinal = horaEnIngles(horas, minutos, segundos);
   cadenaEnvio += "Hora En Inglés - " + horaFinal + "\n";
@@ -1642,7 +1659,7 @@ void recopilaTelegram()
   cadenaEnvio += "Tu Wallet De BTC - " + String(Settings.BtcWallet) + "\n";
   cadenaEnvio += urlsm8ax[indice];
   cadenaEnvio += F("\n--------------------------------------------------------------------------------------------------\n");
-  if (data.valids.toInt() == 1)
+  if (data.valids.toInt() > 0)
   {
     cadenaEnvio += "||| ¡ BLOQUE MINADO ! ¡ A COBRAR ! :) |||\n";
   }
@@ -1663,7 +1680,8 @@ void recopilaTelegram()
   int numeritos[6];
   int destino = 1 + (esp_random() % 1000);
   generate_random_numbers(numeritos, 6, 1, 100);
-  cadenaEnvio += ("Juego De Cifras Número - " + String(totalci + 1) + "\n");
+  calculate_operations(numeritos, destino, result);
+  cadenaEnvio += ("Juego De Cifras Número - " + String(totalci) + "\n");
   cadenaEnvio += ("Aciertos - " + String(aciertos) + " | Fallos - " + String(fallos) + "\n");
   cadenaEnvio += ("Números - ");
   for (int i = 0; i < 6; i++)
@@ -1672,20 +1690,20 @@ void recopilaTelegram()
     cadenaEnvio += (" ");
   }
   cadenaEnvio += ("\nObjetivo - " + String(destino) + "\n");
-  calculate_operations(numeritos, destino, result);
   String resultadoStr = String(result);
   memset(result, 0, sizeof(result));
   resultadoStr.replace(">>> M8AX - ", "");
   cadenaEnvio += (String(resultadoStr) + "\n");
   cadenaEnvio += "--------------------------------------------------------------------------------------------------\n                                       By M8AX Corp. " + convertirARomanos(anio);
   cadenaEnvio += F("\n--------------------------------------------------------------------------------------------------");
-  enviarMensajeATelegram(cadenaEnvio);
+  bool enviado = enviarMensajeATelegram(cadenaEnvio);
   resultadoStr = "";
   resultadoStr.reserve(0);
   cadenaEnvio = "";
   cadenaEnvio.reserve(0);
   valor = "";
   valor.reserve(0);
+  return enviado;
 }
 
 void noDisplay_NoScreen(unsigned long mElapsed)
@@ -1864,6 +1882,8 @@ void noDisplay_NoScreen(unsigned long mElapsed)
   if (cuenta == 15)
   {
     sincronizarTiempo();
+    if (startTime < 100000 && time(nullptr) > 100000)
+      startTime = time(nullptr);
   }
   if (cuenta % 30 == 0)
   {
@@ -1893,7 +1913,7 @@ void noDisplay_NoScreen(unsigned long mElapsed)
     }
     Serial.print("\n--------------------------------------------------------------------------------------------------------------");
     Serial.printf("\n>>> M8AX - Datos Serial Número - %s | PLACA-WROOM-ESP32D-%s\n", String(sumacalen + 1), String(u4digits));
-    Serial.printf(">>> M8AX - F.C.FW - %s A Las %s | Hace %s\n", __DATE__, __TIME__, String(convertirTiempoNoMinando(floatToUint32(calcularDiferenciaDias() * 86400))).c_str());
+    Serial.printf(">>> M8AX - F.C.FW - %s A Las %s | Hace %s\n", __DATE__, __TIME__, String(convertirTiempoNoMinando(segundosDesdeCompilacion())).c_str());
     Serial.printf(">>> M8AX - Fecha - %s %s | Hora - %s | Semana Del Año Número - %s | %% Luna Visible - %s\n", String(fechaFormateada), quediase.c_str(), horaFormateada, numdesemana, String(porcentajeTexto).c_str());
     Serial.printf(">>> M8AX - %s, %s | %s | UTC %s%d\n", Tresultado.first.c_str(), Tresultado.second.c_str(), salidaypuesta.c_str(), (zonilla >= 0) ? "+" : "", zonilla);
     String horaFinal = horaEnIngles(horas, minutos, segundos);
@@ -1993,7 +2013,7 @@ void noDisplay_NoScreen(unsigned long mElapsed)
     Serial.printf(">>> M8AX - Wallet De BTC - %s\n", Settings.BtcWallet);
     int indiceex = esp_random() % 5;
     Serial.printf(">>> M8AX - URL Aleatoria - %s\n", urlsm8ax[indiceex]);
-    if (data.valids.toInt() == 1)
+    if (data.valids.toInt() > 0)
     {
       Serial.printf(">>> M8AX - ¡ BLOQUE MINADO ! ¡ A COBRAR ! :)\n");
     }
@@ -2025,7 +2045,8 @@ void noDisplay_NoScreen(unsigned long mElapsed)
     rndnumero = esp_random();
     Serial.print(">>> M8AX - El Número - 3 - " + String(rndnumero) + " -> " + abinyprimo(rndnumero) + "\n");
     Serial.print("--------------------------------------------------------------------------------------------------------------\n");
-    Serial.print(">>> M8AX - Juego De Cifras Número - " + String(totalci + 1) + "\n");
+    calculate_operations(numeritos, destino, result);
+    Serial.print(">>> M8AX - Juego De Cifras Número - " + String(totalci) + "\n");
     Serial.print(">>> M8AX - Aciertos - " + String(aciertos) + " | Fallos - " + String(fallos) + "\n");
     Serial.print(">>> M8AX - Números - ");
     for (int i = 0; i < 6; i++)
@@ -2035,7 +2056,6 @@ void noDisplay_NoScreen(unsigned long mElapsed)
     }
     Serial.println();
     Serial.print(">>> M8AX - Objetivo - " + String(destino) + "\n");
-    calculate_operations(numeritos, destino, result);
     Serial.print(">>> M8AX - " + String(result) + "\n");
     memset(result, 0, sizeof(result));
     Serial.print("--------------------------------------------------------------------------------------------------------------\n");
@@ -2131,6 +2151,8 @@ void noDisplay_NoScreen(unsigned long mElapsed)
     Tresultado = obtenerCiudadYTemperatura(ipPublica);
     float variacion = (anterBTC > 0) ? ((precioDeBTC - anterBTC) / anterBTC) * 100 : 0;
     subebaja = (anterBTC > 0 && precioDeBTC > 0) ? ((variacion >= 0) ? "+" : "-") + String(fabs(variacion), 5) + "%" : "... ERROR ...";
+    static int fallosSeguidos = 0;
+    bool enviado = true;
     if (BOT_TOKEN != "NO CONFIGURADO" && CHAT_ID != "NO CONFIGURADO")
     {
       digitalWrite(m8ax, HIGH);
@@ -2138,12 +2160,25 @@ void noDisplay_NoScreen(unsigned long mElapsed)
       vTaskDelay(pdMS_TO_TICKS(2000));
       if (cuenta > 30)
       {
-        recopilaTelegram();
+        enviado = recopilaTelegram();
       }
     }
-    if (precioDeBTC > 0)
+    if (enviado && precioDeBTC > 0)
       anterBTC = precioDeBTC;
-    lastTelegramEpochTime = epochTime;
+    if (enviado)
+    {
+      fallosSeguidos = 0;
+      lastTelegramEpochTime = epochTime;
+    }
+    else if (++fallosSeguidos < 4)
+    {
+      lastTelegramEpochTime = epochTime - interval + 300;
+    }
+    else
+    {
+      fallosSeguidos = 0;
+      lastTelegramEpochTime = epochTime;
+    }
   }
 }
 

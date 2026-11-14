@@ -58,8 +58,8 @@
  *           a la cadena. A cambio, reciben bitcoins recién creados como recompensa.
  *
  *
- *                     Tmp. De Programación 4H - 6110 Líneas De Código
- *                     -----------------------------------------------
+ *                     Tmp. De Programación 6H - 10070 Líneas De Código
+ *                     ------------------------------------------------
  *
  ****************************************************************************************************************/
 
@@ -80,6 +80,7 @@
 #include "moonPhase.h"
 #include <ArduinoJson.h>
 #include <SPI.h>
+#include <SD.h>
 #include <qrcode.h>
 #include "rotation.h"
 #include <clientntp.h>
@@ -228,7 +229,7 @@ String preciob(void)
 {
   String bitcoin_price = "";
   if (WiFi.status() != WL_CONNECTED)
-    return String("---$");
+    return String("---") + "$";
   HTTPClient http;
   try
   {
@@ -292,11 +293,11 @@ String capitalizar(String palabra)
 String numeroAEscrito(int num, bool esDecimal = false)
 {
   if (num < 0 || num > 9999)
-    return "- Número Fuera De Rango -";
+    return "Numero Fuera De Rango";
 
   String unidades[] = {"cero", "uno", "dos", "tres", "cuatro", "cinco", "seis", "siete", "ocho", "nueve"};
   String especiales[] = {"Diez", "Once", "Doce", "Trece", "Catorce", "Quince",
-                         "Dieciséis", "Diecisiete", "Dieciocho", "Diecinueve"};
+                         "Dieciseis", "Diecisiete", "Dieciocho", "Diecinueve"};
   String decenas[] = {"", "", "Veinte", "Treinta", "Cuarenta", "Cincuenta",
                       "Sesenta", "Setenta", "Ochenta", "Noventa"};
   String centenas[] = {"", "Ciento", "Doscientos", "Trescientos", "Cuatrocientos",
@@ -337,7 +338,7 @@ String numeroAEscrito(int num, bool esDecimal = false)
 
   if (num >= 100)
   {
-    resultado += capitalizar(centenas[num / 100]);
+    resultado += (num == 100) ? String("Cien") : capitalizar(centenas[num / 100]);
     num %= 100; // Eliminamos las centenas
     if (num > 0)
       resultado += " ";
@@ -714,7 +715,7 @@ std::pair<String, String> obtenerCiudadYTemperatura(const String &ip)
   String urlGeo = "http://ip-api.com/json/" + ip + "?fields=city,lat,lon";
   http.begin(urlGeo);
   int httpCode = http.GET();
-  if (httpCode > 0)
+  if (httpCode == HTTP_CODE_OK)
   {
     String payload = http.getString();
     DynamicJsonDocument doc(1024);
@@ -747,7 +748,7 @@ std::pair<String, String> obtenerCiudadYTemperatura(const String &ip)
     http.begin(client, urlTemp);
     httpCode = http.GET();
     urlTemp.reserve(0);
-    if (httpCode > 0)
+    if (httpCode == HTTP_CODE_OK)
     {
       temperatura = http.getString();
       Serial.println("M8AX - Obtenida Temperatura");
@@ -1624,7 +1625,7 @@ uint32_t floatToUint32(float num)
   return static_cast<uint32_t>(round(num));
 }
 
-float calcularDiferenciaDias()
+uint32_t segundosDesdeCompilacion()
 {
   struct tm compileTime = {0};
   char fechaHoraCompilacion[25];
@@ -1635,12 +1636,14 @@ float calcularDiferenciaDias()
   time_t epoch = (time_t)epochTime;
   struct tm *timeinfo = localtime(&epoch);
   time_t currentEpoch = mktime(timeinfo);
-  float diferenciaDias = (float)(currentEpoch - compiledEpoch) / (60 * 60 * 24);
-  return diferenciaDias;
+  if (currentEpoch < compiledEpoch)
+    return 0;
+  return (uint32_t)(currentEpoch - compiledEpoch);
 }
 
-void enviarMensajeATelegram(String mensaje)
+bool enviarMensajeATelegram(String mensaje)
 {
+  bool ok = false;
   // Verificar y reconectar WiFi si es necesario
   if (WiFi.status() != WL_CONNECTED)
   {
@@ -1654,7 +1657,7 @@ void enviarMensajeATelegram(String mensaje)
     if (WiFi.status() != WL_CONNECTED)
     {
       Serial.println("M8AX - No Se Pudo Reconectar WiFi...");
-      return;
+      return false;
     }
   }
   WiFiClientSecure client;
@@ -1678,11 +1681,24 @@ void enviarMensajeATelegram(String mensaje)
   if (client.connect("api.telegram.org", 443))
   {
     client.print(String("GET ") + url + " HTTP/1.1\r\n" + "Host: api.telegram.org\r\n" + "Connection: close\r\n\r\n");
-    delay(1500); // Espera para dar tiempo a la respuesta
-    Serial.println("M8AX - Mensaje Enviado A Telegram...");
-    client.flush();
+    unsigned long t0 = millis();
+    while (!client.available() && client.connected() && millis() - t0 < 5000)
+    {
+      delay(10);
+    }
+    String estado = client.readStringUntil('\n');
     client.stop();
-    sumatele += 1;
+    if (estado.indexOf(" 200") > 0)
+    {
+      Serial.println("M8AX - Mensaje Enviado A Telegram...");
+      sumatele += 1;
+      ok = true;
+    }
+    else
+    {
+      estado.trim();
+      Serial.println("M8AX - Telegram No Lo Aceptó - Respuesta: [" + estado + "]");
+    }
     url = "";
     url.reserve(0);
   }
@@ -1694,6 +1710,7 @@ void enviarMensajeATelegram(String mensaje)
     url = "";
     url.reserve(0);
   }
+  return ok;
 }
 
 String convertirARomanos(int num)
@@ -1771,7 +1788,71 @@ String lunitaporc(String currentDate, String currentTime)
   return "Luna Iluminada Al - " + String(porcentajeTexto);
 }
 
-void recopilaTelegram()
+#define SD_CS 5
+#define SD_SCK 18
+#define SD_MISO 19
+#define SD_MOSI 23
+#define SD_BUS HSPI // la pantalla va por VSPI, así que la SD va por HSPI. Si no monta, prueba con VSPI
+
+static SPIClass sdSPI(SD_BUS); // bus aparte del de la pantalla (pines 18/19/23/5 de la placa)
+static bool sdOk = false;
+static bool sdHayTarjeta = false;
+
+static bool sdMonta()
+{
+  if (sdOk)
+    return true;
+  uint32_t antes = ESP.getFreeHeap();
+  sdSPI.begin(SD_SCK, SD_MISO, SD_MOSI, SD_CS);
+  sdOk = SD.begin(SD_CS, sdSPI, 20000000);
+  if (sdOk && !SD.exists("/-M8AX-NerdMinerV2-PG-M8AX-Logs"))
+    SD.mkdir("/-M8AX-NerdMinerV2-PG-M8AX-Logs");
+  Serial.printf("M8AX - SD %s (RAM Usada: %d Bytes)\n", sdOk ? "Montada" : "No Encontrada", (int)(antes - ESP.getFreeHeap()));
+  return sdOk;
+}
+
+String sdEspacioTexto()
+{
+  sdHayTarjeta = false;
+  if (!sdMonta())
+    return "Espacio Libre En La MicroSD - SIN TARJETA";
+  uint64_t total = SD.totalBytes();
+  uint64_t usado = SD.usedBytes();
+  uint64_t libre = total > usado ? total - usado : 0;
+  String r = "Espacio Libre En La MicroSD - " + String((unsigned long)(libre / 1048576ULL)) + "/" + String((unsigned long)(total / 1048576ULL)) + " MB";
+  SD.end(); // se desmonta antes de enviar a Telegram: no ocupa RAM durante la conexión segura
+  sdOk = false;
+  sdHayTarjeta = true;
+  return r;
+}
+
+void sdGuardaTelegram(const String &texto)
+{
+  if (!sdHayTarjeta) // en el chequeo de espacio no había tarjeta: ni se intenta
+    return;
+  time_t epoch = (time_t)timeClient.getEpochTime();
+  if (epoch < 1700000000) // aun sin hora de internet, no se guarda
+    return;
+  if (!sdMonta())
+    return;
+  struct tm *ti = localtime(&epoch);
+  char nombre[96];
+  snprintf(nombre, sizeof(nombre), "/-M8AX-NerdMinerV2-PG-M8AX-Logs/M8AX-Telegram-%04d%02d%02d.TxT", ti->tm_year + 1900, ti->tm_mon + 1, ti->tm_mday);
+  File w = SD.open(nombre, FILE_APPEND);
+  if (w)
+  {
+    w.print(texto);
+    w.print("\n\n"); // termina la última línea y deja una línea en blanco antes del siguiente
+    w.close();
+    Serial.println("M8AX - Telegram Guardado En La SD...");
+  }
+  else
+    Serial.println("M8AX - No Se Pudo Escribir En La SD...");
+  SD.end(); // se desmonta: no ocupa RAM hasta el siguiente Telegram
+  sdOk = false;
+}
+
+bool recopilaTelegram()
 {
   unsigned long epochTime = timeClient.getEpochTime(); // Obtener segundos desde 1970
   time_t epoch = (time_t)epochTime;                    // Convertir a time_t
@@ -1819,11 +1900,11 @@ void recopilaTelegram()
   quediase.clear(), quediase.shrink_to_fit();
   if (sumatele <= 3999)
   {
-    cadenaEnvio += "Mensaje Número - " + convertirARomanos(sumatele) + " | F.C.FW - " + String(__DATE__) + " A Las " + String(__TIME__) + " | Hace - " + String(convertirTiempo(floatToUint32(calcularDiferenciaDias() * 86400))).c_str() + "\n";
+    cadenaEnvio += "Mensaje Número - " + convertirARomanos(sumatele) + " | F.C.FW - " + String(__DATE__) + " A Las " + String(__TIME__) + " | Hace - " + String(convertirTiempo(segundosDesdeCompilacion())).c_str() + "\n";
   }
   else
   {
-    cadenaEnvio += "Mensaje Número - " + String(sumatele) + " | F.C.FW - " + String(__DATE__) + " A Las " + String(__TIME__) + " | Hace - " + String(convertirTiempo(floatToUint32(calcularDiferenciaDias() * 86400))).c_str() + "\n";
+    cadenaEnvio += "Mensaje Número - " + String(sumatele) + " | F.C.FW - " + String(__DATE__) + " A Las " + String(__TIME__) + " | Hace - " + String(convertirTiempo(segundosDesdeCompilacion())).c_str() + "\n";
   }
   if (Tresultado.first != "" && Tresultado.second != "")
   {
@@ -1841,6 +1922,7 @@ void recopilaTelegram()
   cadenaEnvio += "HR Actual - " + mineria.currentHashRate + " KH/s ( MAX - " + String(maxkh) + " | MIN - " + String(minkh) + " )\n";
   cadenaEnvio += "Temp. De CPU - " + mineria.temp + "° ( MAX - " + String(maxtemp) + "° | MIN - " + String(mintemp) + "° ) | " + obtenerEstadoTemperatura(mineria.temp.toInt()) + "\n";
   cadenaEnvio += "RAM Libre - " + String(ESP.getFreeHeap()) + " Bytes\n";
+  cadenaEnvio += sdEspacioTexto() + "\n";
   cadenaEnvio += "Plantillas De Bloque - " + mineria.templates + "\n";
   cadenaEnvio += "Shares Enviados A La Pool - " + mineria.completedShares + "\n";
   cadenaEnvio += "Mejor Dificultad Alcanzada - " + mineria.bestDiff + "\n";
@@ -1858,7 +1940,7 @@ void recopilaTelegram()
   cadenaEnvio += "WiFi RSSI " + String(WiFi.RSSI()) + " | Señal 1 A 6 - " + evaluarRSSI(String(WiFi.RSSI())) + "\n";
   cadenaEnvio += urlsm8ax[indice];
   cadenaEnvio += F("\n------------------------------------------------------------------------------------------------\n");
-  if (mineria.valids.toInt() == 1)
+  if (mineria.valids.toInt() > 0)
   {
     cadenaEnvio += "||| ¡ BLOQUE MINADO ! ¡ A COBRAR ! :) |||\n";
   }
@@ -1877,9 +1959,17 @@ void recopilaTelegram()
   cadenaEnvio += "Factorización De Número - " + String(rndnumero) + " -> " + factorize(rndnumero) + "\n";
   cadenaEnvio += "------------------------------------------------------------------------------------------------\n                                       By M8AX Corp. " + convertirARomanos(anio);
   cadenaEnvio += F("\n------------------------------------------------------------------------------------------------");
-  enviarMensajeATelegram(cadenaEnvio);
+  bool botOk = (BOT_TOKEN != "NO CONFIGURADO" && CHAT_ID != "NO CONFIGURADO");
+  bool enviado = true;
+  if (botOk)
+    enviado = enviarMensajeATelegram(cadenaEnvio); // con bot: se envía a Telegram
+  else
+    sumatele += 1; // sin bot no se envía nada, pero el contador de mensajes sigue subiendo
+  if (enviado)
+    sdGuardaTelegram(cadenaEnvio); // se guarda en la SD si Telegram lo recibió (o si no hay bot)
   cadenaEnvio = "";
   cadenaEnvio.reserve(0);
+  return enviado;
 }
 
 int obtenHoraPorIP(const String &ip)
@@ -4036,7 +4126,13 @@ void tDisplay_hashGigante(unsigned long mElapsed)
       tft.print("KH/s");
     }
   }
-
+  cuentita++;
+  if (cuentita == 15)
+  {
+    ajustarZonaHoraria();
+    obtenerLocYTemp();
+    obtenerVariacionesBTC(variacion1dia, variacion1semana);
+  }
   manejandoLeds(mineria.currentHashRate.toFloat());
 }
 
@@ -4350,6 +4446,18 @@ static void pongLeds(bool encendidos)
 static void pongLedRojo(bool encendido)
 {
   digitalWrite(LED_PIN, encendido ? LOW : HIGH);
+  digitalWrite(LED_PIN_G, HIGH);
+  digitalWrite(LED_PIN_B, HIGH);
+}
+
+#define LED_FLASH_MS 20
+static void ledFlash(bool r, bool g, bool b, uint16_t ms)
+{
+  digitalWrite(LED_PIN, r ? LOW : HIGH);
+  digitalWrite(LED_PIN_G, g ? LOW : HIGH);
+  digitalWrite(LED_PIN_B, b ? LOW : HIGH);
+  delay(ms);
+  digitalWrite(LED_PIN, HIGH);
   digitalWrite(LED_PIN_G, HIGH);
   digitalWrite(LED_PIN_B, HIGH);
 }
@@ -5448,162 +5556,3055 @@ void esp32_2432S028R_KrakoutScreen(unsigned long mElapsed)
   }
 }
 
-void analiCadaSegundo(unsigned long frame)
+/****************************************************************************************************************
+ *
+ *   Escrito por: M8AX
+ *
+ *   Descripción: AJEDREZ CPU VS CPU - Pantalla para ESP32_2432S028R (Pant. Auto)
+ *   ----------------------------------------------------------------------------
+ *
+ *   Dos CPUs juegan al ajedrez de verdad en la pantalla del minero, con todas las reglas: enroque corto y
+ *   largo, captura al paso, coronación, jaque, jaque mate, tablas por ahogado, por repetición (3 veces),
+ *   por la regla de los 50 movimientos y por falta de material. Nada de partidas guionizadas, cada jugada
+ *   sale de una búsqueda (alfa-beta con tabla de transposición, jugada nula, reducciones, evaluación con
+ *   peones pasados, movilidad y seguridad del rey; ~1800-1900 de Elo estimado) y entre jugadas parecidas sortea una, así que no
+ *   se repite ninguna partida xD...
+ *
+ *   Arriba a la izquierda la hora y arriba a la derecha el hashrate, igual que en el Pong. Abajo el
+ *   marcador: CPU-1 a la izquierda, CPU-2 a la derecha. Cuando acaba una partida el ganador suma 1 punto
+ *   y el otro se queda como estaba (las tablas no puntúan, se cuentan en el numerito del centro).
+ *   Cada partida se cambia de color, para que ninguna CPU tenga siempre las blancas.
+ *
+ *   Los paneles de los lados enseñan el color de cada CPU, quién está pensando, el balance de material y
+ *   sus últimas jugadas en notación algebraica (C = caballo, A = alfil, T = torre, D = dama, R = rey).
+ *   La última jugada y el rey en jaque se marcan en el tablero.
+ *
+ *   El motor (todo lo que hay entre ">>> MOTOR" y "<<< MOTOR") no toca la pantalla para nada, así que se
+ *   puede probar en el PC aparte. Pasa el perft en 6 posiciones de referencia, que es la prueba de que las
+ *   reglas están bien hechas.
+ *
+ ****************************************************************************************************************/
+
+// >>> MOTOR
+#define CH_P 1
+#define CH_N 2
+#define CH_B 3
+#define CH_R 4
+#define CH_Q 5
+#define CH_K 6
+
+#define CHF_CAP 1   // captura
+#define CHF_EP 2    // captura al paso
+#define CHF_ENR 4   // enroque
+#define CHF_DOBLE 8 // peon que sale de dos en dos
+
+#define CH_MAXMOV 128
+#define CH_MAXPLY 16 // plies maximos de la busqueda (incluye la busqueda de capturas)
+#define CH_MATE 30000
+#define CH_INF 32000
+#define CH_KI(s) ((s) == 1 ? 0 : 1)
+
+#ifndef CH_TT_BITS
+#define CH_TT_BITS 10 // tabla de transposicion: 2^11 entradas x 8 bytes = 16 KB (pon 10 para 8 KB, 12 para 32 KB)
+#endif
+#ifndef CH_TT_RESERVA
+#define CH_TT_RESERVA 60000 // bytes de heap que deben quedar libres tras reservar la tabla (si no cabe, juega sin tabla)
+#endif
+#ifndef CH_CONTEMPT
+#define CH_CONTEMPT 12 // centipeones: prefieren jugar a ganar antes que tablas si estan igualadas
+#endif
+#ifndef CH_CEDE
+#define CH_CEDE() vTaskDelay(1) // cede CPU al minero cada cierto numero de nodos
+#endif
+
+struct ChMove
 {
-  unsigned long epochTime = timeClient.getEpochTime(); // Obtener segundos desde 1970
-  time_t epoch = (time_t)epochTime;                    // Convertir a time_t
-  struct tm *timeinfo = localtime(&epoch);             // Convertir a una estructura de tiempo local
-  int dia = timeinfo->tm_mday;                         // Día del mes (1 a 31)
-  int mes = timeinfo->tm_mon + 1;                      // Mes (1 a 12)
-  int anio = timeinfo->tm_year + 1900;                 // Año (por defecto es desde 1900)
-  int horita = timeinfo->tm_hour;                      // Hora
-  int minutitos = timeinfo->tm_min;                    // Minutos
-  int segundos = timeinfo->tm_sec;                     // Segundos
+  int8_t from, to, promo;
+  uint8_t flag;
+};
 
-  if (startTime == 0)
+struct ChUndo
+{
+  int8_t cap, ep;
+  uint8_t castle, half;
+  uint64_t key;
+};
+
+// Casillas 0..63: 0 = a8 (arriba izquierda) y 63 = h1. Blancas en positivo, negras en negativo
+struct ChGame
+{
+  int8_t sq[64];
+  int8_t side;    // 1 = mueven blancas, -1 = mueven negras
+  uint8_t castle; // 1 = O-O blancas, 2 = O-O-O blancas, 4 = O-O negras, 8 = O-O-O negras
+  int8_t ep;      // casilla "al paso" o -1
+  uint8_t half;   // medios movimientos desde la ultima captura o peon (regla de los 50)
+  int8_t kp[2];   // donde esta cada rey (0 = blanco, 1 = negro)
+  uint64_t key;   // clave Zobrist de la posicion (se actualiza sola en chMake/chUnmake)
+};
+
+// ---- Zobrist y tablas de saltos del caballo ----
+// RAM del motor: va en el HEAP y solo existe mientras estas en la pantalla de ajedrez (chMemAlloc / chMemLibera).
+// Asi, en las demas pantallas el ajedrez no ocupa nada (~22 KB menos de RAM fija que antes).
+struct ChMem
+{
+  uint64_t Z[13][64], Zs, Zc[16], Ze[8];
+  int8_t Kn[64][9]; // destinos del caballo desde cada casilla, terminado en -1
+  ChMove buf[CH_MAXPLY + 1][CH_MAXMOV];
+  int16_t sc[CH_MAXPLY + 1][CH_MAXMOV];
+  uint16_t kill[CH_MAXPLY + 1][2]; // jugadas "asesinas"
+  int16_t hist[7][64];             // historial de jugadas tranquilas buenas
+  uint64_t path[CH_MAXPLY + 2];    // claves de la rama actual (repeticiones)
+};
+static ChMem *chMem = NULL;
+#define chZ (chMem->Z)
+#define chZs (chMem->Zs)
+#define chZc (chMem->Zc)
+#define chZe (chMem->Ze)
+#define chKn (chMem->Kn)
+#define chBuf (chMem->buf)
+#define chSc (chMem->sc)
+#define chKill (chMem->kill)
+#define chHist (chMem->hist)
+#define chPath (chMem->path)
+static bool chZok = false;
+
+static uint64_t chSplit(uint64_t &x)
+{
+  x += 0x9E3779B97F4A7C15ULL;
+  uint64_t z = x;
+  z = (z ^ (z >> 30)) * 0xBF58476D1CE4E5B9ULL;
+  z = (z ^ (z >> 27)) * 0x94D049BB133111EBULL;
+  return z ^ (z >> 31);
+}
+
+static void chZInit()
+{
+  if (chZok)
+    return;
+  uint64_t x = 0x4D38415853454E47ULL;
+  for (int i = 0; i < 13; i++)
+    for (int j = 0; j < 64; j++)
+      chZ[i][j] = chSplit(x);
+  chZs = chSplit(x);
+  for (int i = 0; i < 16; i++)
+    chZc[i] = chSplit(x);
+  for (int i = 0; i < 8; i++)
+    chZe[i] = chSplit(x);
+  static const int8_t kn[8][2] = {{-2, -1}, {-2, 1}, {-1, -2}, {-1, 2}, {1, -2}, {1, 2}, {2, -1}, {2, 1}};
+  for (int i = 0; i < 64; i++)
   {
-    BOT_TOKEN = Settings.botTelegram;    // Bot De Telegram
-    CHAT_ID = Settings.ChanelIDTelegram; // ID Del Canal De Telegram
-    startTime = epochTime;               // Guardar el tiempo de inicio cuando el dispositivo arranca
+    int k = 0;
+    for (int d = 0; d < 8; d++)
+    {
+      int r = (i >> 3) + kn[d][0], c = (i & 7) + kn[d][1];
+      if (r >= 0 && r < 8 && c >= 0 && c < 8)
+        chKn[i][k++] = r * 8 + c;
+    }
+    chKn[i][k] = -1;
+  }
+  chZok = true;
+}
+
+static uint64_t chKeyOf(const ChGame &g)
+{
+  uint64_t k = 0;
+  for (int i = 0; i < 64; i++)
+    if (g.sq[i])
+      k ^= chZ[g.sq[i] + 6][i];
+  if (g.side == -1)
+    k ^= chZs;
+  k ^= chZc[g.castle & 15];
+  if (g.ep >= 0)
+    k ^= chZe[g.ep & 7];
+  return k;
+}
+
+static void chRecalcKey(ChGame &g)
+{
+  chZInit();
+  g.key = chKeyOf(g);
+}
+
+static const int16_t chVal[7] = {0, 100, 320, 330, 500, 900, 0};
+
+// Tablas de casillas (vista de las blancas, fila 0 = octava). 1..5 piezas, 6 rey medio juego, 7 rey final
+static const int8_t chPst[8][64] = {
+    {0},
+    {0, 0, 0, 0, 0, 0, 0, 0, 50, 50, 50, 50, 50, 50, 50, 50, 10, 10, 20, 30, 30, 20, 10, 10, 5, 5, 10, 25, 25, 10, 5, 5, 0, 0, 0, 20, 20, 0, 0, 0, 5, -5, -10, 0, 0, -10, -5, 5, 5, 10, 10, -20, -20, 10, 10, 5, 0, 0, 0, 0, 0, 0, 0, 0},
+    {-50, -40, -30, -30, -30, -30, -40, -50, -40, -20, 0, 0, 0, 0, -20, -40, -30, 0, 10, 15, 15, 10, 0, -30, -30, 5, 15, 20, 20, 15, 5, -30, -30, 0, 15, 20, 20, 15, 0, -30, -30, 5, 10, 15, 15, 10, 5, -30, -40, -20, 0, 5, 5, 0, -20, -40, -50, -40, -30, -30, -30, -30, -40, -50},
+    {-20, -10, -10, -10, -10, -10, -10, -20, -10, 0, 0, 0, 0, 0, 0, -10, -10, 0, 5, 10, 10, 5, 0, -10, -10, 5, 5, 10, 10, 5, 5, -10, -10, 0, 10, 10, 10, 10, 0, -10, -10, 10, 10, 10, 10, 10, 10, -10, -10, 5, 0, 0, 0, 0, 5, -10, -20, -10, -10, -10, -10, -10, -10, -20},
+    {0, 0, 0, 0, 0, 0, 0, 0, 5, 10, 10, 10, 10, 10, 10, 5, -5, 0, 0, 0, 0, 0, 0, -5, -5, 0, 0, 0, 0, 0, 0, -5, -5, 0, 0, 0, 0, 0, 0, -5, -5, 0, 0, 0, 0, 0, 0, -5, -5, 0, 0, 0, 0, 0, 0, -5, 0, 0, 0, 5, 5, 0, 0, 0},
+    {-20, -10, -10, -5, -5, -10, -10, -20, -10, 0, 0, 0, 0, 0, 0, -10, -10, 0, 5, 5, 5, 5, 0, -10, -5, 0, 5, 5, 5, 5, 0, -5, 0, 0, 5, 5, 5, 5, 0, -5, -10, 5, 5, 5, 5, 5, 0, -10, -10, 0, 5, 0, 0, 0, 0, -10, -20, -10, -10, -5, -5, -10, -10, -20},
+    {-30, -40, -40, -50, -50, -40, -40, -30, -30, -40, -40, -50, -50, -40, -40, -30, -30, -40, -40, -50, -50, -40, -40, -30, -30, -40, -40, -50, -50, -40, -40, -30, -20, -30, -30, -40, -40, -30, -30, -20, -10, -20, -20, -20, -20, -20, -20, -10, 20, 20, 0, 0, 0, 0, 20, 20, 20, 30, 10, 0, 0, 10, 30, 20},
+    {-50, -40, -30, -20, -20, -30, -40, -50, -30, -20, -10, 0, 0, -10, -20, -30, -30, -10, 20, 30, 30, 20, -10, -30, -30, -10, 30, 40, 40, 30, -10, -30, -30, -10, 30, 40, 40, 30, -10, -30, -30, -10, 20, 30, 30, 20, -10, -30, -30, -30, 0, 0, 0, 0, -30, -30, -50, -30, -30, -30, -30, -30, -30, -50}};
+
+// Si se mueve o se captura en estas casillas, se pierde el derecho a enrocar
+static uint8_t chCastleMask(int i)
+{
+  switch (i)
+  {
+  case 60:
+    return ~3;
+  case 63:
+    return ~1;
+  case 56:
+    return ~2;
+  case 4:
+    return ~12;
+  case 7:
+    return ~4;
+  case 0:
+    return ~8;
+  }
+  return 0xFF;
+}
+
+// Valores y tablas extra para el final de partida
+static const int16_t chValEg[7] = {0, 120, 300, 320, 520, 950, 0};
+static const int8_t chPstPEg[64] = {0, 0, 0, 0, 0, 0, 0, 0, 80, 80, 80, 80, 80, 80, 80, 80, 50, 50, 50, 50, 50, 50, 50, 50, 30, 30, 30, 30, 30, 30, 30, 30, 15, 15, 15, 15, 15, 15, 15, 15, 5, 5, 5, 5, 5, 5, 5, 5, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+static const int16_t chPasMg[8] = {0, 2, 5, 10, 20, 40, 70, 0}; // peon pasado segun fila relativa
+static const int16_t chPasEg[8] = {0, 8, 15, 30, 55, 90, 140, 0};
+
+static void chInicio(ChGame &g)
+{
+  static const int8_t fila[8] = {CH_R, CH_N, CH_B, CH_Q, CH_K, CH_B, CH_N, CH_R};
+  memset(g.sq, 0, 64);
+  for (int c = 0; c < 8; c++)
+  {
+    g.sq[c] = -fila[c];
+    g.sq[8 + c] = -CH_P;
+    g.sq[48 + c] = CH_P;
+    g.sq[56 + c] = fila[c];
+  }
+  g.side = 1;
+  g.castle = 15;
+  g.ep = -1;
+  g.half = 0;
+  g.kp[0] = 60;
+  g.kp[1] = 4;
+  chRecalcKey(g);
+}
+
+// true si la casilla idx esta atacada por el bando "por" (1 blancas, -1 negras)
+static bool chAtacada(const ChGame &g, int idx, int por)
+{
+  static const int8_t kn[8][2] = {{-2, -1}, {-2, 1}, {-1, -2}, {-1, 2}, {1, -2}, {1, 2}, {2, -1}, {2, 1}};
+  static const int8_t dg[4][2] = {{-1, -1}, {-1, 1}, {1, -1}, {1, 1}};
+  static const int8_t rt[4][2] = {{-1, 0}, {1, 0}, {0, -1}, {0, 1}};
+  int r = idx >> 3, c = idx & 7;
+
+  int pr = r + (por == 1 ? 1 : -1); // un peon blanco ataca hacia arriba, asi que esta una fila por debajo
+  if (pr >= 0 && pr < 8)
+  {
+    if (c > 0 && g.sq[pr * 8 + c - 1] == por * CH_P)
+      return true;
+    if (c < 7 && g.sq[pr * 8 + c + 1] == por * CH_P)
+      return true;
+  }
+  for (int k = 0; k < 8; k++)
+  {
+    int nr = r + kn[k][0], nc = c + kn[k][1];
+    if (nr >= 0 && nr < 8 && nc >= 0 && nc < 8 && g.sq[nr * 8 + nc] == por * CH_N)
+      return true;
+  }
+  for (int dr = -1; dr <= 1; dr++)
+    for (int dc = -1; dc <= 1; dc++)
+    {
+      if (!dr && !dc)
+        continue;
+      int nr = r + dr, nc = c + dc;
+      if (nr >= 0 && nr < 8 && nc >= 0 && nc < 8 && g.sq[nr * 8 + nc] == por * CH_K)
+        return true;
+    }
+  for (int d = 0; d < 4; d++) // diagonales: alfil o dama
+  {
+    int nr = r + dg[d][0], nc = c + dg[d][1];
+    while (nr >= 0 && nr < 8 && nc >= 0 && nc < 8)
+    {
+      int p = g.sq[nr * 8 + nc];
+      if (p)
+      {
+        if (p == por * CH_B || p == por * CH_Q)
+          return true;
+        break;
+      }
+      nr += dg[d][0];
+      nc += dg[d][1];
+    }
+  }
+  for (int d = 0; d < 4; d++) // rectas: torre o dama
+  {
+    int nr = r + rt[d][0], nc = c + rt[d][1];
+    while (nr >= 0 && nr < 8 && nc >= 0 && nc < 8)
+    {
+      int p = g.sq[nr * 8 + nc];
+      if (p)
+      {
+        if (p == por * CH_R || p == por * CH_Q)
+          return true;
+        break;
+      }
+      nr += rt[d][0];
+      nc += rt[d][1];
+    }
+  }
+  return false;
+}
+
+static inline void chAdd(ChMove *l, int &n, int f, int t, int promo, int flag)
+{
+  if (n < CH_MAXMOV)
+  {
+    l[n].from = f;
+    l[n].to = t;
+    l[n].promo = promo;
+    l[n].flag = flag;
+    n++;
+  }
+}
+
+static void chPromos(ChMove *l, int &n, int f, int t, int flag, bool soloCap)
+{
+  static const int8_t pz[4] = {CH_Q, CH_N, CH_R, CH_B};
+  for (int k = 0; k < (soloCap ? 1 : 4); k++)
+    chAdd(l, n, f, t, pz[k], flag);
+}
+
+// Movimientos pseudo-legales (aun puede quedar el rey en jaque). soloCap = solo capturas y coronaciones
+static int chGen(const ChGame &g, ChMove *l, bool soloCap)
+{
+  static const int8_t kn[8][2] = {{-2, -1}, {-2, 1}, {-1, -2}, {-1, 2}, {1, -2}, {1, 2}, {2, -1}, {2, 1}};
+  static const int8_t kg[8][2] = {{-1, -1}, {-1, 0}, {-1, 1}, {0, -1}, {0, 1}, {1, -1}, {1, 0}, {1, 1}};
+  static const int8_t sl[8][2] = {{-1, 0}, {1, 0}, {0, -1}, {0, 1}, {-1, -1}, {-1, 1}, {1, -1}, {1, 1}}; // 0..3 recto, 4..7 diagonal
+  int n = 0;
+  const int s = g.side;
+
+  for (int i = 0; i < 64; i++)
+  {
+    int p = g.sq[i] * s;
+    if (p <= 0)
+      continue;
+    int r = i >> 3, c = i & 7;
+
+    if (p == CH_P)
+    {
+      int dr = (s == 1) ? -1 : 1;
+      int r1 = r + dr;
+      int promoRow = (s == 1) ? 0 : 7;
+      int startRow = (s == 1) ? 6 : 1;
+      for (int dc = -1; dc <= 1; dc += 2)
+      {
+        int c1 = c + dc;
+        if (c1 < 0 || c1 > 7)
+          continue;
+        int to = r1 * 8 + c1;
+        if (g.sq[to] * s < 0)
+        {
+          if (r1 == promoRow)
+            chPromos(l, n, i, to, CHF_CAP, soloCap);
+          else
+            chAdd(l, n, i, to, 0, CHF_CAP);
+        }
+        else if (to == g.ep)
+          chAdd(l, n, i, to, 0, CHF_CAP | CHF_EP);
+      }
+      int to = r1 * 8 + c;
+      if (g.sq[to] == 0)
+      {
+        if (r1 == promoRow)
+          chPromos(l, n, i, to, 0, soloCap);
+        else if (!soloCap)
+        {
+          chAdd(l, n, i, to, 0, 0);
+          if (r == startRow && g.sq[to + dr * 8] == 0)
+            chAdd(l, n, i, to + dr * 8, 0, CHF_DOBLE);
+        }
+      }
+    }
+    else if (p == CH_N || p == CH_K)
+    {
+      const int8_t (*d)[2] = (p == CH_N) ? kn : kg;
+      for (int k = 0; k < 8; k++)
+      {
+        int nr = r + d[k][0], nc = c + d[k][1];
+        if (nr < 0 || nr > 7 || nc < 0 || nc > 7)
+          continue;
+        int to = nr * 8 + nc;
+        int t = g.sq[to] * s;
+        if (t > 0)
+          continue;
+        if (t < 0)
+          chAdd(l, n, i, to, 0, CHF_CAP);
+        else if (!soloCap)
+          chAdd(l, n, i, to, 0, 0);
+      }
+      if (p == CH_K && !soloCap)
+      {
+        // enroques: casillas libres y que el rey no salga, pase ni caiga en jaque
+        if (s == 1 && i == 60)
+        {
+          if ((g.castle & 1) && !g.sq[61] && !g.sq[62] && g.sq[63] == CH_R &&
+              !chAtacada(g, 60, -1) && !chAtacada(g, 61, -1) && !chAtacada(g, 62, -1))
+            chAdd(l, n, 60, 62, 0, CHF_ENR);
+          if ((g.castle & 2) && !g.sq[59] && !g.sq[58] && !g.sq[57] && g.sq[56] == CH_R &&
+              !chAtacada(g, 60, -1) && !chAtacada(g, 59, -1) && !chAtacada(g, 58, -1))
+            chAdd(l, n, 60, 58, 0, CHF_ENR);
+        }
+        else if (s == -1 && i == 4)
+        {
+          if ((g.castle & 4) && !g.sq[5] && !g.sq[6] && g.sq[7] == -CH_R &&
+              !chAtacada(g, 4, 1) && !chAtacada(g, 5, 1) && !chAtacada(g, 6, 1))
+            chAdd(l, n, 4, 6, 0, CHF_ENR);
+          if ((g.castle & 8) && !g.sq[3] && !g.sq[2] && !g.sq[1] && g.sq[0] == -CH_R &&
+              !chAtacada(g, 4, 1) && !chAtacada(g, 3, 1) && !chAtacada(g, 2, 1))
+            chAdd(l, n, 4, 2, 0, CHF_ENR);
+        }
+      }
+    }
+    else // alfil, torre, dama
+    {
+      int d0 = (p == CH_B) ? 4 : 0;
+      int d1 = (p == CH_R) ? 4 : 8;
+      for (int k = d0; k < d1; k++)
+      {
+        int nr = r + sl[k][0], nc = c + sl[k][1];
+        while (nr >= 0 && nr < 8 && nc >= 0 && nc < 8)
+        {
+          int to = nr * 8 + nc;
+          int t = g.sq[to] * s;
+          if (t > 0)
+            break;
+          if (t < 0)
+          {
+            chAdd(l, n, i, to, 0, CHF_CAP);
+            break;
+          }
+          if (!soloCap)
+            chAdd(l, n, i, to, 0, 0);
+          nr += sl[k][0];
+          nc += sl[k][1];
+        }
+      }
+    }
+  }
+  return n;
+}
+
+static void chMake(ChGame &g, const ChMove &m, ChUndo &u)
+{
+  const int s = g.side;
+  int p = g.sq[m.from];
+  u.cap = g.sq[m.to];
+  u.castle = g.castle;
+  u.ep = g.ep;
+  u.half = g.half;
+  u.key = g.key;
+  uint64_t k = g.key ^ chZ[p + 6][m.from];
+  if (u.cap)
+    k ^= chZ[u.cap + 6][m.to];
+
+  g.sq[m.from] = 0;
+  if (m.flag & CHF_EP)
+  {
+    int idx = m.to + (s == 1 ? 8 : -8); // el peon capturado esta detras de la casilla de destino
+    u.cap = g.sq[idx];
+    k ^= chZ[u.cap + 6][idx];
+    g.sq[idx] = 0;
+  }
+  int np = m.promo ? s * m.promo : p;
+  g.sq[m.to] = np;
+  k ^= chZ[np + 6][m.to];
+  if (m.flag & CHF_ENR)
+  {
+    int rf, rt;
+    if (m.to > m.from)
+    {
+      rf = m.from + 3;
+      rt = m.from + 1;
+    }
+    else
+    {
+      rf = m.from - 4;
+      rt = m.from - 1;
+    }
+    int rook = g.sq[rf];
+    g.sq[rt] = rook;
+    g.sq[rf] = 0;
+    k ^= chZ[rook + 6][rf] ^ chZ[rook + 6][rt];
+  }
+  k ^= chZc[g.castle & 15];
+  g.castle &= chCastleMask(m.from) & chCastleMask(m.to);
+  k ^= chZc[g.castle & 15];
+  if (g.ep >= 0)
+    k ^= chZe[g.ep & 7];
+  g.ep = (m.flag & CHF_DOBLE) ? (m.from + m.to) / 2 : -1;
+  if (g.ep >= 0)
+    k ^= chZe[g.ep & 7];
+  if (p * s == CH_K)
+    g.kp[CH_KI(s)] = m.to;
+  g.half = ((p * s == CH_P) || (m.flag & CHF_CAP)) ? 0 : (g.half < 250 ? g.half + 1 : 250);
+  g.side = -s;
+  g.key = k ^ chZs;
+}
+
+static void chUnmake(ChGame &g, const ChMove &m, const ChUndo &u)
+{
+  g.side = -g.side;
+  const int s = g.side;
+  int p = m.promo ? s * CH_P : g.sq[m.to];
+  g.sq[m.from] = p;
+  if (m.flag & CHF_EP)
+  {
+    g.sq[m.to] = 0;
+    g.sq[m.to + (s == 1 ? 8 : -8)] = u.cap;
+  }
+  else
+    g.sq[m.to] = u.cap;
+  if (m.flag & CHF_ENR)
+  {
+    if (m.to > m.from)
+    {
+      g.sq[m.from + 3] = g.sq[m.from + 1];
+      g.sq[m.from + 1] = 0;
+    }
+    else
+    {
+      g.sq[m.from - 4] = g.sq[m.from - 1];
+      g.sq[m.from - 1] = 0;
+    }
+  }
+  g.castle = u.castle;
+  g.ep = u.ep;
+  g.half = u.half;
+  g.key = u.key;
+  if (p * s == CH_K)
+    g.kp[CH_KI(s)] = m.from;
+}
+
+// Jugada nula (pasar turno) para la poda del mismo nombre
+static void chMakeNull(ChGame &g, ChUndo &u)
+{
+  u.ep = g.ep;
+  u.key = g.key;
+  if (g.ep >= 0)
+    g.key ^= chZe[g.ep & 7];
+  g.ep = -1;
+  g.key ^= chZs;
+  g.side = -g.side;
+}
+
+static void chUnmakeNull(ChGame &g, const ChUndo &u)
+{
+  g.side = -g.side;
+  g.ep = u.ep;
+  g.key = u.key;
+}
+
+static inline bool chReyEnJaque(const ChGame &g, int bando)
+{
+  return chAtacada(g, g.kp[CH_KI(bando)], -bando);
+}
+
+// Rellena l con los movimientos legales y devuelve cuantos hay
+static int chLegales(ChGame &g, ChMove *l)
+{
+  ChMove tmp[CH_MAXMOV];
+  int n = chGen(g, tmp, false), k = 0;
+  const int s = g.side;
+  for (int i = 0; i < n; i++)
+  {
+    ChUndo u;
+    chMake(g, tmp[i], u);
+    bool ok = !chReyEnJaque(g, s);
+    chUnmake(g, tmp[i], u);
+    if (ok)
+      l[k++] = tmp[i];
+  }
+  return k;
+}
+
+// Casillas a las que llega una pieza deslizante por una direccion (propias no, capturas si)
+static inline int chRayo(const ChGame &g, int i, int dr, int dc, int col)
+{
+  int r = (i >> 3) + dr, c = (i & 7) + dc, n = 0;
+  while (r >= 0 && r < 8 && c >= 0 && c < 8)
+  {
+    int p = g.sq[r * 8 + c];
+    if (p == 0)
+      n++;
+    else
+    {
+      if ((p > 0) != (col == 0))
+        n++;
+      break;
+    }
+    r += dr;
+    c += dc;
+  }
+  return n;
+}
+
+// Evaluacion en centipeones desde el punto de vista de quien mueve.
+// Material + casillas + movilidad + estructura de peones (doblados, aislados, pasados) + torres en columnas
+// abiertas y en septima + pareja de alfiles + seguridad del rey (escudo de peones) + final de partida
+// (mezcla suave entre medio juego y final segun el material que queda) + mates con rey y torre/dama.
+static int chEval(const ChGame &g)
+{
+  int mg[2] = {0, 0}, eg[2] = {0, 0}, mat[2] = {0, 0}, npm[2] = {0, 0}, nb[2] = {0, 0};
+  int fase = 0, peones = 0;
+  int8_t pf[2][8], minR[2][8], maxR[2][8];
+  for (int c = 0; c < 8; c++)
+  {
+    pf[0][c] = pf[1][c] = 0;
+    minR[0][c] = minR[1][c] = 8;
+    maxR[0][c] = maxR[1][c] = -1;
+  }
+  for (int i = 0; i < 64; i++)
+  {
+    int v = g.sq[i];
+    if (v == CH_P || v == -CH_P)
+    {
+      int col = v > 0 ? 0 : 1, f = i & 7, r = i >> 3;
+      pf[col][f]++;
+      peones++;
+      if (r < minR[col][f])
+        minR[col][f] = r;
+      if (r > maxR[col][f])
+        maxR[col][f] = r;
+    }
   }
 
-  if (startTime > 0 && uncontadormas > 50)
+  static const int8_t dg[4][2] = {{-1, -1}, {-1, 1}, {1, -1}, {1, 1}};
+  static const int8_t rt[4][2] = {{-1, 0}, {1, 0}, {0, -1}, {0, 1}};
+  for (int i = 0; i < 64; i++)
   {
-    float currentHashRate = mineria.currentHashRate.toFloat();
-    int currentTemp = mineria.temp.toInt();
-
-    if (currentHashRate > maxkh)
+    int v = g.sq[i];
+    if (!v)
+      continue;
+    int t = v < 0 ? -v : v;
+    if (t == CH_K)
+      continue;
+    int col = v > 0 ? 0 : 1;
+    int si = col ? (i ^ 56) : i;
+    int f = i & 7, r = i >> 3;
+    mat[col] += chVal[t];
+    mg[col] += chVal[t] + chPst[t][si];
+    eg[col] += chValEg[t] + (t == CH_P ? chPstPEg[si] : chPst[t][si]);
+    if (t == CH_P)
     {
-      maxkh = currentHashRate; // Actualiza el máximo de kh/s
+      int rel = col == 0 ? 7 - r : r;
+      if ((f == 0 || !pf[col][f - 1]) && (f == 7 || !pf[col][f + 1]))
+      {
+        mg[col] -= 12;
+        eg[col] -= 18;
+      }
+      bool pasado = true;
+      for (int ff = f - 1; ff <= f + 1 && pasado; ff++)
+      {
+        if (ff < 0 || ff > 7)
+          continue;
+        if (col == 0 ? (minR[1][ff] < r) : (maxR[0][ff] > r))
+          pasado = false;
+      }
+      if (pasado)
+      {
+        mg[col] += chPasMg[rel];
+        eg[col] += chPasEg[rel];
+      }
+      continue;
     }
-
-    if (currentHashRate < minkh)
+    npm[col] += chVal[t];
+    if (t == CH_N)
     {
-      minkh = currentHashRate; // Actualiza el mínimo de kh/s
+      fase += 1;
+      int n = 0;
+      for (const int8_t *q = chKn[i]; *q >= 0; q++)
+      {
+        int p = g.sq[*q];
+        if (p == 0 || (p > 0) != (col == 0))
+          n++;
+      }
+      mg[col] += 4 * (n - 4);
+      eg[col] += 4 * (n - 4);
     }
-
-    if (currentTemp > maxtemp)
+    else if (t == CH_B)
     {
-      maxtemp = currentTemp; // Actualiza el máximo de temperatura
+      fase += 1;
+      nb[col]++;
+      int n = 0;
+      for (int d = 0; d < 4; d++)
+        n += chRayo(g, i, dg[d][0], dg[d][1], col);
+      mg[col] += 4 * (n - 6);
+      eg[col] += 5 * (n - 6);
     }
-
-    if (currentTemp < mintemp)
+    else if (t == CH_R)
     {
-      mintemp = currentTemp; // Actualiza el mínimo de temperatura
+      fase += 2;
+      int n = 0;
+      for (int d = 0; d < 4; d++)
+        n += chRayo(g, i, rt[d][0], rt[d][1], col);
+      mg[col] += 2 * (n - 7);
+      eg[col] += 4 * (n - 7);
+      if (!pf[col][f])
+      {
+        if (!pf[1 - col][f])
+        {
+          mg[col] += 20;
+          eg[col] += 10;
+        }
+        else
+        {
+          mg[col] += 10;
+          eg[col] += 5;
+        }
+      }
+      if (col == 0 ? r == 1 : r == 6)
+      {
+        mg[col] += 10;
+        eg[col] += 20;
+      }
+    }
+    else // dama
+    {
+      fase += 4;
+      int n = 0;
+      for (int d = 0; d < 4; d++)
+        n += chRayo(g, i, dg[d][0], dg[d][1], col) + chRayo(g, i, rt[d][0], rt[d][1], col);
+      mg[col] += 1 * (n - 14);
+      eg[col] += 2 * (n - 14);
+    }
+  }
+  if (peones == 0 && npm[0] <= 330 && npm[1] <= 330)
+    return 0; // rey solo, rey y una pieza menor...: nadie puede ganar
+
+  for (int col = 0; col < 2; col++)
+  {
+    for (int f = 0; f < 8; f++)
+      if (pf[col][f] > 1)
+      {
+        mg[col] -= (pf[col][f] - 1) * 10;
+        eg[col] -= (pf[col][f] - 1) * 18;
+      }
+    if (nb[col] >= 2)
+    {
+      mg[col] += 30;
+      eg[col] += 45;
+    }
+    int k = g.kp[col], kr = k >> 3, kc = k & 7;
+    if ((col == 0 ? 7 - kr : kr) <= 1) // rey en sus dos primeras filas: contar el escudo de peones
+    {
+      int dir = col == 0 ? -1 : 1, files = 0, found = 0;
+      for (int ff = kc - 1; ff <= kc + 1; ff++)
+      {
+        if (ff < 0 || ff > 7)
+          continue;
+        files++;
+        for (int d = 1; d <= 2; d++)
+        {
+          int rr = kr + dir * d;
+          if (rr < 0 || rr > 7)
+            break;
+          if (g.sq[rr * 8 + ff] == (col == 0 ? CH_P : -CH_P))
+          {
+            found++;
+            break;
+          }
+        }
+      }
+      mg[col] -= (files - found) * 12;
+      if (!pf[col][kc])
+        mg[col] -= 10;
+    }
+    int ks = col ? (g.kp[col] ^ 56) : g.kp[col];
+    mg[col] += chPst[6][ks];
+    eg[col] += chPst[7][ks];
+  }
+  if (fase > 24)
+    fase = 24;
+  int score = ((mg[0] - mg[1]) * fase + (eg[0] - eg[1]) * (24 - fase)) / 24;
+
+  // Final con ventaja clara: empujar al rey contrario a una esquina y acercar el nuestro (si no, no sabe dar mate)
+  int dif = mat[0] - mat[1];
+  if (npm[0] + npm[1] <= 2600 && (dif >= 250 || dif <= -250))
+  {
+    int w = dif > 0 ? 0 : 1;
+    int lk = g.kp[1 - w], wk = g.kp[w];
+    int lr = lk >> 3, lc = lk & 7;
+    int cd = (lr < 4 ? 3 - lr : lr - 4) + (lc < 4 ? 3 - lc : lc - 4);
+    int dr = (lk >> 3) - (wk >> 3), dc = (lk & 7) - (wk & 7);
+    int dist = (dr < 0 ? -dr : dr) + (dc < 0 ? -dc : dc);
+    int b = cd * 10 + (14 - dist) * 4;
+    score += (w == 0) ? b : -b;
+  }
+  return score * g.side + 8; // +8 por tener el turno
+}
+
+static uint32_t chNodes;
+static uint32_t chDeadline;
+static bool chAbort;
+static const uint32_t *chHistG; // posiciones ya jugadas en la partida
+static int chNHistG;
+
+// Tabla de transposicion: recuerda lo ya calculado de cada posicion (8 bytes por entrada)
+struct ChTT
+{
+  uint16_t k;  // 16 bits altos de la clave
+  uint16_t mv; // mejor jugada empaquetada
+  int16_t sc;
+  int8_t d;
+  uint8_t fg; // bits 0-1: 1 exacto, 2 cota inferior, 3 cota superior; bits 2-7: generacion
+};
+static ChTT *chTT = NULL;
+static uint32_t chTTmask = 0;
+static uint8_t chGen8 = 0;
+static bool chTTtry = false;
+
+static void chTTInit()
+{
+  if (chTTtry)
+    return;
+  chTTtry = true;
+  size_t sz = sizeof(ChTT) * ((size_t)1 << CH_TT_BITS);
+  if ((size_t)ESP.getMaxAllocHeap() >= sz + CH_TT_RESERVA)
+  {
+    chTT = (ChTT *)malloc(sz);
+    if (chTT)
+    {
+      memset(chTT, 0, sz);
+      chTTmask = ((uint32_t)1 << CH_TT_BITS) - 1;
+    }
+  }
+}
+
+// Reserva / libera toda la RAM del motor (llamar al entrar y al salir de la pantalla)
+static bool chMemAlloc()
+{
+  if (chMem)
+    return true;
+  chMem = (ChMem *)calloc(1, sizeof(ChMem));
+  chZok = false; // se recalculan las tablas (semilla fija: mismas claves siempre)
+  return chMem != NULL;
+}
+
+static void chMemLibera()
+{
+  if (chTT)
+  {
+    free(chTT);
+    chTT = NULL;
+    chTTmask = 0;
+  }
+  chTTtry = false;
+  if (chMem)
+  {
+    free(chMem);
+    chMem = NULL;
+  }
+  chZok = false;
+}
+
+// Llamar al empezar cada partida
+static void chNuevoJuego()
+{
+  chZInit();
+  chTTInit();
+  if (chTT)
+    memset(chTT, 0, sizeof(ChTT) * ((size_t)1 << CH_TT_BITS));
+  memset(chKill, 0, sizeof(chKill));
+  memset(chHist, 0, sizeof(chHist));
+  chGen8 = 0;
+}
+
+static inline uint16_t chPack(const ChMove &m) { return (uint16_t)(m.from | (m.to << 6) | (m.promo << 12)); }
+
+static const int16_t chFutM[3] = {0, 140, 280};
+
+// Ordena: jugada de la tabla, capturas buenas (victima valiosa, atacante barato), coronaciones, asesinas, historial
+static void chPuntua(const ChGame &g, const ChMove *mv, int16_t *sc, int n, int ply, uint16_t ttMove)
+{
+  for (int i = 0; i < n; i++)
+  {
+    uint16_t pk = chPack(mv[i]);
+    int v;
+    int at = g.sq[mv[i].from] < 0 ? -g.sq[mv[i].from] : g.sq[mv[i].from];
+    if (pk == ttMove)
+      v = 32000;
+    else if (mv[i].flag & CHF_CAP)
+    {
+      int cap = (mv[i].flag & CHF_EP) ? CH_P : (g.sq[mv[i].to] < 0 ? -g.sq[mv[i].to] : g.sq[mv[i].to]);
+      v = 20000 + chVal[cap] * 10 - chVal[at] + 100;
+      if (mv[i].promo == CH_Q)
+        v += 8000;
+    }
+    else if (mv[i].promo)
+      v = (mv[i].promo == CH_Q) ? 28000 : 100;
+    else if (pk == chKill[ply][0])
+      v = 15000;
+    else if (pk == chKill[ply][1])
+      v = 14500;
+    else
+      v = chHist[at][mv[i].to];
+    sc[i] = (int16_t)(v > 31999 ? 31999 : v);
+  }
+}
+
+static inline int chSiguiente(ChMove *mv, int16_t *sc, int n, int desde)
+{
+  int b = desde;
+  for (int j = desde + 1; j < n; j++)
+    if (sc[j] > sc[b])
+      b = j;
+  if (b != desde)
+  {
+    ChMove t = mv[b];
+    mv[b] = mv[desde];
+    mv[desde] = t;
+    int16_t ts = sc[b];
+    sc[b] = sc[desde];
+    sc[desde] = ts;
+  }
+  return desde;
+}
+
+static inline bool chHayPiezas(const ChGame &g, int s)
+{
+  for (int i = 0; i < 64; i++)
+  {
+    int p = g.sq[i] * s;
+    if (p >= CH_N && p <= CH_Q)
+      return true;
+  }
+  return false;
+}
+
+// Busqueda de capturas: sigue hasta que la posicion se calma, para no evaluar en medio de un cambio de piezas
+static int chQ(ChGame &g, int alpha, int beta, int ply)
+{
+  if ((++chNodes & 255) == 0)
+  {
+    if (millis() > chDeadline)
+      chAbort = true;
+    if ((chNodes & 2047) == 0)
+      CH_CEDE();
+  }
+  if (chAbort)
+    return 0;
+  int stand = chEval(g);
+  if (ply >= CH_MAXPLY - 1)
+    return stand;
+  if (stand >= beta)
+    return stand;
+  if (stand > alpha)
+    alpha = stand;
+  ChMove *mv = chBuf[ply];
+  int16_t *sc = chSc[ply];
+  int n = chGen(g, mv, true);
+  chPuntua(g, mv, sc, n, ply, 0);
+  const int s = g.side;
+  int best = stand;
+  for (int i = 0; i < n; i++)
+  {
+    chSiguiente(mv, sc, n, i);
+    if (!mv[i].promo) // poda delta: ni capturando esa pieza se llega a alpha
+    {
+      int cap = (mv[i].flag & CHF_EP) ? CH_P : (g.sq[mv[i].to] < 0 ? -g.sq[mv[i].to] : g.sq[mv[i].to]);
+      if (stand + chVal[cap] + 200 < alpha)
+        continue;
+    }
+    ChUndo u;
+    chMake(g, mv[i], u);
+    if (chReyEnJaque(g, s))
+    {
+      chUnmake(g, mv[i], u);
+      continue;
+    }
+    int v = -chQ(g, -beta, -alpha, ply + 1);
+    chUnmake(g, mv[i], u);
+    if (chAbort)
+      return 0;
+    if (v > best)
+    {
+      best = v;
+      if (v > alpha)
+      {
+        alpha = v;
+        if (alpha >= beta)
+          break;
+      }
+    }
+  }
+  return best;
+}
+
+// Busqueda principal: negamax con poda alfa-beta, variante principal (PVS), tabla de transposicion, jugada nula,
+// reducciones de jugadas tardias (LMR), poda por futilidad, extension por jaque, asesinas e historial.
+static int chNeg(ChGame &g, int depth, int alpha, int beta, int ply, bool nulaOK)
+{
+  if ((++chNodes & 255) == 0)
+  {
+    if (millis() > chDeadline)
+      chAbort = true;
+    if ((chNodes & 2047) == 0)
+      CH_CEDE();
+  }
+  if (chAbort)
+    return 0;
+  const int s = g.side;
+  const bool pv = (beta - alpha) > 1;
+  chPath[ply] = g.key;
+
+  if (ply > 0)
+  {
+    if (g.half >= 100)
+      return (ply & 1) ? CH_CONTEMPT : -CH_CONTEMPT;
+    if (g.half >= 4) // repeticion: dentro de la busqueda o con posiciones ya jugadas en la partida
+    {
+      for (int j = ply - 2; j >= 0 && (ply - j) <= g.half; j -= 2)
+        if (chPath[j] == g.key)
+          return (ply & 1) ? CH_CONTEMPT : -CH_CONTEMPT;
+      uint32_t fk = (uint32_t)(g.key ^ (g.key >> 32));
+      for (int j = (ply & 1); j < chNHistG && ply + j <= g.half; j += 2)
+        if (chHistG[chNHistG - 1 - j] == fk)
+          return (ply & 1) ? CH_CONTEMPT : -CH_CONTEMPT;
     }
   }
 
-  // Si ya ha pasado el tiempo de arranque mínimo (por ejemplo, 10 minutos) y han pasado 2 horas desde el último mensaje de Telegram
-  if (epochTime - startTime >= minStartupTime && epochTime - lastTelegramEpochTime >= interval)
+  const bool jaque = chReyEnJaque(g, s);
+  if (jaque && ply < CH_MAXPLY - 4)
+    depth++;
+  if (depth <= 0 || ply >= CH_MAXPLY - 1)
+    return chQ(g, alpha, beta, ply);
+
+  uint16_t ttMove = 0;
+  if (chTT)
   {
-    // Ajustar la zona horaria si es necesario
-    if ((mes == 3 || mes == 4 || mes == 10 || mes == 11) && horita >= 0 && horita <= 5)
-      ajustarZonaHoraria();
+    const ChTT *e = &chTT[(uint32_t)g.key & chTTmask];
+    if (e->k == (uint16_t)(g.key >> 48))
+    {
+      ttMove = e->mv;
+      if (!pv && e->d >= depth)
+      {
+        int v = e->sc;
+        if (v > CH_MATE - 200)
+          v -= ply;
+        else if (v < -(CH_MATE - 200))
+          v += ply;
+        int f = e->fg & 3;
+        if (f == 1 || (f == 2 && v >= beta) || (f == 3 && v <= alpha))
+          return v;
+      }
+    }
+  }
+
+  int se = 0;
+  if (!pv && !jaque)
+  {
+    se = chEval(g);
+    if (depth <= 3 && se - 110 * depth >= beta && beta > -(CH_MATE - 200) && beta < CH_MATE - 200)
+      return se; // tan por encima de beta que no hace falta mirar
+    if (nulaOK && depth >= 3 && se >= beta && chHayPiezas(g, s))
+    {
+      ChUndo nu;
+      chMakeNull(g, nu);
+      int v = -chNeg(g, depth - 3 - (depth >= 6 ? 1 : 0), -beta, -beta + 1, ply + 1, false);
+      chUnmakeNull(g, nu);
+      if (chAbort)
+        return 0;
+      if (v >= beta)
+        return v >= CH_MATE - 200 ? beta : v;
+    }
+  }
+
+  ChMove *mv = chBuf[ply];
+  int16_t *sc = chSc[ply];
+  int n = chGen(g, mv, false);
+  chPuntua(g, mv, sc, n, ply, ttMove);
+  const int alpha0 = alpha;
+  int best = -CH_INF, legal = 0;
+  uint16_t bestMv = 0;
+  for (int i = 0; i < n; i++)
+  {
+    chSiguiente(mv, sc, n, i);
+    const ChMove m = mv[i];
+    const bool tranquila = !(m.flag & CHF_CAP) && !m.promo;
+    ChUndo u;
+    chMake(g, m, u);
+    if (chReyEnJaque(g, s))
+    {
+      chUnmake(g, m, u);
+      continue;
+    }
+    legal++;
+    int nd = depth - 1;
+    if (legal > 1 && tranquila && !jaque)
+    {
+      if (!pv && depth <= 2 && se + chFutM[depth] <= alpha && alpha > -(CH_MATE - 200) && !chReyEnJaque(g, g.side))
+      {
+        chUnmake(g, m, u); // futilidad: una jugada tranquila no va a levantar la posicion hasta alpha
+        continue;
+      }
+    }
+    int v;
+    if (legal == 1)
+      v = -chNeg(g, nd, -beta, -alpha, ply + 1, true);
+    else
+    {
+      int red = 0;
+      if (depth >= 3 && tranquila && !jaque && legal >= 4 && chPack(m) != chKill[ply][0] && chPack(m) != chKill[ply][1])
+      {
+        red = 1;
+        if (depth >= 6 && legal >= 9)
+          red = 2;
+        if (chReyEnJaque(g, g.side))
+          red = 0;
+      }
+      v = -chNeg(g, nd - red, -alpha - 1, -alpha, ply + 1, true);
+      if (v > alpha && red)
+        v = -chNeg(g, nd, -alpha - 1, -alpha, ply + 1, true);
+      if (v > alpha && v < beta)
+        v = -chNeg(g, nd, -beta, -alpha, ply + 1, true);
+    }
+    chUnmake(g, m, u);
+    if (chAbort)
+      return 0;
+    if (v > best)
+    {
+      best = v;
+      bestMv = chPack(m);
+      if (v > alpha)
+      {
+        alpha = v;
+        if (alpha >= beta)
+        {
+          if (tranquila)
+          {
+            uint16_t pk = chPack(m);
+            if (chKill[ply][0] != pk)
+            {
+              chKill[ply][1] = chKill[ply][0];
+              chKill[ply][0] = pk;
+            }
+            int at = g.sq[m.from] < 0 ? -g.sq[m.from] : g.sq[m.from];
+            int h = chHist[at][m.to] + depth * depth;
+            if (h > 12000)
+            {
+              for (int a = 0; a < 7; a++)
+                for (int b = 0; b < 64; b++)
+                  chHist[a][b] >>= 1;
+              h >>= 1;
+            }
+            chHist[at][m.to] = (int16_t)h;
+          }
+          break;
+        }
+      }
+    }
+  }
+  if (!legal)
+    return jaque ? -CH_MATE + ply : 0; // mate (cuanto mas cerca mejor) o ahogado
+
+  if (chTT)
+  {
+    ChTT *e = &chTT[(uint32_t)g.key & chTTmask];
+    uint16_t chk = (uint16_t)(g.key >> 48);
+    if (e->k != chk || e->d <= depth || (e->fg >> 2) != chGen8)
+    {
+      int v = best;
+      if (v > CH_MATE - 200)
+        v += ply;
+      else if (v < -(CH_MATE - 200))
+        v -= ply;
+      e->k = chk;
+      e->mv = bestMv;
+      e->sc = (int16_t)v;
+      e->d = (int8_t)depth;
+      e->fg = (uint8_t)((best <= alpha0 ? 3 : (best >= beta ? 2 : 1)) | (chGen8 << 2));
+    }
+  }
+  return best;
+}
+
+// Clave de 32 bits de la posicion (para el historial de repeticiones de la partida)
+static uint32_t chClave(const ChGame &g)
+{
+  return (uint32_t)(g.key ^ (g.key >> 32));
+}
+
+// Elige jugada: profundizacion iterativa con limite de tiempo. Entre las jugadas casi igual de buenas
+// sortea una (mas margen en la apertura, casi nada en el final), asi no juegan siempre la misma partida.
+static bool chElegir(ChGame &g, ChMove &out, int profMax, uint32_t ms, const uint32_t *hist, int nHist)
+{
+  ChMove root[CH_MAXMOV];
+  int16_t rs[CH_MAXMOV], cur[CH_MAXMOV];
+  chZInit();
+  chTTInit();
+  int n = chLegales(g, root);
+  if (n == 0)
+    return false;
+  out = root[esp_random() % n];
+  if (n == 1)
+    return true;
+
+  int piezas = 0;
+  for (int i = 0; i < 64; i++)
+    if (g.sq[i])
+      piezas++;
+#ifndef CH_M1
+#define CH_M1 20 // margen (cp) para sortear entre jugadas casi iguales: apertura
+#define CH_M2 12
+#define CH_M3 6
+#define CH_M4 3 // final
+#endif
+  const int margen = piezas >= 30 ? CH_M1 : (piezas >= 26 ? CH_M2 : (piezas >= 20 ? CH_M3 : CH_M4));
+
+  chHistG = hist;
+  chNHistG = nHist;
+  chPath[0] = g.key;
+  chGen8 = (chGen8 + 1) & 63;
+  memset(chKill, 0, sizeof(chKill));
+  for (int a = 0; a < 7; a++)
+    for (int b = 0; b < 64; b++)
+      chHist[a][b] >>= 1;
+
+  const uint32_t t0 = millis();
+  chAbort = false;
+  chNodes = 0;
+  chPuntua(g, root, rs, n, 0, 0);
+
+  for (int d = 1; d <= profMax; d++)
+  {
+    chDeadline = (d == 1) ? 0xFFFFFFFFu : t0 + ms; // la primera vuelta siempre se completa
+    for (int i = 1; i < n; i++)                    // la mejor de la vuelta anterior, primero
+    {
+      ChMove m = root[i];
+      int16_t v = rs[i];
+      int j = i - 1;
+      while (j >= 0 && rs[j] < v)
+      {
+        root[j + 1] = root[j];
+        rs[j + 1] = rs[j];
+        j--;
+      }
+      root[j + 1] = m;
+      rs[j + 1] = v;
+    }
+    int best = -CH_INF;
+    bool completa = true;
+    for (int i = 0; i < n; i++)
+    {
+      ChUndo u;
+      chMake(g, root[i], u);
+      int alpha = (best == -CH_INF) ? -CH_INF : best - margen;
+      int v = -chNeg(g, d - 1, -CH_INF, -alpha, 1, true);
+      chUnmake(g, root[i], u);
+      if (chAbort)
+      {
+        completa = false;
+        break;
+      }
+      cur[i] = (int16_t)v;
+      if (v > best)
+        best = v;
+    }
+    if (!completa)
+      break;
+    int cand[CH_MAXMOV], nc = 0;
+    for (int i = 0; i < n; i++)
+      if (cur[i] > best - margen)
+        cand[nc++] = i;
+    out = root[cand[esp_random() % nc]];
+    for (int i = 0; i < n; i++)
+      rs[i] = cur[i];
+    if (best >= CH_MATE - 50 || best <= -CH_MATE + 50)
+      break;
+    if ((uint32_t)(millis() - t0) * 5 > ms * 2) // ya gastado el 40 %: otra vuelta mas no cabe
+      break;
+  }
+  return true;
+}
+
+// Notacion algebraica (Cf3, exd5, O-O, e8=D#...). Hay que llamarla ANTES de hacer la jugada
+static void chSAN(ChGame &g, const ChMove &m, char *b)
+{
+  static const char letras[7] = {' ', 'P', 'C', 'A', 'T', 'D', 'R'};
+  int s = g.side;
+  int p = g.sq[m.from] * s;
+  int k = 0;
+  if (m.flag & CHF_ENR)
+  {
+    const char *t = (m.to > m.from) ? "O-O" : "O-O-O";
+    while (*t)
+      b[k++] = *t++;
+  }
+  else
+  {
+    if (p == CH_P)
+    {
+      if (m.flag & CHF_CAP)
+      {
+        b[k++] = 'a' + (m.from & 7);
+        b[k++] = 'x';
+      }
+    }
+    else
+    {
+      b[k++] = letras[p];
+      ChMove l[CH_MAXMOV];
+      int n = chLegales(g, l);
+      bool otra = false, mismaCol = false, mismaFila = false;
+      for (int i = 0; i < n; i++)
+        if (l[i].to == m.to && l[i].from != m.from && g.sq[l[i].from] == g.sq[m.from])
+        {
+          otra = true;
+          if ((l[i].from & 7) == (m.from & 7))
+            mismaCol = true;
+          if ((l[i].from >> 3) == (m.from >> 3))
+            mismaFila = true;
+        }
+      if (otra)
+      {
+        if (!mismaCol)
+          b[k++] = 'a' + (m.from & 7);
+        else if (!mismaFila)
+          b[k++] = '8' - (m.from >> 3);
+        else
+        {
+          b[k++] = 'a' + (m.from & 7);
+          b[k++] = '8' - (m.from >> 3);
+        }
+      }
+      if (m.flag & CHF_CAP)
+        b[k++] = 'x';
+    }
+    b[k++] = 'a' + (m.to & 7);
+    b[k++] = '8' - (m.to >> 3);
+    if (m.promo)
+    {
+      b[k++] = '=';
+      b[k++] = letras[m.promo];
+    }
+  }
+  ChUndo u;
+  chMake(g, m, u);
+  if (chReyEnJaque(g, g.side))
+  {
+    ChMove l[CH_MAXMOV];
+    b[k++] = chLegales(g, l) ? '+' : '#';
+  }
+  chUnmake(g, m, u);
+  b[k] = 0;
+}
+
+// Rey solo, rey y un caballo/alfil, o solo alfiles del mismo color: nadie puede dar mate
+static bool chMaterialInsuf(const ChGame &g)
+{
+  int menores = 0, caballos = 0;
+  bool claro = false, oscuro = false;
+  for (int i = 0; i < 64; i++)
+  {
+    int p = g.sq[i] < 0 ? -g.sq[i] : g.sq[i];
+    if (p == CH_P || p == CH_R || p == CH_Q)
+      return false;
+    if (p == CH_N)
+    {
+      menores++;
+      caballos++;
+    }
+    if (p == CH_B)
+    {
+      menores++;
+      if (((i >> 3) + (i & 7)) & 1)
+        oscuro = true;
+      else
+        claro = true;
+    }
+  }
+  if (menores <= 1)
+    return true;
+  return caballos == 0 && !(claro && oscuro);
+}
+// <<< MOTOR
+
+// ---------------------------------------------------------------------------------------------------------
+//  PANTALLA
+// ---------------------------------------------------------------------------------------------------------
+
+#define CH_BX 104         // x del tablero
+#define CH_BY 34          // y del tablero (casillas de 14x14 -> 112 px)
+#define CH_SQ 14          // lado de la casilla
+#define CH_SLICE_MS 5000  // tandas de 5 s como el Pong, el táctil se atiende dentro
+#define CH_PROF 10        // profundidad máxima de búsqueda (manda el tiempo)
+#define CH_TIEMPO_MS 1500 // tiempo máximo que piensa cada CPU por jugada
+#define CH_PAUSA_MS 650   // pausa entre jugadas para que dé tiempo a verlas
+#define CH_FIN_MS 7000    // cuánto se queda el tablero final antes de empezar otra
+
+#define CH_C_CLARA 0xF6D6
+#define CH_C_OSCURA 0xB44C
+#define CH_C_CLARA_HL 0xCE8D
+#define CH_C_OSCURA_HL 0xACC7
+#define CH_C_JAQUE 0xD9E7
+#define CH_GRIS 0xBDF7
+#define CH_VERDE 0x07E0
+#define CH_ROJO 0xF800
+#define CH_AMARILLO 0xFFE0
+
+// Dibujo de las piezas en 12x12 (X = pieza). Se pintan con borde para que se vean sobre cualquier casilla
+static const char *const CH_SPR[7][12] = {
+    {""},
+    {"............", ".....XX.....", "....XXXX....", "....XXXX....", ".....XX.....", "....XXXX....", ".....XX.....", ".....XX.....", "....XXXX....", "...XXXXXX...", "..XXXXXXXX..", "............"},
+    {"...XX.......", "..XXXXX.....", ".XXXXXXX....", ".XXXXXXXX...", "XXX.XXXXX...", "XX..XXXXX...", ".....XXXX...", "....XXXXX...", "...XXXXXX...", "..XXXXXXXX..", ".XXXXXXXXXX.", "............"},
+    {".....XX.....", "....XXXX....", "...XXX.XX...", "...XXXXXX...", "....XXXX....", ".....XX.....", "....XXXX....", ".....XX.....", "....XXXX....", "..XXXXXXXX..", ".XXXXXXXXXX.", "............"},
+    {"............", "..XX.XX.XX..", "..XXXXXXXX..", "...XXXXXX...", "...XXXXXX...", "...XXXXXX...", "...XXXXXX...", "...XXXXXX...", "..XXXXXXXX..", "..XXXXXXXX..", ".XXXXXXXXXX.", "............"},
+    {"X..X.XX.X..X", "XX.XXXXXX.XX", "XXXXXXXXXXXX", ".XXXXXXXXXX.", "..XXXXXXXX..", "...XXXXXX...", "...XXXXXX...", "....XXXX....", "...XXXXXX...", "..XXXXXXXX..", ".XXXXXXXXXX.", "............"},
+    {".....XX.....", "....XXXX....", ".....XX.....", "..XX.XX.XX..", ".XXXXXXXXXX.", ".XXXXXXXXXX.", "..XXXXXXXX..", "...XXXXXX...", "...XXXXXX...", "..XXXXXXXX..", ".XXXXXXXXXX.", "............"}};
+
+struct ChPartida
+{
+  bool init;
+  ChGame g;
+  uint32_t hist[104];
+  int nHist;
+  int full;          // número de jugada (1, 2, 3...)
+  int8_t cpuBlancas; // 1 o 2: qué CPU lleva las blancas en esta partida
+  int estado;        // 0 jugando, 1 mate, 2 ahogado, 3 repetición, 4 regla 50, 5 material, 6 límite
+  int ganador;       // 0 nadie (tablas), 1 CPU-1, 2 CPU-2
+  int score1, score2, tablas;
+  bool hayUlt, enJaque;
+  ChMove ult;
+  int matDif; // material blancas - negras (en peones)
+  unsigned long siguiente, finAt;
+  char log[2][6][16];
+  int16_t shown[64];
+};
+static ChPartida ch = {false};
+
+static bool chM(int p, int x, int y)
+{
+  if (x < 0 || x > 11 || y < 0 || y > 11)
+    return false;
+  return CH_SPR[p][y][x] == 'X';
+}
+
+static void chPintaCasilla(int i, int pz, bool hl, bool jaque)
+{
+  uint16_t buf[CH_SQ * CH_SQ];
+  int r = i >> 3, c = i & 7;
+  uint16_t base = ((r + c) & 1) ? (hl ? CH_C_OSCURA_HL : CH_C_OSCURA) : (hl ? CH_C_CLARA_HL : CH_C_CLARA);
+  if (jaque)
+    base = CH_C_JAQUE;
+  int t = pz < 0 ? -pz : pz;
+  uint16_t relleno = pz > 0 ? 0xFFFF : 0x0000;
+  uint16_t borde = pz > 0 ? 0x0000 : 0xFFFF;
+  for (int y = 0; y < CH_SQ; y++)
+    for (int x = 0; x < CH_SQ; x++)
+    {
+      uint16_t col = base;
+      if (t)
+      {
+        if (chM(t, x - 1, y - 1))
+          col = relleno;
+        else if (chM(t, x - 2, y - 1) || chM(t, x, y - 1) || chM(t, x - 1, y - 2) || chM(t, x - 1, y))
+          col = borde;
+      }
+      buf[y * CH_SQ + x] = col;
+    }
+  tft.startWrite();
+  tft.setAddrWindow(CH_BX + c * CH_SQ, CH_BY + r * CH_SQ, CH_SQ, CH_SQ);
+  tft.pushColors(buf, CH_SQ * CH_SQ, true);
+  tft.endWrite();
+}
+
+// Solo repinta las casillas que han cambiado (sin parpadeo)
+static void chPintaTablero(bool forzar)
+{
+  for (int i = 0; i < 64; i++)
+  {
+    int pz = ch.g.sq[i];
+    bool hl = ch.hayUlt && (i == ch.ult.from || i == ch.ult.to);
+    bool jaque = ch.enJaque && ch.estado != 2 && (pz == ((ch.g.side == 1) ? CH_K : -CH_K));
+    int16_t key = (pz + 8) | (hl ? 16 : 0) | (jaque ? 32 : 0);
+    if (forzar || key != ch.shown[i])
+    {
+      chPintaCasilla(i, pz, hl, jaque);
+      ch.shown[i] = key;
+    }
+  }
+}
+
+static void chPintaMarcador()
+{
+  char b[16];
+  tft.setFreeFont(NULL);
+  tft.setTextFont(1);
+  tft.setTextSize(2);
+  tft.setTextColor(TFT_WHITE, TFT_BLACK);
+  tft.setTextPadding(144);
+  tft.setTextDatum(TL_DATUM);
+  snprintf(b, sizeof(b), "CPU-1 %05d", ch.score1);
+  tft.drawString(b, 4, 153);
+  tft.setTextDatum(TR_DATUM);
+  snprintf(b, sizeof(b), "CPU-2 %05d", ch.score2);
+  tft.drawString(b, 316, 153);
+  // tablas, chiquito y en el centro
+  tft.setTextSize(1);
+  tft.setTextColor(CH_GRIS, TFT_BLACK);
+  tft.setTextPadding(28);
+  tft.setTextDatum(TC_DATUM);
+  snprintf(b, sizeof(b), "=%d", ch.tablas);
+  tft.drawString(b, 160, 157);
+  tft.setTextPadding(0);
+  tft.setTextDatum(TL_DATUM);
+}
+
+static void chPintaPanel(int cpu) // 1 = izquierda, 2 = derecha
+{
+  const int x = (cpu == 1) ? 4 : 222;
+  const bool blancas = (ch.cpuBlancas == cpu);
+  const int mover = (ch.g.side == 1) ? ch.cpuBlancas : 3 - ch.cpuBlancas;
+  char b[24];
+  const char *txt = "";
+  uint16_t col = CH_GRIS;
+
+  tft.setFreeFont(NULL);
+  tft.setTextFont(1);
+  tft.setTextDatum(TL_DATUM);
+  tft.setTextPadding(94);
+
+  tft.setTextSize(2);
+  tft.setTextColor(TFT_WHITE, TFT_BLACK);
+  tft.drawString(cpu == 1 ? "CPU-1" : "CPU-2", x, 36);
+
+  tft.setTextSize(1);
+  tft.setTextColor(CH_GRIS, TFT_BLACK);
+  tft.drawString(blancas ? "BLANCAS" : "NEGRAS", x, 54);
+
+  // linea de estado
+  if (ch.estado == 0)
+  {
+    if (cpu == mover)
+    {
+      txt = ch.enJaque ? "EN JAQUE" : "Pensando...";
+      col = ch.enJaque ? CH_ROJO : CH_AMARILLO;
+    }
+  }
+  else if (ch.ganador == 0)
+  {
+    txt = "TABLAS";
+  }
+  else if (ch.ganador == cpu)
+  {
+    txt = "GANA";
+    col = CH_VERDE;
+  }
+  else
+  {
+    txt = "PIERDE";
+    col = CH_ROJO;
+  }
+  tft.setTextColor(col, TFT_BLACK);
+  tft.drawString(txt, x, 64);
+
+  // segunda linea: motivo del final o material
+  tft.setTextColor(CH_GRIS, TFT_BLACK);
+  if (ch.estado == 0)
+  {
+    int d = blancas ? ch.matDif : -ch.matDif;
+    if (d == 0)
+      snprintf(b, sizeof(b), "Mat: =");
+    else
+      snprintf(b, sizeof(b), "Mat: %+d", d);
+  }
+  else
+  {
+    static const char *const motivo[] = {"", "JAQUE MATE", "AHOGADO", "REPETICION", "REGLA 50 MOV", "SIN MATERIAL", "LIMITE JUGADAS"};
+    snprintf(b, sizeof(b), "%s", motivo[ch.estado]);
+  }
+  tft.drawString(b, x, 74);
+
+  // ultimas jugadas de esta CPU
+  for (int i = 0; i < 6; i++)
+    tft.drawString(ch.log[cpu - 1][i], x, 88 + i * 9);
+
+  tft.setTextPadding(0);
+  tft.setTextDatum(TL_DATUM);
+}
+
+static void chPintaTodo()
+{
+  tft.fillRect(0, 0, 320, 170, TFT_BLACK);
+  tft.drawRect(CH_BX - 1, CH_BY - 1, CH_SQ * 8 + 2, CH_SQ * 8 + 2, CH_GRIS);
+  memset(ch.shown, 0xFF, sizeof(ch.shown));
+  chPintaTablero(true);
+  chPintaPanel(1);
+  chPintaPanel(2);
+  chPintaMarcador();
+}
+
+static void chMaterial()
+{
+  int m = 0;
+  for (int i = 0; i < 64; i++)
+  {
+    int v = ch.g.sq[i];
+    if (!v)
+      continue;
+    int t = v < 0 ? -v : v;
+    if (t == CH_K)
+      continue;
+    m += (v > 0 ? 1 : -1) * (t == CH_B ? 3 : chVal[t] / 100);
+  }
+  ch.matDif = m;
+}
+
+static void chNuevaPartida(bool primera)
+{
+  chInicio(ch.g);
+  chNuevoJuego(); // limpia la memoria de posiciones del motor
+  ch.nHist = 0;
+  ch.hist[ch.nHist++] = chClave(ch.g);
+  ch.full = 1;
+  ch.estado = 0;
+  ch.ganador = 0;
+  ch.hayUlt = false;
+  ch.enJaque = false;
+  ch.matDif = 0;
+  memset(ch.log, 0, sizeof(ch.log));
+  if (primera)
+  {
+    ch.cpuBlancas = 1;
+    ch.score1 = ch.score2 = ch.tablas = 0;
+  }
+  else
+    ch.cpuBlancas = 3 - ch.cpuBlancas; // cambio de colores
+  ch.siguiente = millis() + 1200;
+}
+
+static void chFin(int estado, int ganador)
+{
+  ch.estado = estado;
+  ch.ganador = ganador;
+  if (ganador == 1)
+  {
+    if (ch.score1 < 99999)
+      ch.score1++;
+  }
+  else if (ganador == 2)
+  {
+    if (ch.score2 < 99999)
+      ch.score2++;
+  }
+  else if (ch.tablas < 9999)
+    ch.tablas++;
+  ch.finAt = millis();
+}
+
+// Aplica la jugada, apunta la notacion y comprueba si la partida se ha acabado
+static void chJuega(const ChMove &m)
+{
+  ChGame &g = ch.g;
+  const int mover = (g.side == 1) ? ch.cpuBlancas : 3 - ch.cpuBlancas;
+  char san[12];
+  chSAN(g, m, san);
+  const int num = ch.full;
+  const bool juegaBlanca = (g.side == 1);
+  const bool hayCaptura = (g.sq[m.to] != 0) || (m.flag & CHF_CAP) || (m.flag & CHF_EP);
+
+  ChUndo u;
+  chMake(g, m, u);
+  if (g.side == 1)
+    ch.full++; // acaban de mover las negras
+
+  char (*lg)[16] = ch.log[mover - 1];
+  for (int i = 0; i < 5; i++)
+    memcpy(lg[i], lg[i + 1], 16);
+  snprintf(lg[5], 16, "%3d %s", num, san);
+
+  ch.ult = m;
+  ch.hayUlt = true;
+  ch.enJaque = chReyEnJaque(g, g.side);
+  chMaterial();
+
+  if (g.half == 0)
+    ch.nHist = 0; // tras captura o peon no puede repetirse nada de lo anterior
+  if (ch.nHist < 104)
+    ch.hist[ch.nHist++] = chClave(g);
+
+  ChMove l[CH_MAXMOV];
+  int nl = chLegales(g, l);
+  int rep = 0;
+  for (int i = 0; i < ch.nHist; i++)
+    if (ch.hist[i] == ch.hist[ch.nHist - 1])
+      rep++;
+
+  if (nl == 0)
+  {
+    if (ch.enJaque)
+      chFin(1, mover);
+    else
+      chFin(2, 0);
+  }
+  else if (g.half >= 100)
+    chFin(4, 0);
+  else if (chMaterialInsuf(g))
+    chFin(5, 0);
+  else if (rep >= 3)
+    chFin(3, 0);
+  else if (ch.full > 250) // por si acaso, que ninguna partida dure eternamente
+    chFin(6, 0);
+  if (hayCaptura)
+    ledFlash(true, true, true, 120);
+  else if (juegaBlanca)
+    ledFlash(false, true, false, 60);
+  else
+    ledFlash(true, false, false, 60);
+  ch.siguiente = millis() + CH_PAUSA_MS;
+}
+
+void esp32_2432S028R_AjedrezScreen(unsigned long mElapsed)
+{
+  mineria = getMiningData(mElapsed);
+  Serial.printf("M8AX - %s >>> Completados %s Share(s), %s Khashes, Prom. Hashrate %s KH/s %s°\n",
+                mineria.currentTime, mineria.completedShares.c_str(), mineria.totalKHashes.c_str(), mineria.currentHashRate.c_str(), mineria.temp.c_str());
+
+  if (!chMemAlloc()) // sin RAM libre no se juega (y no se rompe nada de las otras pantallas)
+  {
+    Serial.println("M8AX - ### Ajedrez: sin RAM para el motor ###");
+    printheap();
+    delay(1000);
+    return;
+  }
+  const int chMiPantalla = currentDisplayDriver->current_cyclic_screen;
+
+  bool redraw = hasChangedScreen;
+  if (!ch.init)
+  {
+    ch.init = true;
+    chNuevaPartida(true);
+    redraw = true;
+  }
+  if (redraw)
+    chPintaTodo();
+  printPoolData(); // barra de abajo, solo se repinta cuando toca
+  hasChangedScreen = false;
+
+  char horaStr[9] = "";
+  char lastHora[9] = "";
+  char hashStr[16];
+  char lastHash[16] = "";
+
+  unsigned long start = millis();
+  unsigned long lastMiningUpdate = 0;
+  unsigned long lastTouchChk = 0;
+
+  while (millis() - start < CH_SLICE_MS)
+  {
+    unsigned long now = millis();
+
+    // ---- Táctil (misma lógica que el Pong) ----
+    if (now - lastTouchChk >= 40 && now - previousTouchMillis >= 500)
+    {
+      lastTouchChk = now;
+      int16_t t_x, t_y;
+      if (touch.getXY(t_x, t_y))
+      {
+        previousTouchMillis = now;
+        autoPantallas = false; // al tocar se para el cambio automatico
+        if (((t_x > 109) && (t_x < 211)) && ((t_y > 185) && (t_y < 241)))
+        {
+          bottomScreenBlue ^= true;
+          hasChangedScreen = true;
+        }
+        else if ((t_x > 235) && ((t_y > 0) && (t_y < 16)))
+        {
+          esp32_2432S028R_AlternateScreenState();
+        }
+        else if (t_x > 160)
+        {
+          currentDisplayDriver->current_cyclic_screen = (currentDisplayDriver->current_cyclic_screen + 1) % currentDisplayDriver->num_cyclic_screens;
+        }
+        else
+        {
+          currentDisplayDriver->current_cyclic_screen = currentDisplayDriver->current_cyclic_screen - 1;
+          if (currentDisplayDriver->current_cyclic_screen < 0)
+            currentDisplayDriver->current_cyclic_screen = currentDisplayDriver->num_cyclic_screens - 1;
+        }
+        break;
+      }
+    }
+
+    // Cambio automático cada 1 minuto
+    if (autoPantallas && millis() - lastAutoChange >= 60000UL)
+    {
+      currentDisplayDriver->current_cyclic_screen =
+          (currentDisplayDriver->current_cyclic_screen + 1) % currentDisplayDriver->num_cyclic_screens;
+      lastAutoChange = millis();
+      break;
+    }
+
+    // ---- Partida ----
+    if (ch.estado == 0)
+    {
+      if (now >= ch.siguiente)
+      {
+        ChMove m;
+        if (chElegir(ch.g, m, CH_PROF, CH_TIEMPO_MS, ch.hist, ch.nHist))
+          chJuega(m);
+        else
+          chFin(2, 0); // no debería pasar, pero así no se cuelga
+        chPintaTablero(false);
+        chPintaPanel(1);
+        chPintaPanel(2);
+        if (ch.estado != 0)
+          chPintaMarcador();
+      }
+    }
+    else if (now - ch.finAt >= CH_FIN_MS)
+    {
+      chNuevaPartida(false);
+      chPintaTodo();
+    }
+
+    // ---- Hora (izquierda) y hashrate (derecha), arriba como en las demás ----
+    if (now - lastMiningUpdate >= 1000)
+    {
+      lastMiningUpdate = now;
+      mineria = getMiningData(mElapsed);
+      snprintf(hashStr, sizeof(hashStr), "%s", mineria.currentHashRate.c_str());
+      time_t epoch = (time_t)timeClient.getEpochTime();
+      struct tm *ti = localtime(&epoch);
+      snprintf(horaStr, sizeof(horaStr), "%02d:%02d:%02d", ti->tm_hour, ti->tm_min, ti->tm_sec);
+      if (strcmp(horaStr, lastHora) != 0 || strcmp(hashStr, lastHash) != 0)
+      {
+        pongDrawHud(hashStr, horaStr);
+        strcpy(lastHora, horaStr);
+        strcpy(lastHash, hashStr);
+      }
+    }
+
+    delay(10);
+  }
+
+  tft.setTextPadding(0);
+  tft.setTextDatum(TL_DATUM);
+
+  // Si nos vamos a otra pantalla (tactil o cambio automatico) se devuelve toda la RAM del ajedrez
+  if (currentDisplayDriver->current_cyclic_screen != chMiPantalla)
+    chMemLibera();
+
+  cuentita++;
+  if (cuentita == 15)
+  {
+    ajustarZonaHoraria();
     obtenerLocYTemp();
     obtenerVariacionesBTC(variacion1dia, variacion1semana);
-    // Verificar si los datos de Telegram están configurados
-    if (BOT_TOKEN != "NO CONFIGURADO" && CHAT_ID != "NO CONFIGURADO")
-    {
-      recopilaTelegram(); // Envia el mensaje a Telegram
-    }
-    lastTelegramEpochTime = epochTime; // Actualiza el tiempo de la última ejecución
   }
 }
 
-void esp32_2432S028R_AnimateCurrentScreen(unsigned long frame)
+/****************************************************************************************************************
+ *
+ *   Escrito por: M8AX
+ *
+ *   Descripción: TETRIS CPU - Pantalla para ESP32_2432S028R (Pant. Auto)
+ *   --------------------------------------------------------------------
+ *
+ *   La CPU juega sola al Tetris. Antes de soltar cada pieza mira todos los giros y columnas posibles (y
+ *   también dónde podría caer la siguiente) y se queda con lo que deja el campo más limpio: menos huecos,
+ *   columnas más bajas y más parejas, y más líneas hechas. La pieza se va girando y moviendo a la vista
+ *   mientras cae. Para que no juegue perfecta eternamente, según sube el nivel se equivoca un poquito
+ *   más, así que tarde o temprano se llena, sale GAME OVER y empieza otra partida xD...
+ *
+ *   Arriba a la izquierda la hora y arriba a la derecha el hashrate, como en las demás. A la izquierda
+ *   nivel, líneas y partidas jugadas; a la derecha la pieza siguiente, los puntos y el récord. Se puntúa
+ *   como el Tetris de siempre (40, 100, 300 y 1200 por 1, 2, 3 o 4 líneas, por el nivel + 1) y se sube de
+ *   nivel cada 10 líneas, con lo que cae más rápido.
+ *
+ *   Memoria: no pide NADA al heap. Mientras no está en pantalla solo guarda la partida en unos 150 bytes
+ *   (el campo va comprimido a 4 bits por casilla). El campo de trabajo (200 bytes) y lo que usa la CPU
+ *   para pensar viven en la pila solo mientras la pantalla corre, y se liberan al salir de cada tanda.
+ *
+ *   Para activarla hay que pegar este bloque antes del array esp32_2432S028RCyclicScreens[] (encima de
+ *   analiCadaSegundo vale) y meter esp32_2432S028R_TetrisScreen en ese array.
+ *
+ *   Lleva lo de las pantallas automáticas: al tocar se para el cambio y cada minuto salta a la siguiente.
+ *
+ ****************************************************************************************************************/
+
+// ---------------------------------------------------------------------------------------------------------
+//  TETRIS
+// ---------------------------------------------------------------------------------------------------------
+
+#define TT_FX 125 // x del campo
+#define TT_FY 28  // y del campo
+#define TT_C 7    // lado de cada casilla
+#define TT_COLS 10
+#define TT_ROWS 20
+#define TT_FIN_MS 5000 // lo que se queda el campo lleno antes de empezar otra partida
+
+#define TT_GRIS 0xBDF7
+#define TT_ROJO 0xF800
+#define TT_AMARILLO 0xFFE0
+
+// colores por pieza (I O T S Z J L) y el gris del game over; el 0 es casilla vacia
+static const uint16_t TT_COL[9] = {0x0000, 0x07FF, 0xFFE0, 0xA01E, 0x07E0, 0xF800, 0x041F, 0xFD20, 0x7BEF};
+
+// piezas en su posicion inicial (x, y de cada una de las 4 casillas)
+static const int8_t TT_BASE[7][4][2] = {
+    {{0, 0}, {1, 0}, {2, 0}, {3, 0}}, // I
+    {{0, 0}, {1, 0}, {0, 1}, {1, 1}}, // O
+    {{1, 0}, {0, 1}, {1, 1}, {2, 1}}, // T
+    {{1, 0}, {2, 0}, {0, 1}, {1, 1}}, // S
+    {{0, 0}, {1, 0}, {1, 1}, {2, 1}}, // Z
+    {{0, 0}, {0, 1}, {1, 1}, {2, 1}}, // J
+    {{2, 0}, {0, 1}, {1, 1}, {2, 1}}  // L
+};
+static const uint8_t TT_NROT[7] = {2, 1, 4, 2, 2, 4, 4}; // giros distintos de cada pieza
+
+// Lo unico que se guarda entre tandas: ~150 bytes. El campo va a 4 bits por casilla (dos por byte)
+struct TtGuardado
 {
-  uncontadormas++;
-  if (uncontadormas % 5 == 0)
-  {
-    analiCadaSegundo(frame);
-    if (uncontadormas > 1000000)
-      uncontadormas = 50;
-  }
-}
+  uint8_t celdas[100];
+  uint8_t init, estado; // estado: 0 jugando, 1 game over
+  int8_t pieza, rot, px, py, sig, tgtRot, tgtX;
+  uint8_t bolsa[7], bolsaI;
+  uint32_t puntos, record, lineas, partidas;
+  unsigned long finAt, ultLlamada;
+};
+static TtGuardado tt = {{0}, 0};
 
-// Variables para controlar el parpadeo con millis()
+typedef uint8_t TtCampo[TT_ROWS][TT_COLS];
 
-unsigned long previousMillis = 0;
-unsigned long previousTouchMillis = 0;
-char currentScreen = 0;
-
-void esp32_2432S028R_DoLedStuff(unsigned long frame)
+static void ttGuarda(TtCampo b)
 {
-  unsigned long currentMillis = millis();
-  // Check the touch coordinates 110x185 210x240
-  if (currentMillis - previousTouchMillis >= 500)
-  {
-    int16_t t_x, t_y; // To store the touch coordinates
-    bool pressed = touch.getXY(t_x, t_y);
-    if (pressed)
-    {
-      autoPantallas = false;
-      if (((t_x > 109) && (t_x < 211)) && ((t_y > 185) && (t_y < 241)))
-      {
-        bottomScreenBlue ^= true;
-        hasChangedScreen = true;
-      }
-      else if ((t_x > 235) && ((t_y > 0) && (t_y < 16)))
-      {
-        // Touching the top right corner of the screen, roughly in the gray status label.
-        // Disabling the screen backlight.
-        esp32_2432S028R_AlternateScreenState();
-      }
-      else if (t_x > 160)
-      {
-        // next screen
-        // Serial.printf("Next screen touch( x:%d y:%d )\n", t_x, t_y);
-        currentDisplayDriver->current_cyclic_screen = (currentDisplayDriver->current_cyclic_screen + 1) % currentDisplayDriver->num_cyclic_screens;
-      }
-      else if (t_x < 160)
-      {
-        // Previus screen
-        // Serial.printf("Previus screen touch( x:%d y:%d )\n", t_x, t_y);
-        /* Serial.println(currentDisplayDriver->current_cyclic_screen); */
-        currentDisplayDriver->current_cyclic_screen = currentDisplayDriver->current_cyclic_screen - 1;
-        if (currentDisplayDriver->current_cyclic_screen < 0)
-          currentDisplayDriver->current_cyclic_screen = currentDisplayDriver->num_cyclic_screens - 1;
-      }
-    }
-    previousTouchMillis = currentMillis;
-  }
-  if (autoPantallas && currentMillis - lastAutoChange >= 60000UL)
-  {
-    lastAutoChange = currentMillis;
-    currentDisplayDriver->current_cyclic_screen =
-        (currentDisplayDriver->current_cyclic_screen + 1) % currentDisplayDriver->num_cyclic_screens;
-  }
+  const uint8_t *p = &b[0][0];
+  for (int i = 0; i < 100; i++)
+    tt.celdas[i] = (p[i * 2] & 15) | (p[i * 2 + 1] << 4);
+}
 
-  if (currentScreen != currentDisplayDriver->current_cyclic_screen)
+static void ttCarga(TtCampo b)
+{
+  uint8_t *p = &b[0][0];
+  for (int i = 0; i < 100; i++)
   {
-    hasChangedScreen ^= true;
-    lastAutoChange = currentMillis;
-  }
-  currentScreen = currentDisplayDriver->current_cyclic_screen;
-  switch (mMonitor.NerdStatus)
-  {
-  case NM_waitingConfig:
-    digitalWrite(LED_PIN, LOW);
-    break;
-  case NM_Connecting:
-    if (currentMillis - previousMillis >= 500)
-    { // 0.5sec blink
-      previousMillis = currentMillis;
-      // Serial.print("C");
-      digitalWrite(LED_PIN, HIGH);
-      digitalWrite(LED_PIN_B, !digitalRead(LED_PIN)); // Cambia el estado del LED
-    }
-    break;
-  case NM_hashing:
-    if (currentMillis - previousMillis >= 500)
-    { // 0.1sec blink
-      previousMillis = currentMillis;
-      digitalWrite(LED_PIN_B, HIGH);
-      digitalWrite(LED_PIN, !digitalRead(LED_PIN)); // Cambia el estado del LED
-    }
-    break;
+    p[i * 2] = tt.celdas[i] & 15;
+    p[i * 2 + 1] = tt.celdas[i] >> 4;
   }
 }
+
+// Casillas de la pieza p girada rot veces (a la derecha), pegadas arriba a la izquierda
+static void ttCeldas(int p, int rot, int8_t c[4][2], int &w, int &h)
+{
+  int x[4], y[4];
+  for (int i = 0; i < 4; i++)
+  {
+    x[i] = TT_BASE[p][i][0];
+    y[i] = TT_BASE[p][i][1];
+  }
+  for (int r = 0; r < rot; r++)
+    for (int i = 0; i < 4; i++)
+    {
+      int nx = 3 - y[i];
+      y[i] = x[i];
+      x[i] = nx;
+    }
+  int mx = 9, my = 9, Mx = 0, My = 0;
+  for (int i = 0; i < 4; i++)
+  {
+    if (x[i] < mx)
+      mx = x[i];
+    if (y[i] < my)
+      my = y[i];
+  }
+  for (int i = 0; i < 4; i++)
+  {
+    c[i][0] = x[i] - mx;
+    c[i][1] = y[i] - my;
+    if (c[i][0] > Mx)
+      Mx = c[i][0];
+    if (c[i][1] > My)
+      My = c[i][1];
+  }
+  w = Mx + 1;
+  h = My + 1;
+}
+
+static bool ttChoca(TtCampo b, const int8_t c[4][2], int px, int py)
+{
+  for (int i = 0; i < 4; i++)
+  {
+    int x = px + c[i][0], y = py + c[i][1];
+    if (x < 0 || x >= TT_COLS || y >= TT_ROWS)
+      return true;
+    if (y >= 0 && b[y][x])
+      return true;
+  }
+  return false;
+}
+
+static void ttColoca(TtCampo b, const int8_t c[4][2], int px, int py, uint8_t id)
+{
+  for (int i = 0; i < 4; i++)
+    if (py + c[i][1] >= 0)
+      b[py + c[i][1]][px + c[i][0]] = id;
+}
+
+// Quita las filas completas y devuelve cuantas eran
+static int ttLimpia(TtCampo b)
+{
+  int w = TT_ROWS - 1, n = 0;
+  for (int r = TT_ROWS - 1; r >= 0; r--)
+  {
+    bool llena = true;
+    for (int c = 0; c < TT_COLS; c++)
+      if (!b[r][c])
+      {
+        llena = false;
+        break;
+      }
+    if (llena)
+    {
+      n++;
+      continue;
+    }
+    if (w != r)
+      memcpy(b[w], b[r], TT_COLS);
+    w--;
+  }
+  for (; w >= 0; w--)
+    memset(b[w], 0, TT_COLS);
+  return n;
+}
+
+// ---- La CPU: puntua como queda el campo (menos altura, huecos y desniveles; mas lineas hechas) ----
+static int32_t ttEval(TtCampo b, int lineas)
+{
+  int h[TT_COLS], alto = 0, huecos = 0, desn = 0;
+  for (int c = 0; c < TT_COLS; c++)
+  {
+    h[c] = 0;
+    bool visto = false;
+    for (int r = 0; r < TT_ROWS; r++)
+    {
+      if (b[r][c])
+      {
+        if (!visto)
+        {
+          h[c] = TT_ROWS - r;
+          visto = true;
+        }
+      }
+      else if (visto)
+        huecos++;
+    }
+    alto += h[c];
+  }
+  for (int c = 0; c < TT_COLS - 1; c++)
+    desn += h[c] > h[c + 1] ? h[c] - h[c + 1] : h[c + 1] - h[c];
+  int mx = 0;
+  for (int c = 0; c < TT_COLS; c++)
+    if (h[c] > mx)
+      mx = h[c];
+  int32_t v = -510 * alto + 760 * lineas - 360 * huecos - 184 * desn;
+  if (mx > 14)
+    v -= (mx - 14) * 1500; // cerca del techo, a bajar como sea
+  return v;
+}
+
+// Deja la pieza en la columna x con ese giro sobre una copia del campo. false si no cabe
+static bool ttSim(TtCampo b, TtCampo nb, int p, int rot, int x, int &lineas)
+{
+  int8_t c[4][2];
+  int w, h;
+  ttCeldas(p, rot, c, w, h);
+  if (x < 0 || x + w > TT_COLS || ttChoca(b, c, x, 0))
+    return false;
+  int y = 0;
+  while (!ttChoca(b, c, x, y + 1))
+    y++;
+  memcpy(nb, b, TT_ROWS * TT_COLS);
+  ttColoca(nb, c, x, y, p + 1);
+  lineas = ttLimpia(nb);
+  return true;
+}
+
+struct TtCand
+{
+  int8_t rot, x;
+  int32_t v;
+};
+
+// Mira todas las colocaciones de la pieza y, para cada una, la mejor de la siguiente. Elige la mejor
+// (o, de vez en cuando segun el nivel, una de las otras dos: asi acaba cometiendo fallos)
+static void ttPlan(TtCampo b, int p, int sig, int nivel)
+{
+  TtCand cand[TT_COLS * 4];
+  int n = 0;
+  uint8_t nb[TT_ROWS][TT_COLS], nb2[TT_ROWS][TT_COLS];
+  for (int rot = 0; rot < TT_NROT[p]; rot++)
+    for (int x = 0; x < TT_COLS; x++)
+    {
+      int l1;
+      if (!ttSim(b, nb, p, rot, x, l1))
+        continue;
+      int32_t v = ttEval(nb, l1);
+      if (sig >= 0)
+      {
+        int32_t mejor = -2000000000;
+        for (int r2 = 0; r2 < TT_NROT[sig]; r2++)
+          for (int x2 = 0; x2 < TT_COLS; x2++)
+          {
+            int l2;
+            if (!ttSim(nb, nb2, sig, r2, x2, l2))
+              continue;
+            int32_t v2 = ttEval(nb2, l2);
+            if (v2 > mejor)
+              mejor = v2;
+          }
+        v = (mejor == -2000000000) ? -900000 : v / 2 + mejor;
+      }
+      cand[n].rot = rot;
+      cand[n].x = x;
+      cand[n].v = v;
+      n++;
+    }
+  if (n == 0)
+  {
+    tt.tgtRot = 0;
+    tt.tgtX = 3;
+    return;
+  }
+  for (int k = 0; k < 3 && k < n; k++) // las tres mejores al principio
+  {
+    int m = k;
+    for (int j = k + 1; j < n; j++)
+      if (cand[j].v > cand[m].v)
+        m = j;
+    TtCand t = cand[k];
+    cand[k] = cand[m];
+    cand[m] = t;
+  }
+  int perr = nivel * 25;
+  if (perr > 450)
+    perr = 450;
+  int e = 0;
+  if (n > 1 && (int)(esp_random() % 1000) < perr)
+    e = 1 + esp_random() % ((n < 3 ? n : 3) - 1);
+  tt.tgtRot = cand[e].rot;
+  tt.tgtX = cand[e].x;
+}
+
+static int ttSiguiente()
+{
+  if (tt.bolsaI >= 7) // bolsa de 7: salen todas las piezas antes de repetir
+  {
+    for (int i = 0; i < 7; i++)
+      tt.bolsa[i] = i;
+    for (int i = 6; i > 0; i--)
+    {
+      int j = esp_random() % (i + 1);
+      uint8_t t = tt.bolsa[i];
+      tt.bolsa[i] = tt.bolsa[j];
+      tt.bolsa[j] = t;
+    }
+    tt.bolsaI = 0;
+  }
+  return tt.bolsa[tt.bolsaI++];
+}
+
+static inline int ttNivel() { return (int)(tt.lineas / 10); }
+
+// ---- Dibujo ----
+static void ttCeldaPx(int x0, int y0, int id)
+{
+  if (!id)
+  {
+    tft.fillRect(x0, y0, TT_C, TT_C, TFT_BLACK);
+    tft.drawPixel(x0 + 3, y0 + 3, 0x2104);
+    return;
+  }
+  uint16_t c = TT_COL[id];
+  tft.fillRect(x0, y0, TT_C, TT_C, (c >> 1) & 0x7BEF); // borde mas oscuro
+  tft.fillRect(x0 + 1, y0 + 1, TT_C - 2, TT_C - 2, c);
+}
+
+static inline void ttCelda(int c, int r, int id) { ttCeldaPx(TT_FX + c * TT_C, TT_FY + r * TT_C, id); }
+
+static void ttDibujaCampo(TtCampo b, bool gris)
+{
+  for (int r = 0; r < TT_ROWS; r++)
+    for (int c = 0; c < TT_COLS; c++)
+      ttCelda(c, r, (gris && b[r][c]) ? 8 : b[r][c]);
+}
+
+static void ttDibujaPieza(int id) // id 0 = borrarla
+{
+  int8_t c[4][2];
+  int w, h;
+  ttCeldas(tt.pieza, tt.rot, c, w, h);
+  for (int i = 0; i < 4; i++)
+  {
+    int y = tt.py + c[i][1];
+    if (y >= 0)
+      ttCelda(tt.px + c[i][0], y, id);
+  }
+}
+
+static void ttTxt(const char *s, int x, int y, int size, uint16_t col, int pad)
+{
+  tft.setFreeFont(NULL);
+  tft.setTextFont(1);
+  tft.setTextSize(size);
+  tft.setTextColor(col, TFT_BLACK);
+  tft.setTextPadding(pad);
+  tft.setTextDatum(TL_DATUM);
+  tft.drawString(s, x, y);
+}
+
+static void ttPanelIzq()
+{
+  char b[24];
+  ttTxt("M8AX-TRIS", 4, 30, 2, TT_AMARILLO, 100);
+  if (tt.estado)
+    ttTxt("GAME OVER", 4, 50, 1, TT_ROJO, 112);
+  else
+    ttTxt("JUEGA LA CPU", 4, 50, 1, TT_GRIS, 112);
+  ttTxt("NIVEL", 4, 72, 1, TT_GRIS, 100);
+  snprintf(b, sizeof(b), "%d", ttNivel());
+  ttTxt(b, 4, 82, 2, TFT_WHITE, 100);
+  ttTxt("LINEAS", 4, 104, 1, TT_GRIS, 100);
+  snprintf(b, sizeof(b), "%lu", (unsigned long)tt.lineas);
+  ttTxt(b, 4, 114, 2, TFT_WHITE, 100);
+  snprintf(b, sizeof(b), "PARTIDAS %lu", (unsigned long)tt.partidas);
+  ttTxt(b, 4, 142, 1, TT_GRIS, 112);
+  tft.setTextPadding(0);
+}
+
+static void ttPanelDer()
+{
+  char b[24];
+  ttTxt("SIGUIENTE", 208, 30, 1, TT_GRIS, 100);
+  tft.fillRect(208, 42, 60, 30, TFT_BLACK);
+  int8_t c[4][2];
+  int w, h;
+  ttCeldas(tt.sig, 0, c, w, h);
+  for (int i = 0; i < 4; i++)
+    ttCeldaPx(214 + c[i][0] * TT_C, 46 + c[i][1] * TT_C, tt.sig + 1);
+  ttTxt("PUNTOS", 208, 82, 1, TT_GRIS, 100);
+  snprintf(b, sizeof(b), "%06lu", (unsigned long)tt.puntos);
+  ttTxt(b, 208, 92, 2, TFT_WHITE, 108);
+  ttTxt("RECORD", 208, 116, 1, TT_GRIS, 100);
+  snprintf(b, sizeof(b), "%06lu", (unsigned long)tt.record);
+  ttTxt(b, 208, 126, 2, TT_AMARILLO, 108);
+  tft.setTextPadding(0);
+}
+
+static void ttPintaTodo(TtCampo b)
+{
+  tft.drawRect(TT_FX - 2, TT_FY - 2, TT_COLS * TT_C + 4, TT_ROWS * TT_C + 4, TT_GRIS);
+  ttDibujaCampo(b, tt.estado != 0);
+  if (!tt.estado)
+    ttDibujaPieza(tt.pieza + 1);
+  ttPanelIzq();
+  ttPanelDer();
+}
+
+// ---- Partida ----
+static void ttFin()
+{
+  tt.estado = 1;
+  tt.finAt = millis();
+  if (tt.puntos > tt.record)
+    tt.record = tt.puntos;
+  tt.partidas++;
+}
+
+// Saca la pieza siguiente arriba y planea donde ponerla. false = no cabe (game over)
+static bool ttSpawn(TtCampo b)
+{
+  tt.pieza = tt.sig;
+  tt.sig = ttSiguiente();
+  tt.rot = 0;
+  tt.px = 3;
+  tt.py = 0;
+  int8_t c[4][2];
+  int w, h;
+  ttCeldas(tt.pieza, 0, c, w, h);
+  if (ttChoca(b, c, tt.px, tt.py))
+    return false;
+  ttPlan(b, tt.pieza, tt.sig, ttNivel());
+  return true;
+}
+
+static void ttNueva(TtCampo b)
+{
+  memset(b, 0, TT_ROWS * TT_COLS);
+  tt.puntos = 0;
+  tt.lineas = 0;
+  tt.estado = 0;
+  tt.bolsaI = 7;
+  tt.sig = ttSiguiente();
+  ttSpawn(b);
+}
+
+static inline unsigned long ttPasoMs()
+{
+  int ms = 190 - ttNivel() * 14;
+  return ms < 28 ? 28 : ms;
+}
+
+// Un paso: la CPU gira o mueve un poco la pieza y esta baja una fila
+static void ttPaso(TtCampo b)
+{
+  int8_t c[4][2];
+  int w, h;
+  ttDibujaPieza(0);
+  if (tt.rot != tt.tgtRot)
+  {
+    int nr = (tt.rot + 1) % TT_NROT[tt.pieza];
+    ttCeldas(tt.pieza, nr, c, w, h);
+    if (!ttChoca(b, c, tt.px, tt.py))
+      tt.rot = nr;
+    else
+      tt.tgtRot = tt.rot; // no puede girar: se queda como esta
+  }
+  else if (tt.px != tt.tgtX)
+  {
+    int nx = tt.px + (tt.tgtX > tt.px ? 1 : -1);
+    ttCeldas(tt.pieza, tt.rot, c, w, h);
+    if (!ttChoca(b, c, nx, tt.py))
+      tt.px = nx;
+    else
+      tt.tgtX = tt.px;
+  }
+  ttCeldas(tt.pieza, tt.rot, c, w, h);
+  if (!ttChoca(b, c, tt.px, tt.py + 1))
+  {
+    tt.py++;
+    ttDibujaPieza(tt.pieza + 1);
+    ledFlash(true, false, false, 15);
+    return;
+  }
+
+  // aterriza
+  ttColoca(b, c, tt.px, tt.py, tt.pieza + 1);
+  bool llena[TT_ROWS];
+  int n = 0;
+  for (int r = 0; r < TT_ROWS; r++)
+  {
+    llena[r] = true;
+    for (int x = 0; x < TT_COLS; x++)
+      if (!b[r][x])
+      {
+        llena[r] = false;
+        break;
+      }
+    if (llena[r])
+      n++;
+  }
+  if (n)
+  {
+    static const uint16_t pts[5] = {0, 40, 100, 300, 1200};
+    tt.puntos += pts[n] * (ttNivel() + 1);
+    tt.lineas += n;
+    for (int r = 0; r < TT_ROWS; r++) // destello antes de borrarlas
+      if (llena[r])
+        tft.fillRect(TT_FX, TT_FY + r * TT_C, TT_COLS * TT_C, TT_C, TFT_WHITE);
+    ledFlash(true, true, true, 250);
+    ttLimpia(b);
+    ttDibujaCampo(b, false);
+  }
+  else
+  {
+    ttDibujaPieza(tt.pieza + 1);
+    ledFlash(false, true, false, 40);
+  }
+  tt.puntos += 4;
+  if (!ttSpawn(b))
+  {
+    ttFin();
+    ttDibujaCampo(b, true);
+    ttPanelIzq();
+    ttPanelDer();
+    return;
+  }
+  ttDibujaPieza(tt.pieza + 1);
+  ttPanelIzq();
+  ttPanelDer();
+}
+
+// Tandas de 5 s como el Pong, el tactil se atiende dentro
+#define TT_SLICE_MS 5000
+
+void esp32_2432S028R_TetrisScreen(unsigned long mElapsed)
+{
+  mineria = getMiningData(mElapsed);
+  Serial.printf("M8AX - %s >>> Completados %s Share(s), %s Khashes, Prom. Hashrate %s KH/s %s°\n",
+                mineria.currentTime, mineria.completedShares.c_str(), mineria.totalKHashes.c_str(), mineria.currentHashRate.c_str(), mineria.temp.c_str());
+
+  uint8_t b[TT_ROWS][TT_COLS]; // el campo vive aqui, en la pila, solo mientras dura la tanda
+  if (!tt.init)
+  {
+    tt.init = 1;
+    tt.record = 0;
+    tt.partidas = 0;
+    ttNueva(b);
+    hasChangedScreen = true;
+  }
+  else
+    ttCarga(b);
+  if (hasChangedScreen)
+    tft.fillRect(0, 0, 320, 170, TFT_BLACK);
+  ttPintaTodo(b);
+  printPoolData(); // barra de abajo, solo se repinta cuando toca
+  hasChangedScreen = false;
+
+  char horaStr[9] = "";
+  char lastHora[9] = "";
+  char hashStr[16];
+  char lastHash[16] = "";
+
+  unsigned long start = millis();
+  unsigned long lastMiningUpdate = 0;
+  unsigned long lastTouchChk = 0;
+  unsigned long siguiente = start + ttPasoMs();
+
+  while (millis() - start < TT_SLICE_MS)
+  {
+    unsigned long now = millis();
+
+    // ---- Táctil (misma lógica que el Pong) ----
+    if (now - lastTouchChk >= 40 && now - previousTouchMillis >= 500)
+    {
+      lastTouchChk = now;
+      int16_t t_x, t_y;
+      if (touch.getXY(t_x, t_y))
+      {
+        previousTouchMillis = now;
+        autoPantallas = false; // al tocar se para el cambio automatico
+        if (((t_x > 109) && (t_x < 211)) && ((t_y > 185) && (t_y < 241)))
+        {
+          bottomScreenBlue ^= true;
+          hasChangedScreen = true;
+        }
+        else if ((t_x > 235) && ((t_y > 0) && (t_y < 16)))
+        {
+          esp32_2432S028R_AlternateScreenState();
+        }
+        else if (t_x > 160)
+        {
+          currentDisplayDriver->current_cyclic_screen = (currentDisplayDriver->current_cyclic_screen + 1) % currentDisplayDriver->num_cyclic_screens;
+        }
+        else
+        {
+          currentDisplayDriver->current_cyclic_screen = currentDisplayDriver->current_cyclic_screen - 1;
+          if (currentDisplayDriver->current_cyclic_screen < 0)
+            currentDisplayDriver->current_cyclic_screen = currentDisplayDriver->num_cyclic_screens - 1;
+        }
+        break;
+      }
+    }
+
+    // Cambio automático cada 1 minuto
+    if (autoPantallas && millis() - lastAutoChange >= 60000UL)
+    {
+      currentDisplayDriver->current_cyclic_screen =
+          (currentDisplayDriver->current_cyclic_screen + 1) % currentDisplayDriver->num_cyclic_screens;
+      lastAutoChange = millis();
+      break;
+    }
+
+    // ---- Partida ----
+    if (!tt.estado)
+    {
+      if (now >= siguiente)
+      {
+        ttPaso(b);
+        siguiente = millis() + ttPasoMs();
+      }
+    }
+    else if (now - tt.finAt >= TT_FIN_MS)
+    {
+      ttNueva(b);
+      tft.fillRect(TT_FX, TT_FY, TT_COLS * TT_C, TT_ROWS * TT_C, TFT_BLACK);
+      ttPintaTodo(b);
+      siguiente = millis() + ttPasoMs();
+    }
+
+    // ---- Hora (izquierda) y hashrate (derecha), arriba como en las demás ----
+    if (now - lastMiningUpdate >= 1000)
+    {
+      lastMiningUpdate = now;
+      mineria = getMiningData(mElapsed);
+      snprintf(hashStr, sizeof(hashStr), "%s", mineria.currentHashRate.c_str());
+      time_t epoch = (time_t)timeClient.getEpochTime();
+      struct tm *ti = localtime(&epoch);
+      snprintf(horaStr, sizeof(horaStr), "%02d:%02d:%02d", ti->tm_hour, ti->tm_min, ti->tm_sec);
+      if (strcmp(horaStr, lastHora) != 0 || strcmp(hashStr, lastHash) != 0)
+      {
+        pongDrawHud(hashStr, horaStr);
+        strcpy(lastHora, horaStr);
+        strcpy(lastHash, hashStr);
+      }
+    }
+
+    delay(5);
+  }
+
+  ttGuarda(b); // la partida se guarda comprimida y el campo de trabajo desaparece con la pila
+  tft.setTextPadding(0);
+  tft.setTextDatum(TL_DATUM);
+
+  cuentita++;
+  if (cuentita == 15)
+  {
+    ajustarZonaHoraria();
+    obtenerLocYTemp();
+    obtenerVariacionesBTC(variacion1dia, variacion1semana);
+  }
+}
+
+/****************************************************************************************************************
+ *
+ *   Escrito por: M8AX
+ *
+ *   Descripción: PRIMOS A SACO - Pantalla para NerdminerV2
+ *   ------------------------------------------------------
+ *
+ *   Un número enorme en el centro y debajo de él los primos anteriores, uno encima de otro y cada vez más
+ *   apagados. Empiezan saliendo seguidos (2 3 5 7 11 13...) y después va subiendo, multiplicando por 1,25
+ *   cada vez, hasta llegar al mayor primo que cabe en 64 bits, 18446744073709551557 (2^64 - 59). Ahí se
+ *   para unos segundos y vuelve a empezar desde el 2.
+ *
+ *   El número grande es de 7 segmentos y se ajusta solo al ancho: con una cifra ocupa media pantalla y con
+ *   las 20 cifras de un uint64 llena la pantalla entera de lado a lado, en una sola línea. Los primos no
+ *   se sacan de una tabla, se calculan de verdad: es Miller-Rabin con las 12 primeras bases, que es exacto
+ *   para cualquier número de 64 bits (la multiplicación grande se hace sumando y duplicando, así no hace
+ *   falta nada de 128 bits). Cada primo gigante tarda unos pocos milisegundos en la ESP32.
+ *
+ *   Arriba a la izquierda la hora y arriba a la derecha el hashrate, como en las demás. Abajo una barra con
+ *   cuántos de los 64 bits lleva usados el número y el 2^64-1 de referencia.
+ *
+ *   Memoria: no pide NADA al heap. Guarda solo unos 100 bytes de estado entre tandas, el resto vive en la
+ *   pila mientras corre la pantalla.
+ *
+ *   Para activarla hay que pegar este bloque antes del array tDisplayCyclicScreens[] y meter tDisplay_Primos
+ *   en ese array. No usa táctil ni botones, de eso se encarga el driver; como la pantalla puede cambiar en
+ *   cualquier momento, el estado se guarda y sigue donde se quedó cuando vuelve a salir.
+ *
+ ****************************************************************************************************************/
+
+// ---------------------------------------------------------------------------------------------------------
+//  PRIMOS
+// ---------------------------------------------------------------------------------------------------------
+
+#define PM_MAXPRIMO 18446744073709551557ULL // el primo mas grande que cabe en un uint64 (2^64 - 59)
+#define PM_UMBRAL 14000000000000000000ULL   // por encima de esto se salta directo al ultimo
+#define PM_N_SEC 30                         // los primeros 30 salen seguidos: 2 3 5 7 11 13...
+#define PM_PASO_SEC_MS 70                   // ms entre primos mientras salen seguidos
+#define PM_PASO_SALTO_MS 90                 // ms entre primos mientras va subiendo
+#define PM_FIN_MS 5000                      // lo que se queda el mayor primo antes de empezar otra vez
+
+#define PM_BANDA_Y 76 // la banda del numero grande
+#define PM_BANDA_H 54
+
+static const uint16_t PM_COL[7] = {0x07FF, 0x07E0, 0xFFE0, 0xFD20, 0xF81F, 0xF800, 0x041F};
+
+// ---- Primalidad exacta para cualquier uint64 (Miller-Rabin con las 12 primeras bases, determinista) ----
+static uint64_t pmMulMod(uint64_t a, uint64_t b, uint64_t m)
+{
+  if (m <= 0xFFFFFFFFULL) // cabe en 64 bits, multiplicacion directa
+    return (a % m) * (b % m) % m;
+  uint64_t r = 0; // si no, multiplicar sumando y duplicando sin pasarse de 64 bits
+  a %= m;
+  while (b)
+  {
+    if (b & 1)
+      r = (r >= m - a) ? r - (m - a) : r + a;
+    a = (a >= m - a) ? a - (m - a) : a + a;
+    b >>= 1;
+  }
+  return r;
+}
+
+static uint64_t pmPowMod(uint64_t a, uint64_t e, uint64_t m)
+{
+  uint64_t r = 1;
+  a %= m;
+  while (e)
+  {
+    if (e & 1)
+      r = pmMulMod(r, a, m);
+    a = pmMulMod(a, a, m);
+    e >>= 1;
+  }
+  return r;
+}
+
+static bool pmEsPrimo(uint64_t n)
+{
+  static const uint8_t sp[12] = {2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37};
+  if (n < 2)
+    return false;
+  for (int i = 0; i < 12; i++)
+  {
+    if (n == sp[i])
+      return true;
+    if (n % sp[i] == 0)
+      return false;
+  }
+  if (n < 1369) // 37 * 37
+    return true;
+  uint64_t d = n - 1;
+  int s = 0;
+  while (!(d & 1))
+  {
+    d >>= 1;
+    s++;
+  }
+  for (int i = 0; i < 12; i++)
+  {
+    uint64_t x = pmPowMod(sp[i], d, n);
+    if (x == 1 || x == n - 1)
+      continue;
+    bool compuesto = true;
+    for (int r = 1; r < s; r++)
+    {
+      x = pmMulMod(x, x, n);
+      if (x == n - 1)
+      {
+        compuesto = false;
+        break;
+      }
+    }
+    if (compuesto)
+      return false;
+  }
+  return true;
+}
+
+// Primer primo >= n. Devuelve 0 si ya no queda ninguno dentro de los 64 bits
+static uint64_t pmSiguiente(uint64_t n)
+{
+  if (n <= 2)
+    return 2;
+  if (!(n & 1))
+    n++;
+  while (n <= PM_MAXPRIMO)
+  {
+    if (pmEsPrimo(n))
+      return n;
+    if (n > PM_MAXPRIMO - 2)
+      break;
+    n += 2;
+  }
+  return 0;
+}
+
+// ---- Estado: lo unico que se guarda entre tandas (~100 bytes, nada de heap) ----
+struct PmEstado
+{
+  uint8_t init, fase; // fase: 0 seguidos, 1 subiendo, 2 mayor primo (parado)
+  uint64_t actual;
+  uint64_t hist[4]; // los 4 anteriores, el mas reciente primero
+  uint8_t nHist;
+  uint32_t k; // numero de orden mientras salen seguidos
+  unsigned long finAt, ultLlamada;
+  char vista[21]; // lo que hay dibujado en la banda (para repintar solo las cifras que cambian)
+};
+static PmEstado pm = {0};
+// Medicion de primos calculados por segundo
+static uint32_t pmCuentaVelocidad = 0;
+static uint32_t pmPrimosSegundo = 0;
+static unsigned long pmTiempoVelocidad = 0;
+static uint32_t pmVelocidadMostrada = 0;
+
+static void pmStr(uint64_t v, char *b)
+{
+  char t[21];
+  int n = 0;
+  do
+  {
+    t[n++] = '0' + (int)(v % 10);
+    v /= 10;
+  } while (v);
+  for (int i = 0; i < n; i++)
+    b[i] = t[n - 1 - i];
+  b[n] = 0;
+}
+
+static int pmBits(uint64_t v)
+{
+  int b = 0;
+  while (v)
+  {
+    b++;
+    v >>= 1;
+  }
+  return b;
+}
+
+// Siguiente primo de la lista: seguidos al principio y despues va multiplicando por ~1,25 hasta el mayor de 64 bits
+// Busca TODOS los primos consecutivos, sin saltarse ninguno.
+static void pmAvanza()
+{
+  for (int i = 3; i > 0; i--)
+    pm.hist[i] = pm.hist[i - 1];
+
+  pm.hist[0] = pm.actual;
+
+  if (pm.nHist < 4)
+    pm.nHist++;
+
+  // Buscar siempre el siguiente primo consecutivo
+  uint64_t p = pmSiguiente(pm.actual + 1);
+
+  if (p == 0)
+  {
+    // Se han agotado los primos representables en uint64
+    pm.fase = 2;
+    pm.finAt = millis();
+    return;
+  }
+
+  pm.actual = p;
+  pm.k++;
+  pmCuentaVelocidad++;
+}
+
+static void pmReinicia()
+{
+  pm.fase = 0;
+  pm.actual = 2;
+  pm.k = 1;
+  pm.nHist = 0;
+  pm.vista[0] = 0;
+}
+
+// ---- Dibujo ----
+// Digitos de 7 segmentos: a(arriba) b(arriba dcha) c(abajo dcha) d(abajo) e(abajo izq) f(arriba izq) g(medio)
+static const uint8_t PM_SEG[10] = {0x3F, 0x06, 0x5B, 0x4F, 0x66, 0x6D, 0x7D, 0x07, 0x7F, 0x6F};
+
+static void pmDigito(int x0, int y0, int w, int h, int d, uint16_t col)
+{
+  int t = w / 6 < 2 ? 2 : w / 6;
+  int hv = (h - 3 * t) / 2;
+  uint8_t m = PM_SEG[d];
+  tft.fillRect(x0, y0, w, h, TFT_BLACK); // borra la casilla del digito
+  if (m & 0x01)
+    tft.fillRect(x0 + t, y0, w - 2 * t, t, col);
+  if (m & 0x02)
+    tft.fillRect(x0 + w - t, y0 + t, t, hv, col);
+  if (m & 0x04)
+    tft.fillRect(x0 + w - t, y0 + 2 * t + hv, t, hv, col);
+  if (m & 0x08)
+    tft.fillRect(x0 + t, y0 + 2 * t + 2 * hv, w - 2 * t, t, col);
+  if (m & 0x10)
+    tft.fillRect(x0, y0 + 2 * t + hv, t, hv, col);
+  if (m & 0x20)
+    tft.fillRect(x0, y0 + t, t, hv, col);
+  if (m & 0x40)
+    tft.fillRect(x0 + t, y0 + t + hv, w - 2 * t, t, col);
+}
+
+// El numero grande, centrado y del tamano justo para que quepan hasta 20 cifras en toda la pantalla.
+// Solo repinta las cifras que han cambiado; si cambia el numero de cifras, repinta la banda entera.
+static void pmPintaNumero(bool forzar)
+{
+  char s[21];
+  pmStr(pm.actual, s);
+  int n = strlen(s);
+  int p = 316 / n;
+  if (p > 32)
+    p = 32;
+  int gap = p / 5 < 2 ? 2 : p / 5;
+  int w = p - gap;
+  int t = w / 6 < 2 ? 2 : w / 6;
+  int hv = (w * 9 / 5 - 3 * t) / 2;
+  int h = 3 * t + 2 * hv;
+  int x0 = (320 - (n * p - gap)) / 2;
+  int y0 = PM_BANDA_Y + (PM_BANDA_H - h) / 2;
+  uint16_t col = (pm.fase == 2) ? 0xFFE0 : PM_COL[(n - 1) % 7];
+
+  bool todo = forzar || (int)strlen(pm.vista) != n;
+  if (todo)
+    tft.fillRect(0, PM_BANDA_Y, 320, PM_BANDA_H, TFT_BLACK);
+  for (int i = 0; i < n; i++)
+    if (todo || pm.vista[i] != s[i] || pm.fase == 2)
+      pmDigito(x0 + i * p, y0, w, h, s[i] - '0', col);
+  strcpy(pm.vista, s);
+}
+
+static void pmTxt(const char *s, int y, int size, uint16_t col)
+{
+  tft.setFreeFont(NULL);
+  tft.setTextFont(1);
+  tft.setTextSize(size);
+  tft.setTextColor(col, TFT_BLACK);
+  tft.setTextPadding(320);
+  tft.setTextDatum(TC_DATUM);
+  tft.drawString(s, 160, y);
+  tft.setTextPadding(0);
+  tft.setTextDatum(TL_DATUM);
+}
+
+// Los anteriores, uno encima de otro y cada vez mas apagados
+static void pmPintaPila()
+{
+  static const int ys[4] = {56, 44, 36, 28};
+  static const int tam[4] = {2, 1, 1, 1};
+  static const uint16_t cl[4] = {0xBDF7, 0x8410, 0x4A69, 0x2965};
+  char s[21];
+  for (int i = 0; i < 4; i++)
+  {
+    if (i < pm.nHist)
+      pmStr(pm.hist[i], s);
+    else
+      s[0] = 0;
+    pmTxt(s, ys[i], tam[i], cl[i]);
+  }
+}
+
+static void pmPintaInfo()
+{
+  char b[64];
+  uint16_t col = 0xBDF7;
+
+  if (pm.fase == 2)
+  {
+    snprintf(b, sizeof(b), "MAYOR PRIMO DE 64 BITS");
+    col = 0x07E0;
+  }
+  else
+  {
+    snprintf(b, sizeof(b), "PRIMO N. %llu",
+             (unsigned long long)pm.k);
+  }
+
+  pmTxt(b, 136, 1, col);
+
+  // Velocidad de calculo a la derecha
+  char v[32];
+  snprintf(v, sizeof(v), "%lu PRIMOS/SEG",
+           (unsigned long)pmVelocidadMostrada);
+
+  tft.setFreeFont(NULL);
+  tft.setTextFont(1);
+  tft.setTextSize(1);
+  tft.setTextColor(0x07E0, TFT_BLACK);
+  tft.setTextDatum(TR_DATUM);
+  tft.drawString(v, 316, 136);
+  tft.setTextDatum(TL_DATUM);
+
+  // Barra de progreso de los 64 bits
+  tft.drawRect(10, 148, 300, 8, 0xBDF7);
+
+  int ancho = 296 * pmBits(pm.actual) / 64;
+
+  tft.fillRect(12, 150, ancho, 4,
+               (pm.fase == 2) ? 0x07E0 : 0x07FF);
+
+  tft.fillRect(12 + ancho, 150, 296 - ancho, 4, TFT_BLACK);
+
+  pmTxt("2^64-1 = 18446744073709551615", 160, 1, 0x4A69);
+}
+
+static void pmPintaTodo()
+{
+  pmPintaPila();
+  pmPintaNumero(true);
+  pmPintaInfo();
+}
+
+static inline unsigned long pmPasoMs() { return pm.fase == 0 ? PM_PASO_SEC_MS : PM_PASO_SALTO_MS; }
+
+// Un paso de la animacion
+static void pmPaso()
+{
+  pmAvanza();
+  pmPintaPila();
+  pmPintaNumero(false);
+  pmPintaInfo();
+  ledFlash(true, false, false, LED_FLASH_MS);
+}
+
+// Aqui no hay tactil: el cambio de pantalla lo hace el driver, por eso las tandas son de 1 s
+#define PM_SLICE_MS 1000
+
+// Hora arriba a la izquierda, hashrate arriba a la derecha
+static void pmPintaHud(const char *hash, const char *hora)
+{
+  tft.setFreeFont(NULL);
+  tft.setTextFont(1);
+  tft.setTextSize(2);
+  tft.setTextColor(TFT_WHITE, TFT_BLACK);
+  tft.setTextPadding(100);
+  tft.setTextDatum(TL_DATUM);
+  tft.drawString(hora, 4, 9);
+  char b[24];
+  snprintf(b, sizeof(b), "%s KH/s", hash);
+  tft.setTextPadding(150);
+  tft.setTextDatum(TR_DATUM);
+  tft.drawString(b, 316, 9);
+  tft.setTextPadding(0);
+  tft.setTextDatum(TL_DATUM);
+}
+
+void tDisplay_Primos(unsigned long mElapsed)
+{
+  mineria = getMiningData(mElapsed);
+  Serial.printf("M8AX - %s >>> Completados %s Share(s), %s Khashes, Prom. Hashrate %s KH/s %s°\n",
+                mineria.currentTime, mineria.completedShares.c_str(), mineria.totalKHashes.c_str(), mineria.currentHashRate.c_str(), mineria.temp.c_str());
+
+  // Si hace rato que no nos llaman es que se ha visto otra pantalla: borrar antes de pintar
+  bool limpiar = !pm.init || (millis() - pm.ultLlamada > 2500) || hasChangedScreen;
+  if (!pm.init)
+  {
+    pm.init = 1;
+    pmReinicia();
+  }
+  if (limpiar)
+    tft.fillRect(0, 0, 320, 170, TFT_BLACK);
+  pmPintaTodo();
+  printPoolData(); // barra de abajo, solo se repinta cuando toca
+  hasChangedScreen = false;
+
+  char horaStr[9] = "";
+  char lastHora[9] = "";
+  char hashStr[16];
+  char lastHash[16] = "";
+
+  unsigned long start = millis();
+  unsigned long lastMiningUpdate = 0;
+  unsigned long lastTouchChk = 0;
+  unsigned long siguiente = start + pmPasoMs();
+
+  // Inicializar el cronometro solamente la primera vez
+  if (pmTiempoVelocidad == 0)
+    pmTiempoVelocidad = start;
+
+  while (millis() - start < PM_SLICE_MS)
+  {
+    unsigned long now = millis();
+
+    // ---- Táctil (misma lógica que el Pong) ----
+    if (now - lastTouchChk >= 40 && now - previousTouchMillis >= 500)
+    {
+      lastTouchChk = now;
+      int16_t t_x, t_y;
+      if (touch.getXY(t_x, t_y))
+      {
+        previousTouchMillis = now;
+        autoPantallas = false; // al tocar se para el cambio automatico
+        if (((t_x > 109) && (t_x < 211)) && ((t_y > 185) && (t_y < 241)))
+        {
+          bottomScreenBlue ^= true;
+          hasChangedScreen = true;
+        }
+        else if ((t_x > 235) && ((t_y > 0) && (t_y < 16)))
+        {
+          esp32_2432S028R_AlternateScreenState();
+        }
+        else if (t_x > 160)
+        {
+          currentDisplayDriver->current_cyclic_screen = (currentDisplayDriver->current_cyclic_screen + 1) % currentDisplayDriver->num_cyclic_screens;
+        }
+        else
+        {
+          currentDisplayDriver->current_cyclic_screen = currentDisplayDriver->current_cyclic_screen - 1;
+          if (currentDisplayDriver->current_cyclic_screen < 0)
+            currentDisplayDriver->current_cyclic_screen = currentDisplayDriver->num_cyclic_screens - 1;
+        }
+        break;
+      }
+    }
+
+    // Cambio automático cada 1 minuto
+    if (autoPantallas && millis() - lastAutoChange >= 60000UL)
+    {
+      currentDisplayDriver->current_cyclic_screen =
+          (currentDisplayDriver->current_cyclic_screen + 1) % currentDisplayDriver->num_cyclic_screens;
+      lastAutoChange = millis();
+      break;
+    }
+
+    // Calcular primos encontrados por segundo
+    if (now - pmTiempoVelocidad >= 1000)
+    {
+      pmVelocidadMostrada = pmCuentaVelocidad;
+      pmCuentaVelocidad = 0;
+      pmTiempoVelocidad += 1000;
+      pmPintaInfo();
+    }
+
+    // ---- Primos ----
+
+    if (pm.fase != 2)
+    {
+      if (now >= siguiente)
+      {
+        pmPaso();
+        siguiente = millis() + pmPasoMs();
+      }
+    }
+
+    // ---- Hora y hashrate ----
+
+    if (now - lastMiningUpdate >= 1000)
+    {
+      lastMiningUpdate = now;
+      mineria = getMiningData(mElapsed);
+      snprintf(hashStr, sizeof(hashStr), "%s", mineria.currentHashRate.c_str());
+      time_t epoch = (time_t)timeClient.getEpochTime();
+      struct tm *ti = localtime(&epoch);
+      snprintf(horaStr, sizeof(horaStr), "%02d:%02d:%02d", ti->tm_hour, ti->tm_min, ti->tm_sec);
+      if (strcmp(horaStr, lastHora) != 0 || strcmp(hashStr, lastHash) != 0)
+      {
+        pmPintaHud(hashStr, horaStr);
+        strcpy(lastHora, horaStr);
+        strcpy(lastHash, hashStr);
+      }
+    }
+
+    delay(5);
+  }
+
+  tft.setTextPadding(0);
+  tft.setTextDatum(TL_DATUM);
+
+  cuentita++;
+  if (cuentita == 15)
+  {
+    ajustarZonaHoraria();
+    obtenerLocYTemp();
+    obtenerVariacionesBTC(variacion1dia, variacion1semana);
+  }
+
+  pm.ultLlamada = millis(); // al final, para que lo que tarde la red no cuente como "hace rato que no nos llaman"
+}
+
+/********************************************************************************************
+ *  PANTALLA CIFRAS - Juego de cifras que se resuelve solo, en bucle, mientras el minero sigue
+ *
+ *  Cada vuelta saca 6 numeros al azar (1-100) y un objetivo (1-1000), y busca la mejor
+ *  cuenta posible con + - * / usando los numeros como piezas. No hace falta usarlos todos
+ *  y solo valen divisiones exactas, sin negativos ni fracciones. Si no hay cuenta exacta,
+ *  se queda con la que mas se acerca al objetivo.
+ *
+ *  La busqueda es por fuerza bruta con poda de numeros repetidos y esta limitada en tiempo
+ *  (CIF_BUDGET_MS). Cada cierto numero de nodos cede CPU con vTaskDelay, asi no ahoga al
+ *  minero ni al watchdog. Al terminar se descartan los pasos que no intervienen en el
+ *  resultado final, de modo que solo se pinta la resolucion que de verdad hace falta.
+ *
+ *  En pantalla: arriba la hora y el hashrate, en el centro los numeros, el objetivo, la
+ *  velocidad (OBJ/S) y la resolucion paso a paso con su resultado (EXACTO en verde, DIF en
+ *  naranja), y en el pie los aciertos, los fallos y el porcentaje. Abajo se mantiene la
+ *  barra de precios de criptos. Cada cuenta hace parpadear el LED y se vuelca por Serial.
+ *
+ *  Tactil igual que Pong/Life/Krakout: zona central inferior cambia el fondo, esquina
+ *  superior derecha alterna pantalla y los laterales pasan a la siguiente o a la anterior.
+ *
+ *  Ajustes: CIF_BUDGET_MS (tiempo maximo por cuenta), CIF_PAUSA_MS (pausa entre cuentas)
+ *  y CIF_SLICE_MS (duracion de cada tanda antes de devolver el control).
+ ********************************************************************************************/
 
 #define CIF_MAX_NUMBERS 6
 #define CIF_MAX_STEPS (CIF_MAX_NUMBERS - 1)
@@ -5647,7 +8648,15 @@ struct CifState
   int ac, fa;
   unsigned long nextAt;
 };
+
 static CifState cf = {false};
+
+// ---- Medida real de objetivos por segundo ----
+static uint32_t cifWinN = 0;
+static unsigned long cifWinT = 0;
+static float cifRate = 0.0f;
+static unsigned long cifSolveUs = 0;
+static uint32_t cifSolveN = 0;
 
 static inline void cif_candidate(CifCtx &c, int value, int steps)
 {
@@ -5827,6 +8836,26 @@ static void cifNuevaCuenta()
   cf.tiene = true;
 }
 
+static void cifDrawRate()
+{
+  char b[12];
+  if (cifRate >= 100.0f)
+    snprintf(b, sizeof(b), "%.0f", cifRate);
+  else
+    snprintf(b, sizeof(b), "%.1f", cifRate);
+  tft.setFreeFont(NULL);
+  tft.setTextFont(1);
+  tft.setTextDatum(TR_DATUM);
+  tft.setTextColor(TFT_CYAN, TFT_BLACK);
+  tft.setTextSize(2);
+  tft.setTextPadding(72);
+  tft.drawString(b, 316, 67);
+  tft.setTextPadding(0);
+  tft.setTextSize(1);
+  tft.drawString("OBJ/S", 316, 83);
+  tft.setTextDatum(TL_DATUM);
+}
+
 // Cuerpo de la pantalla (numeros, objetivo y resolucion). Deja libre la linea de arriba y el pie.
 static void cifDrawAll()
 {
@@ -5859,6 +8888,7 @@ static void cifDrawAll()
   tft.setTextSize(3);
   tft.setTextColor(TFT_YELLOW, TFT_BLACK);
   tft.drawString(String(cf.target), 150, 67);
+  cifDrawRate();
   tft.drawFastHLine(0, 92, 320, TFT_DARKGREY);
 
   // Resolucion paso a paso (2 columnas)
@@ -5979,6 +9009,10 @@ void esp32_2432S028R_CifrasScreen(unsigned long mElapsed)
     cf.tiene = false;
     cf.ac = cf.fa = 0;
     cf.nextAt = 0;
+    cifRate = 0.0f;
+    cifWinN = 0;
+    cifSolveUs = 0;
+    cifSolveN = 0;
     redraw = true;
   }
 
@@ -6003,6 +9037,8 @@ void esp32_2432S028R_CifrasScreen(unsigned long mElapsed)
   cifDrawFoot();
 
   unsigned long start = millis();
+  cifWinT = start;
+  cifWinN = 0;
   unsigned long lastMining = start;
   unsigned long lastTouchChk = 0;
   pongLeds(false);
@@ -6031,9 +9067,14 @@ void esp32_2432S028R_CifrasScreen(unsigned long mElapsed)
     // ---- Cuenta nueva (la busqueda cede CPU con vTaskDelay, no bloquea al minero) ----
     if (now >= cf.nextAt)
     {
+      unsigned long t0 = micros();
       cifNuevaCuenta();
+      cifSolveUs += micros() - t0;
+      cifSolveN++;
+      cifWinN++;
       cifDrawAll();
       cifDrawFoot();
+      ledFlash(!cf.exacto, cf.exacto, false, LED_FLASH_MS);
       Serial.printf("M8AX - Cifras %d %d %d %d %d %d -> %d | Resultado %d (%s)\n",
                     cf.nums[0], cf.nums[1], cf.nums[2], cf.nums[3], cf.nums[4], cf.nums[5],
                     cf.target, cf.valor, cf.exacto ? "EXACTO" : "DIF");
@@ -6051,6 +9092,16 @@ void esp32_2432S028R_CifrasScreen(unsigned long mElapsed)
       snprintf(horaStr, sizeof(horaStr), "%02d:%02d:%02d", ti->tm_hour, ti->tm_min, ti->tm_sec);
       cifDrawTop(horaStr, hashStr);
       manejandoLeds(mineria.currentHashRate.toFloat());
+      unsigned long dtW = now - cifWinT;
+      cifRate = cifWinN * 1000.0f / (float)dtW;
+      Serial.printf("M8AX - Cifras: %.1f obj/s reales | %.1f obj/s solo busqueda\n",
+                    cifRate,
+                    cifSolveUs ? (float)cifSolveN * 1000000.0f / (float)cifSolveUs : 0.0f);
+      cifWinN = 0;
+      cifSolveN = 0;
+      cifSolveUs = 0;
+      cifWinT = now;
+      cifDrawRate();
     }
 
     delay(10);
@@ -6068,7 +9119,916 @@ void esp32_2432S028R_CifrasScreen(unsigned long mElapsed)
   }
 }
 
-CyclicScreenFunction esp32_2432S028RCyclicScreens[] = {esp32_2432S028R_MinerScreen, tDisplay_granHash, tDisplay_hashGigante, esp32_2432S028R_BTCprice, esp32_2432S028R_ClockScreen, RelojDeNumeros, tDisplay_m8axScreen7, esp32_2432S028R_m8axScreen1, esp32_2432S028R_m8axScreen2, tDisplay_m8axScreenMegaNerd, tDisplay_m8axScreen5, tDisplay_m8axScreen6, esp32_2432S028R_CifrasScreen, esp32_2432S028R_PongScreen, esp32_2432S028R_KrakoutScreen, esp32_2432S028R_LifeScreen, tDisplay_m8axScreen3, tDisplay_m8axScreen4};
+/********************************************************************************************
+ *  PANTALLA LLUVIA MATRIX (HEX) - Columnas de digitos hexadecimales cayendo como en Matrix
+ ********************************************************************************************/
+#define RAIN_COLS 40       // 320 / 8
+#define RAIN_ROWS 19       // 152 / 8 ( abajo quedan 18 px para los textos )
+#define RAIN_CW 8          // ancho de celda en pixeles
+#define RAIN_CH 8          // alto de celda en pixeles
+#define RAIN_SLICE_MS 5000 // tandas largas, como en Life / Pong
+#define RAIN_MIN_LEN 8     // longitud minima de la estela ( no bajar de 8 )
+#define RAIN_MAX_LEN 17    // longitud maxima de la estela ( no pasar de 19 )
+#define RAIN_STEP_MIN 70   // ms por paso de la gota mas rapida
+#define RAIN_STEP_VAR 150  // hasta cuantos ms mas lenta puede ser ( mas numero = mas calma )
+
+struct RainCol
+{
+  bool active;
+  int16_t head;    // fila de la cabeza ( -1 = todavia no ha entrado, puede pasarse del final )
+  uint8_t len;     // longitud de la estela
+  uint16_t stepMs; // ms entre pasos ( velocidad de esta gota )
+  uint32_t nextAt; // cuando toca el siguiente paso
+};
+
+static RainCol rainCols[RAIN_COLS];
+static char rainCells[RAIN_ROWS][RAIN_COLS];
+static bool rainInit = false;
+static const char RAIN_HEX[] = "0123456789ABCDEF";
+static const uint16_t RAIN_COLORS[] = {0xFFFF, 0xAFE5, 0x07E0, 0x03E0, 0x0200}; // blanco, lima, verde, verde medio, verde oscuro
+
+static uint16_t rainColor(int off)
+{
+  if (off <= 0)
+    return RAIN_COLORS[0];
+  if (off == 1)
+    return RAIN_COLORS[1];
+  if (off <= 3)
+    return RAIN_COLORS[2];
+  if (off <= 6)
+    return RAIN_COLORS[3];
+  return RAIN_COLORS[4];
+}
+
+static void rainDrawCell(int row, int col, uint16_t color)
+{
+  if (row < 0 || row >= RAIN_ROWS)
+    return;
+  char s[2] = {rainCells[row][col], 0};
+  tft.setTextColor(color, TFT_BLACK);
+  tft.drawString(s, col * RAIN_CW + 1, row * RAIN_CH);
+}
+
+static void rainEraseCell(int row, int col)
+{
+  if (row < 0 || row >= RAIN_ROWS)
+    return;
+  tft.fillRect(col * RAIN_CW, row * RAIN_CH, RAIN_CW, RAIN_CH, TFT_BLACK);
+}
+
+static void rainSpawn(int c, uint32_t now)
+{
+  RainCol &d = rainCols[c];
+  d.active = true;
+  d.head = -1;
+  d.len = RAIN_MIN_LEN + esp_random() % (RAIN_MAX_LEN - RAIN_MIN_LEN + 1);
+  d.stepMs = RAIN_STEP_MIN + esp_random() % RAIN_STEP_VAR;
+  d.nextAt = now;
+}
+
+// Un paso de una gota: solo se repintan las celdas que cambian de color ( 5 ) y la que se borra ( 1 )
+static void rainStep(int c)
+{
+  RainCol &d = rainCols[c];
+  d.head++;
+  int h = d.head;
+  if (h >= 0 && h < RAIN_ROWS)
+    rainCells[h][c] = RAIN_HEX[esp_random() & 15];
+
+  tft.setFreeFont(NULL);
+  tft.setTextFont(1);
+  tft.setTextSize(1);
+  tft.setTextDatum(TL_DATUM);
+  tft.setTextPadding(0);
+
+  static const int offs[] = {0, 1, 2, 4, 7};
+  for (int k = 0; k < 5; k++)
+  {
+    int off = offs[k];
+    if (off >= d.len)
+      break;
+    int row = h - off;
+    if (row < 0 || row >= RAIN_ROWS)
+      continue;
+    if (off == 1 && (esp_random() % 5) == 0)
+      rainCells[row][c] = RAIN_HEX[esp_random() & 15]; // pequeño centelleo
+    rainDrawCell(row, c, rainColor(off));
+  }
+  rainEraseCell(h - d.len, c);
+}
+
+void esp32_2432S028R_RainScreen(unsigned long mElapsed)
+{
+  mineria = getMiningData(mElapsed);
+  Serial.printf("M8AX - %s >>> Completados %s Share(s), %s Khashes, Prom. Hashrate %s KH/s %s°\n",
+                mineria.currentTime, mineria.completedShares.c_str(), mineria.totalKHashes.c_str(), mineria.currentHashRate.c_str(), mineria.temp.c_str());
+
+  bool redraw = hasChangedScreen;
+  if (!rainInit)
+  {
+    rainInit = true;
+    redraw = true;
+  }
+
+  if (redraw)
+  {
+    tft.fillRect(0, 0, 320, 170, TFT_BLACK);
+    memset(rainCells, ' ', sizeof(rainCells));
+    unsigned long t0 = millis();
+    for (int c = 0; c < RAIN_COLS; c++)
+    {
+      rainCols[c].active = false;
+      rainCols[c].nextAt = t0 + esp_random() % 3000; // entran escalonadas, la lluvia "se va llenando"
+    }
+  }
+  printPoolData(); // pie de las criptos (solo se repinta cuando toca)
+  hasChangedScreen = false;
+
+  char hashStr[16];
+  snprintf(hashStr, sizeof(hashStr), "%s", mineria.currentHashRate.c_str());
+  char izq[24], der[24];
+  char lastIzq[24] = "", lastDer[24] = "";
+
+  unsigned long start = millis();
+  unsigned long lastHud = 0;
+  unsigned long lastMiningUpdate = 0;
+  unsigned long lastTouchChk = 0;
+  pongLeds(false); // LEDs apagados para dormir
+  unsigned long ledApagarEn = 0;
+  unsigned long ledUlt = 0;
+
+  while (millis() - start < RAIN_SLICE_MS)
+  {
+    unsigned long now = millis();
+
+    // ---- Tactil (misma logica que esp32_2432S028R_DoLedStuff) ----
+    if (now - lastTouchChk >= 40 && now - previousTouchMillis >= 500)
+    {
+      lastTouchChk = now;
+      int16_t t_x, t_y;
+      if (touch.getXY(t_x, t_y))
+      {
+        previousTouchMillis = now;
+        autoPantallas = false;
+        if (((t_x > 109) && (t_x < 211)) && ((t_y > 185) && (t_y < 241)))
+        {
+          bottomScreenBlue ^= true;
+          hasChangedScreen = true;
+        }
+        else if ((t_x > 235) && ((t_y > 0) && (t_y < 16)))
+        {
+          esp32_2432S028R_AlternateScreenState();
+        }
+        else if (t_x > 160)
+        {
+          currentDisplayDriver->current_cyclic_screen = (currentDisplayDriver->current_cyclic_screen + 1) % currentDisplayDriver->num_cyclic_screens;
+        }
+        else
+        {
+          currentDisplayDriver->current_cyclic_screen = currentDisplayDriver->current_cyclic_screen - 1;
+          if (currentDisplayDriver->current_cyclic_screen < 0)
+            currentDisplayDriver->current_cyclic_screen = currentDisplayDriver->num_cyclic_screens - 1;
+        }
+        break;
+      }
+    }
+
+    // Cambio automático cada 1 minuto
+    if (autoPantallas && millis() - lastAutoChange >= 60000UL)
+    {
+      currentDisplayDriver->current_cyclic_screen =
+          (currentDisplayDriver->current_cyclic_screen + 1) % currentDisplayDriver->num_cyclic_screens;
+      lastAutoChange = millis();
+      break;
+    }
+
+    if (ledApagarEn && now >= ledApagarEn)
+    {
+      pongLeds(false);
+      ledApagarEn = 0;
+    }
+
+    // ---- Lluvia: cada columna avanza a su ritmo ----
+    for (int c = 0; c < RAIN_COLS; c++)
+    {
+      RainCol &d = rainCols[c];
+      if (now < d.nextAt)
+        continue;
+      if (!d.active)
+      {
+        rainSpawn(c, now); // el primer paso se da en la vuelta siguiente
+        continue;
+      }
+      rainStep(c);
+      if (now - ledUlt >= 80)
+      {
+        pongLeds(false);
+        digitalWrite(LED_PIN_G, LOW);
+        ledApagarEn = now + 15;
+        ledUlt = now;
+      }
+      d.nextAt = now + d.stepMs;
+      if (d.head - d.len >= RAIN_ROWS) // la estela ya ha salido entera por abajo
+      {
+        d.active = false;
+        d.nextAt = now + 300 + esp_random() % 3000; // descansa un rato antes de volver a caer
+      }
+    }
+
+    // ---- Hashrate (cada segundo) ----
+    if (now - lastMiningUpdate >= 1000)
+    {
+      lastMiningUpdate = now;
+      mineria = getMiningData(mElapsed);
+      snprintf(hashStr, sizeof(hashStr), "%s", mineria.currentHashRate.c_str());
+    }
+
+    // ---- Textos de abajo ----
+    if (now - lastHud >= 200)
+    {
+      lastHud = now;
+      snprintf(izq, sizeof(izq), "LLUVIA M.HEX");
+      snprintf(der, sizeof(der), "%s KH/s", hashStr);
+      if (strcmp(izq, lastIzq) != 0 || strcmp(der, lastDer) != 0)
+      {
+        lifeDrawHud(izq, der);
+        strcpy(lastIzq, izq);
+        strcpy(lastDer, der);
+      }
+    }
+
+    delay(10);
+  }
+
+  pongLeds(false); // por si salimos con los LEDs encendidos
+  tft.setTextPadding(0);
+  tft.setTextDatum(TL_DATUM);
+
+  cuentita++;
+  if (cuentita == 15)
+  {
+    ajustarZonaHoraria(), obtenerLocYTemp();
+    obtenerVariacionesBTC(variacion1dia, variacion1semana);
+  }
+}
+
+/****************************************************************************************************************
+ *
+ *   Escrito por: M8AX
+ *
+ *   Descripción: SNAKE CPU - Pantalla para ESP32_2432S028R
+ *   ------------------------------------------------------
+ *
+ *   La CPU juega sola a la serpiente en un campo de 40x15 casillas. Cada vez que tiene que moverse busca el
+ *   camino más corto hasta la comida, pero antes de seguirlo comprueba, imaginando que ya se la ha comido,
+ *   que la cabeza todavía podría llegar hasta su propia cola. Si es así, va a por ella; si no, se queda
+ *   dando vueltas por el sitio libre, alejándose de la comida, hasta que se abre un camino seguro. Gracias
+ *   a eso aguanta mucho más de lo que parece y suele pasar de 100 casillas sin encerrarse.
+ *
+ *   Para que no juegue perfecta eternamente, de vez en cuando (más a menudo cuanto más larga es) se mueve
+ *   a una casilla libre cualquiera sin mirar si es segura, y tarde o temprano se encierra sola, sale GAME
+ *   OVER y empieza otra partida xD... También se rinde si pasa demasiado tiempo sin comer, por si se pone
+ *   a dar vueltas sin fin.
+ *
+ *   Arriba a la izquierda la hora y arriba a la derecha el hashrate, como en las demás. Abajo a la
+ *   izquierda la longitud y el récord, y a la derecha las partidas jugadas. Cada comida hace un destello
+ *   verde en el LED y cada GAME OVER uno rojo.
+ *
+ *   Memoria: al arrancar el minero no ocupa NADA. Las tablas (unos 6 KB: la serpiente, el mapa y las de la
+ *   búsqueda de caminos) se piden con malloc al entrar en la pantalla y se liberan al salir a otra, como en
+ *   el ajedrez. Solo quedan fijos el récord y las partidas (8 bytes). Al volver a la pantalla empieza una
+ *   partida nueva. Si no hubiera RAM para las tablas, se salta la pantalla sin pintar nada.
+ *
+ *   Para activarla hay que pegar este bloque antes de analiCadaSegundo y meter esp32_2432S028R_SnakeScreen
+ *   en el array esp32_2432S028RCyclicScreens[].
+ *
+ ****************************************************************************************************************/
+
+#define SNK_C 8 // lado de cada casilla
+#define SNK_COLS 40
+#define SNK_ROWS 15
+#define SNK_N (SNK_COLS * SNK_ROWS)
+#define SNK_FX 0
+#define SNK_FY 29
+#define SNK_LARGO0 3
+#define SNK_PASO_MS 40
+#define SNK_FIN_MS 3000    // lo que se queda el GAME OVER antes de empezar otra partida
+#define SNK_SLICE_MS 5000  // tandas largas, como en las demás
+#define SNK_ERR 20         // fallos por mil en cada paso (se le suma largo / 2)
+#define SNK_SIN_COMER 1200 // pasos seguidos sin comer antes de rendirse
+
+struct SnkMem
+{
+  uint8_t estado; // 0 jugando, 1 partida terminada
+  bool gana;
+  uint16_t cuerpo[SNK_N]; // anillo: de la cola a la cabeza
+  uint16_t cola;
+  uint16_t largo;
+  uint16_t comida;
+  uint16_t sinComer;
+  uint8_t ocupa[SNK_N];
+  unsigned long finAt;
+  uint16_t fila[SNK_N];
+  uint16_t dist[SNK_N];
+  uint16_t camino[SNK_N];
+  uint8_t virt[SNK_N];
+};
+static SnkMem *snkM = NULL;
+static uint32_t snkRecord = 0;
+static uint32_t snkPartidas = 0;
+
+static inline int snkElem(int i)
+{
+  return snkM->cuerpo[(snkM->cola + i) % SNK_N];
+}
+
+static int snkVecino(int c, int d)
+{
+  int x = c % SNK_COLS, y = c / SNK_COLS;
+  switch (d)
+  {
+  case 0:
+    y--;
+    break;
+  case 1:
+    x++;
+    break;
+  case 2:
+    y++;
+    break;
+  default:
+    x--;
+    break;
+  }
+  if (x < 0 || x >= SNK_COLS || y < 0 || y >= SNK_ROWS)
+    return -1;
+  return y * SNK_COLS + x;
+}
+
+// Distancias desde una casilla sin cruzar las bloqueadas. Las que no se alcanzan quedan en 0xFFFF
+static void snkBfs(const uint8_t *bloq, int desde)
+{
+  for (int i = 0; i < SNK_N; i++)
+    snkM->dist[i] = 0xFFFF;
+  int ini = 0, fin = 0;
+  snkM->fila[fin++] = desde;
+  snkM->dist[desde] = 0;
+  while (ini < fin)
+  {
+    int c = snkM->fila[ini++];
+    for (int d = 0; d < 4; d++)
+    {
+      int n = snkVecino(c, d);
+      if (n < 0 || snkM->dist[n] != 0xFFFF || bloq[n])
+        continue;
+      snkM->dist[n] = snkM->dist[c] + 1;
+      snkM->fila[fin++] = n;
+    }
+  }
+}
+
+// Reconstruye en snkM->camino el camino hasta una casilla, tras un snkBfs. Devuelve los pasos, -1 si no llega
+static int snkCaminoA(int hasta)
+{
+  if (snkM->dist[hasta] == 0xFFFF)
+    return -1;
+  int L = snkM->dist[hasta];
+  int c = hasta;
+  for (int k = L - 1; k >= 0; k--)
+  {
+    snkM->camino[k] = c;
+    for (int d = 0; d < 4; d++)
+    {
+      int n = snkVecino(c, d);
+      if (n >= 0 && snkM->dist[n] == k)
+      {
+        c = n;
+        break;
+      }
+    }
+  }
+  return L;
+}
+
+// Tras seguir el camino de L pasos y comerse la comida, ¿la cabeza todavía llega a la cola?
+static bool snkSegura(int L)
+{
+  int largo = snkM->largo;
+  memset(snkM->virt, 0, sizeof(snkM->virt));
+  for (int i = L - 1; i < largo + L; i++)
+    snkM->virt[i < largo ? snkElem(i) : snkM->camino[i - largo]] = 1;
+  int cabeza = snkM->camino[L - 1];
+  int cola = (L - 1 < largo) ? snkElem(L - 1) : snkM->camino[L - 1 - largo];
+  snkM->virt[cola] = 0;
+  snkBfs(snkM->virt, cabeza);
+  return snkM->dist[cola] != 0xFFFF;
+}
+
+// Lo mismo para un solo paso sin comer
+static bool snkSalidaLibre(int n)
+{
+  if (snkM->largo < 2)
+    return true;
+  memset(snkM->virt, 0, sizeof(snkM->virt));
+  for (int i = 1; i < snkM->largo; i++)
+    snkM->virt[snkElem(i)] = 1;
+  snkM->virt[n] = 1;
+  int cola = snkElem(1);
+  snkM->virt[cola] = 0;
+  snkBfs(snkM->virt, n);
+  return snkM->dist[cola] != 0xFFFF;
+}
+
+// Casilla a la que va la cabeza. -1 = no tiene a dónde ir
+static int snkElige()
+{
+  int cabeza = snkElem(snkM->largo - 1);
+  int cola = snkElem(0);
+  int cand[4], nc = 0;
+  for (int d = 0; d < 4; d++)
+  {
+    int n = snkVecino(cabeza, d);
+    if (n >= 0 && (!snkM->ocupa[n] || n == cola))
+      cand[nc++] = n;
+  }
+  if (!nc)
+    return -1;
+
+  if ((int)(esp_random() % 1000) < SNK_ERR + snkM->largo / 2)
+    return cand[esp_random() % nc];
+
+  memcpy(snkM->virt, snkM->ocupa, sizeof(snkM->virt));
+  snkBfs(snkM->virt, cabeza);
+  int L = snkCaminoA(snkM->comida);
+  if (L > 0 && snkSegura(L))
+    return snkM->camino[0];
+
+  int mejor = -1, mejorD = -1;
+  for (int i = 0; i < nc; i++)
+  {
+    if (!snkSalidaLibre(cand[i]))
+      continue;
+    int d = abs(cand[i] % SNK_COLS - snkM->comida % SNK_COLS) + abs(cand[i] / SNK_COLS - snkM->comida / SNK_COLS);
+    if (d > mejorD)
+    {
+      mejorD = d;
+      mejor = cand[i];
+    }
+  }
+  return mejor >= 0 ? mejor : cand[0];
+}
+
+static void snkCelda(int c, uint16_t col)
+{
+  tft.fillRect(SNK_FX + (c % SNK_COLS) * SNK_C, SNK_FY + (c / SNK_COLS) * SNK_C, SNK_C - 1, SNK_C - 1, col);
+}
+
+static void snkFoot()
+{
+  char izq[24], der[16];
+  uint32_t rec = snkRecord > snkM->largo ? snkRecord : snkM->largo;
+  snprintf(izq, sizeof(izq), "LON %u REC %lu", snkM->largo, (unsigned long)rec);
+  snprintf(der, sizeof(der), "PART %lu", (unsigned long)snkPartidas);
+  tft.setFreeFont(NULL);
+  tft.setTextFont(1);
+  tft.setTextSize(2);
+  tft.setTextColor(TFT_WHITE, TFT_BLACK);
+  tft.setTextPadding(190);
+  tft.setTextDatum(TL_DATUM);
+  tft.drawString(izq, 4, 153);
+  tft.setTextPadding(120);
+  tft.setTextDatum(TR_DATUM);
+  tft.drawString(der, 316, 153);
+  tft.setTextPadding(0);
+  tft.setTextDatum(TL_DATUM);
+}
+
+static void snkTextoFin()
+{
+  tft.setFreeFont(NULL);
+  tft.setTextFont(1);
+  tft.setTextSize(3);
+  tft.setTextPadding(0);
+  tft.setTextDatum(MC_DATUM);
+  tft.setTextColor(snkM->gana ? TFT_GREEN : TFT_RED, TFT_BLACK);
+  tft.drawString(snkM->gana ? "LLENO!" : "GAME OVER", 160, SNK_FY + SNK_ROWS * SNK_C / 2);
+  tft.setTextDatum(TL_DATUM);
+}
+
+static void snkPintaTodo()
+{
+  tft.fillRect(0, 26, 320, 126, TFT_BLACK);
+  tft.drawFastHLine(0, 27, 320, TFT_DARKGREY);
+  tft.drawFastHLine(0, SNK_FY + SNK_ROWS * SNK_C, 320, TFT_DARKGREY);
+  for (int i = 0; i < snkM->largo - 1; i++)
+    snkCelda(snkElem(i), TFT_GREEN);
+  snkCelda(snkElem(snkM->largo - 1), TFT_WHITE);
+  snkCelda(snkM->comida, TFT_RED);
+  if (snkM->estado)
+    snkTextoFin();
+  snkFoot();
+}
+
+static void snkNuevaComida()
+{
+  int k = esp_random() % (SNK_N - snkM->largo);
+  for (int c = 0; c < SNK_N; c++)
+  {
+    if (!snkM->ocupa[c] && k-- == 0)
+    {
+      snkM->comida = c;
+      return;
+    }
+  }
+}
+
+static void snkNueva()
+{
+  memset(snkM->ocupa, 0, sizeof(snkM->ocupa));
+  snkM->largo = SNK_LARGO0;
+  snkM->cola = 0;
+  for (int i = 0; i < snkM->largo; i++)
+  {
+    int c = (SNK_ROWS / 2) * SNK_COLS + 10 + i;
+    snkM->cuerpo[i] = c;
+    snkM->ocupa[c] = 1;
+  }
+  snkM->estado = 0;
+  snkM->gana = false;
+  snkM->sinComer = 0;
+  snkNuevaComida();
+}
+
+static void snkFin(bool gana)
+{
+  snkM->estado = 1;
+  snkM->gana = gana;
+  snkM->finAt = millis();
+  if (snkM->largo > snkRecord)
+    snkRecord = snkM->largo;
+  snkPartidas++;
+  snkTextoFin();
+  snkFoot();
+  Serial.printf("M8AX - Snake: partida %lu | longitud %u | record %lu\n",
+                (unsigned long)snkPartidas, snkM->largo, (unsigned long)snkRecord);
+  ledFlash(!gana, gana, false, 150);
+}
+
+static void snkPaso()
+{
+  int n = snkElige();
+  if (n < 0)
+  {
+    snkFin(false);
+    return;
+  }
+  int cabeza = snkElem(snkM->largo - 1);
+  bool come = (n == snkM->comida);
+  int pos = (snkM->cola + snkM->largo) % SNK_N;
+  int libre = -1;
+  if (come)
+    snkM->largo++;
+  else
+  {
+    libre = snkM->cuerpo[snkM->cola];
+    snkM->ocupa[libre] = 0;
+    snkM->cola = (snkM->cola + 1) % SNK_N;
+  }
+  snkM->cuerpo[pos] = n;
+  snkM->ocupa[n] = 1;
+
+  snkCelda(cabeza, TFT_GREEN);
+  if (libre >= 0 && libre != n)
+    snkCelda(libre, TFT_BLACK);
+  snkCelda(n, TFT_WHITE);
+
+  if (come)
+  {
+    snkM->sinComer = 0;
+    if (snkM->largo >= SNK_N - 1)
+    {
+      snkFin(true);
+      return;
+    }
+    snkNuevaComida();
+    snkCelda(snkM->comida, TFT_RED);
+    snkFoot();
+    ledFlash(false, true, false, LED_FLASH_MS);
+  }
+  else if (++snkM->sinComer > SNK_SIN_COMER)
+    snkFin(false);
+}
+
+void esp32_2432S028R_SnakeScreen(unsigned long mElapsed)
+{
+  mineria = getMiningData(mElapsed);
+  Serial.printf("M8AX - %s >>> Completados %s Share(s), %s Khashes, Prom. Hashrate %s KH/s %s°\n",
+                mineria.currentTime, mineria.completedShares.c_str(), mineria.totalKHashes.c_str(), mineria.currentHashRate.c_str(), mineria.temp.c_str());
+
+  bool redraw = hasChangedScreen;
+  if (!snkM)
+  {
+    snkM = (SnkMem *)malloc(sizeof(SnkMem));
+    if (!snkM)
+    {
+      Serial.println("M8AX - Snake: no hay RAM libre");
+      delay(1000);
+      return;
+    }
+    memset(snkM, 0, sizeof(SnkMem));
+    snkNueva();
+    redraw = true;
+  }
+  const int snkMiPantalla = currentDisplayDriver->current_cyclic_screen;
+  if (redraw)
+  {
+    tft.fillRect(0, 0, 320, 170, TFT_BLACK);
+    snkPintaTodo();
+  }
+  printPoolData(); // barra de abajo, solo se repinta cuando toca
+  hasChangedScreen = false;
+
+  char horaStr[9] = "";
+  char lastHora[9] = "";
+  char hashStr[16];
+  char lastHash[16] = "";
+
+  unsigned long start = millis();
+  unsigned long lastMiningUpdate = 0;
+  unsigned long lastTouchChk = 0;
+  unsigned long siguiente = start;
+  pongLeds(false);
+
+  while (millis() - start < SNK_SLICE_MS)
+  {
+    unsigned long now = millis();
+
+    // ---- Táctil (misma lógica que el Pong) ----
+    if (now - lastTouchChk >= 40 && now - previousTouchMillis >= 500)
+    {
+      lastTouchChk = now;
+      int16_t t_x, t_y;
+      if (touch.getXY(t_x, t_y))
+      {
+        previousTouchMillis = now;
+        autoPantallas = false;
+        if (((t_x > 109) && (t_x < 211)) && ((t_y > 185) && (t_y < 241)))
+        {
+          bottomScreenBlue ^= true;
+          hasChangedScreen = true;
+        }
+        else if ((t_x > 235) && ((t_y > 0) && (t_y < 16)))
+        {
+          esp32_2432S028R_AlternateScreenState();
+        }
+        else if (t_x > 160)
+        {
+          currentDisplayDriver->current_cyclic_screen = (currentDisplayDriver->current_cyclic_screen + 1) % currentDisplayDriver->num_cyclic_screens;
+        }
+        else
+        {
+          currentDisplayDriver->current_cyclic_screen = currentDisplayDriver->current_cyclic_screen - 1;
+          if (currentDisplayDriver->current_cyclic_screen < 0)
+            currentDisplayDriver->current_cyclic_screen = currentDisplayDriver->num_cyclic_screens - 1;
+        }
+        break;
+      }
+    }
+
+    // Cambio automático cada 1 minuto
+    if (autoPantallas && millis() - lastAutoChange >= 60000UL)
+    {
+      currentDisplayDriver->current_cyclic_screen =
+          (currentDisplayDriver->current_cyclic_screen + 1) % currentDisplayDriver->num_cyclic_screens;
+      lastAutoChange = millis();
+      break;
+    }
+    // ---- Partida ----
+    if (!snkM->estado)
+    {
+      if (now >= siguiente)
+      {
+        snkPaso();
+        siguiente = millis() + SNK_PASO_MS;
+      }
+    }
+    else if (now - snkM->finAt >= SNK_FIN_MS)
+    {
+      snkNueva();
+      snkPintaTodo();
+      siguiente = millis() + SNK_PASO_MS;
+    }
+
+    // ---- Hora (izquierda) y hashrate (derecha), arriba como en las demás ----
+    if (now - lastMiningUpdate >= 1000)
+    {
+      lastMiningUpdate = now;
+      mineria = getMiningData(mElapsed);
+      snprintf(hashStr, sizeof(hashStr), "%s", mineria.currentHashRate.c_str());
+      time_t epoch = (time_t)timeClient.getEpochTime();
+      struct tm *ti = localtime(&epoch);
+      snprintf(horaStr, sizeof(horaStr), "%02d:%02d:%02d", ti->tm_hour, ti->tm_min, ti->tm_sec);
+      if (strcmp(horaStr, lastHora) != 0 || strcmp(hashStr, lastHash) != 0)
+      {
+        pongDrawHud(hashStr, horaStr);
+        strcpy(lastHora, horaStr);
+        strcpy(lastHash, hashStr);
+      }
+    }
+
+    delay(5);
+  }
+
+  pongLeds(false);
+  tft.setTextPadding(0);
+  tft.setTextDatum(TL_DATUM);
+
+  if (currentDisplayDriver->current_cyclic_screen != snkMiPantalla)
+  {
+    free(snkM);
+    snkM = NULL;
+  }
+
+  cuentita++;
+  if (cuentita == 15)
+  {
+    ajustarZonaHoraria();
+    obtenerLocYTemp();
+    obtenerVariacionesBTC(variacion1dia, variacion1semana);
+  }
+}
+
+void analiCadaSegundo(unsigned long frame)
+{
+  unsigned long epochTime = timeClient.getEpochTime(); // Obtener segundos desde 1970
+  time_t epoch = (time_t)epochTime;                    // Convertir a time_t
+  struct tm *timeinfo = localtime(&epoch);             // Convertir a una estructura de tiempo local
+  int dia = timeinfo->tm_mday;                         // Día del mes (1 a 31)
+  int mes = timeinfo->tm_mon + 1;                      // Mes (1 a 12)
+  int anio = timeinfo->tm_year + 1900;                 // Año (por defecto es desde 1900)
+  int horita = timeinfo->tm_hour;                      // Hora
+  int minutitos = timeinfo->tm_min;                    // Minutos
+  int segundos = timeinfo->tm_sec;                     // Segundos
+
+  if (startTime == 0)
+  {
+    BOT_TOKEN = Settings.botTelegram;                                                   // Bot De Telegram
+    CHAT_ID = Settings.ChanelIDTelegram;                                                // ID Del Canal De Telegram
+    startTime = (epochTime > 1700000000UL && epochTime < 4102444800UL) ? epochTime : 0; // Guardar el tiempo de inicio cuando el dispositivo arranca
+  }
+
+  if (startTime > 0 && uncontadormas > 50)
+  {
+    float currentHashRate = mineria.currentHashRate.toFloat();
+    int currentTemp = mineria.temp.toInt();
+
+    if (currentHashRate > maxkh)
+    {
+      maxkh = currentHashRate; // Actualiza el máximo de kh/s
+    }
+
+    if (currentHashRate < minkh)
+    {
+      minkh = currentHashRate; // Actualiza el mínimo de kh/s
+    }
+
+    if (currentTemp > maxtemp)
+    {
+      maxtemp = currentTemp; // Actualiza el máximo de temperatura
+    }
+
+    if (currentTemp < mintemp)
+    {
+      mintemp = currentTemp; // Actualiza el mínimo de temperatura
+    }
+  }
+
+  // Si ya ha pasado el tiempo de arranque mínimo (por ejemplo, 10 minutos) y han pasado 2 horas desde el último mensaje de Telegram
+  if (startTime > 0 && epochTime - startTime >= minStartupTime && epochTime - lastTelegramEpochTime >= interval)
+  {
+    // Ajustar la zona horaria si es necesario
+    if ((mes == 3 || mes == 4 || mes == 10 || mes == 11) && horita >= 0 && horita <= 5)
+      ajustarZonaHoraria();
+    obtenerLocYTemp();
+    obtenerVariacionesBTC(variacion1dia, variacion1semana);
+    // Verificar si los datos de Telegram están configurados
+    static int fallosSeguidos = 0;
+    bool enviado = recopilaTelegram(); // Monta el mensaje, lo envía a Telegram si hay bot y lo guarda en la SD
+    if (enviado)
+    {
+      fallosSeguidos = 0;
+      lastTelegramEpochTime = epochTime; // Actualiza el tiempo de la última ejecución
+    }
+    else if (++fallosSeguidos < 4)
+    {
+      lastTelegramEpochTime = epochTime - interval + 300; // falló: reintenta en 5 minutos (hasta 3 veces)
+    }
+    else
+    {
+      fallosSeguidos = 0;
+      lastTelegramEpochTime = epochTime; // 4 fallos seguidos: espera las 2 horas normales
+    }
+  }
+}
+
+void esp32_2432S028R_AnimateCurrentScreen(unsigned long frame)
+{
+  uncontadormas++;
+  if (uncontadormas % 5 == 0)
+  {
+    analiCadaSegundo(frame);
+    if (uncontadormas > 1000000)
+      uncontadormas = 50;
+  }
+}
+
+// Variables para controlar el parpadeo con millis()
+
+unsigned long previousMillis = 0;
+unsigned long previousTouchMillis = 0;
+char currentScreen = 0;
+
+void esp32_2432S028R_DoLedStuff(unsigned long frame)
+{
+  unsigned long currentMillis = millis();
+  // Check the touch coordinates 110x185 210x240
+  if (currentMillis - previousTouchMillis >= 500)
+  {
+    int16_t t_x, t_y; // To store the touch coordinates
+    bool pressed = touch.getXY(t_x, t_y);
+    if (pressed)
+    {
+      autoPantallas = false;
+      if (((t_x > 109) && (t_x < 211)) && ((t_y > 185) && (t_y < 241)))
+      {
+        bottomScreenBlue ^= true;
+        hasChangedScreen = true;
+      }
+      else if ((t_x > 235) && ((t_y > 0) && (t_y < 16)))
+      {
+        // Touching the top right corner of the screen, roughly in the gray status label.
+        // Disabling the screen backlight.
+        esp32_2432S028R_AlternateScreenState();
+      }
+      else if (t_x > 160)
+      {
+
+        // next screen
+        // Serial.printf("Next screen touch( x:%d y:%d )\n", t_x, t_y);
+
+        currentDisplayDriver->current_cyclic_screen = (currentDisplayDriver->current_cyclic_screen + 1) % currentDisplayDriver->num_cyclic_screens;
+      }
+      else if (t_x < 160)
+      {
+
+        // Previus screen
+        // Serial.printf("Previus screen touch( x:%d y:%d )\n", t_x, t_y);
+        /* Serial.println(currentDisplayDriver->current_cyclic_screen); */
+
+        currentDisplayDriver->current_cyclic_screen = currentDisplayDriver->current_cyclic_screen - 1;
+        if (currentDisplayDriver->current_cyclic_screen < 0)
+          currentDisplayDriver->current_cyclic_screen = currentDisplayDriver->num_cyclic_screens - 1;
+      }
+    }
+    previousTouchMillis = currentMillis;
+  }
+  if (autoPantallas && currentMillis - lastAutoChange >= 60000UL)
+  {
+    lastAutoChange = currentMillis;
+    currentDisplayDriver->current_cyclic_screen =
+        (currentDisplayDriver->current_cyclic_screen + 1) % currentDisplayDriver->num_cyclic_screens;
+  }
+
+  if (currentScreen != currentDisplayDriver->current_cyclic_screen)
+  {
+    hasChangedScreen ^= true;
+    lastAutoChange = currentMillis;
+  }
+  currentScreen = currentDisplayDriver->current_cyclic_screen;
+  switch (mMonitor.NerdStatus)
+  {
+  case NM_waitingConfig:
+    digitalWrite(LED_PIN, LOW);
+    break;
+  case NM_Connecting:
+    if (currentMillis - previousMillis >= 500)
+    { // 0.5sec blink
+      previousMillis = currentMillis;
+      digitalWrite(LED_PIN, HIGH), digitalWrite(LED_PIN_B, !digitalRead(LED_PIN)); // Cambia el estado del LED
+    }
+    break;
+  case NM_hashing:
+    if (currentMillis - previousMillis >= 500)
+    { // 0.1sec blink
+      previousMillis = currentMillis;
+      digitalWrite(LED_PIN_B, HIGH);
+      digitalWrite(LED_PIN, !digitalRead(LED_PIN)); // Cambia el estado del LED
+    }
+    break;
+  }
+}
+
+CyclicScreenFunction esp32_2432S028RCyclicScreens[] = {esp32_2432S028R_MinerScreen, tDisplay_granHash, tDisplay_hashGigante, esp32_2432S028R_BTCprice, esp32_2432S028R_ClockScreen, RelojDeNumeros, tDisplay_m8axScreen7, esp32_2432S028R_m8axScreen1, esp32_2432S028R_m8axScreen2, tDisplay_m8axScreenMegaNerd, tDisplay_m8axScreen5, tDisplay_m8axScreen6, tDisplay_Primos, esp32_2432S028R_CifrasScreen, esp32_2432S028R_TetrisScreen, esp32_2432S028R_AjedrezScreen, esp32_2432S028R_PongScreen, esp32_2432S028R_KrakoutScreen, esp32_2432S028R_SnakeScreen, esp32_2432S028R_LifeScreen, esp32_2432S028R_RainScreen, tDisplay_m8axScreen3, tDisplay_m8axScreen4};
 
 DisplayDriver esp32_2432S028RDriver = {
     esp32_2432S028R_Init,
