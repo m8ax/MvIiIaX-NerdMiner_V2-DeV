@@ -810,6 +810,8 @@ static void cifras_search(CifrasCtx &c, const int *vals, const int *ids, int n, 
         switch (o)
         {
         case 0:
+          if (x + y > 1000000000)
+            continue;
           r = x + y;
           op = '+';
           break;
@@ -820,7 +822,7 @@ static void cifras_search(CifrasCtx &c, const int *vals, const int *ids, int n, 
           op = '-';
           break;
         case 2:
-          if (x == 1 || y == 1)
+          if (x == 1 || y == 1 || (int64_t)x * y > 1000000000)
             continue;
           r = x * y;
           op = '*';
@@ -3399,7 +3401,7 @@ void tDisplay_MinerScreen(unsigned long mElapsed)
     background.setTextDatum(TL_DATUM);
     background.setTextColor(coloris[colorrrr]);
   }
-  background.drawString(nombrecillo, (nombrecillo == "EHD-MDDD") ? 20 : 23, 101, GFXFF);
+  background.drawString(nombrecillo, (strcmp(nombrecillo, "EHD-MDDD") == 0) ? 20 : 23, 101, GFXFF);
   // Valid Blocks
   int validInt = atoi(data.valids.c_str());
   if (validInt == 0)
@@ -9532,9 +9534,7 @@ void analiCadaSegundo(unsigned long frame)
     tft.setTextSize(1);
     tft.println("");
     tft.setTextSize(2);
-    tft.setTextColor(TFT_WHITE);
-    tft.println("     ... By M8AX ...");
-    delay(3000);
+    tft.setTextColor(TFT_WHITE), tft.println("     ... By M8AX ..."), delay(3000);
   }
 }
 

@@ -71,7 +71,7 @@
  *   5 - "Forma De Almacenar Valor Que No Depende De Gobiernos Ni Instituciones." – Barry Silbert, CEO De Digital Currency Group.
  *
  *
- *              ///\\\ --- Minimizando Código, Maximizando Funcionalidad. Solo 2300 Líneas De Código En 8h --- ///\\\
+ *              ///\\\ --- Minimizando Código, Maximizando Funcionalidad. Solo 2310 Líneas De Código En 8h --- ///\\\
  *
  *                                                     .M8AX Corp. - ¡A Minar!
  *
@@ -1168,6 +1168,8 @@ static void cifras_search(CifrasCtx &c, const int *vals, const int *ids, int n, 
         switch (o)
         {
         case 0:
+          if (x + y > 1000000000)
+            continue;
           r = x + y;
           op = '+';
           break;
@@ -1178,7 +1180,7 @@ static void cifras_search(CifrasCtx &c, const int *vals, const int *ids, int n, 
           op = '-';
           break;
         case 2:
-          if (x == 1 || y == 1)
+          if (x == 1 || y == 1 || (int64_t)x * y > 1000000000)
             continue;
           r = x * y;
           op = '*';
@@ -1305,7 +1307,7 @@ void generate_random_numbers(int numbers[], int size, int min, int max)
 
 void convertirTiempo(const char *input, char *output)
 {
-  int dias, horas, minutos, segundos;
+  int dias = 0, horas = 0, minutos = 0, segundos = 0;
   sscanf(input, "%d %d:%d:%d", &dias, &horas, &minutos, &segundos);
   sprintf(output, "%02dd %02dh %02dm %02ds", dias, horas, minutos, segundos);
 }
@@ -1696,6 +1698,16 @@ bool recopilaTelegram()
   cadenaEnvio += (String(resultadoStr) + "\n");
   cadenaEnvio += "--------------------------------------------------------------------------------------------------\n                                       By M8AX Corp. " + convertirARomanos(anio);
   cadenaEnvio += F("\n--------------------------------------------------------------------------------------------------");
+  unsigned int nch = 0;
+  for (unsigned int i = 0; i < cadenaEnvio.length(); i++)
+    if (((uint8_t)cadenaEnvio[i] & 0xC0) != 0x80)
+      nch++;
+  Serial.println("M8AX - Longitud Mensaje: " + String(nch) + " Caracteres");
+  if (nch > 4080)
+  {
+    cadenaEnvio.replace("--------------------------------------------------------------------------------------------------", "----------------------------------------------------------------------");
+    Serial.println("M8AX - Mensaje Recortado, Era Demasiado Largo");
+  }
   bool enviado = enviarMensajeATelegram(cadenaEnvio);
   resultadoStr = "";
   resultadoStr.reserve(0);
@@ -1918,11 +1930,9 @@ void noDisplay_NoScreen(unsigned long mElapsed)
     Serial.printf(">>> M8AX - %s, %s | %s | UTC %s%d\n", Tresultado.first.c_str(), Tresultado.second.c_str(), salidaypuesta.c_str(), (zonilla >= 0) ? "+" : "", zonilla);
     String horaFinal = horaEnIngles(horas, minutos, segundos);
     Serial.printf(">>> M8AX - Hora En Inglés - %s\n", horaFinal.c_str());
-    horaFinal = "";
-    horaFinal.reserve(0);
+    horaFinal = "", horaFinal.reserve(0);
     Serial.printf(">>> M8AX - Señal WiFi ( RSSI ) -> %d dBm -> ( %s ) -> Canal WiFi - %s\n", WiFi.RSSI(), String(evaluarRSSI(String(WiFi.RSSI()))).c_str(), String(WiFi.channel()));
-    quediase.clear();
-    quediase.shrink_to_fit();
+    quediase.clear(), quediase.shrink_to_fit();
     char *hostname = strdup(WiFi.getHostname());
     Serial.printf(">>> M8AX - HostName - %s\n", strupr(hostname));
     free(hostname);

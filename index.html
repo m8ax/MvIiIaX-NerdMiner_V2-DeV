@@ -462,6 +462,128 @@
                          transition: none !important;
                     }
                }
+               .vid {
+                    background: var(--panel2);
+                    border: 1px solid var(--line);
+                    border-radius: var(--r);
+                    padding: clamp(12px, 2.5vw, 18px);
+                    text-align: center;
+               }
+               .vid h2 {
+                    margin: 0 0 6px;
+                    font-size: clamp(1.05rem, 2.6vw, 1.3rem);
+                    line-height: 1.25;
+               }
+               .vid p {
+                    margin: 0 0 14px;
+                    color: var(--muted);
+                    font-size: 0.92em;
+               }
+               .vid-frame {
+                    position: relative;
+                    aspect-ratio: 16 / 9;
+                    overflow: hidden;
+                    border-radius: var(--r);
+                    border: 1px solid var(--line);
+                    background: #000;
+                    box-shadow: 0 12px 30px rgba(0, 0, 0, 0.45);
+                    transition: border-color 0.2s;
+               }
+               .vid-frame:hover {
+                    border-color: var(--btc);
+               }
+               .vid-play,
+               .vid-frame iframe {
+                    position: absolute;
+                    inset: 0;
+                    width: 100%;
+                    height: 100%;
+                    border: 0;
+                    display: block;
+               }
+               .vid-play {
+                    overflow: hidden;
+                    cursor: pointer;
+               }
+               .vid-play:focus-visible {
+                    outline-offset: -4px;
+               }
+               .vid-play img {
+                    width: 100%;
+                    height: 100%;
+                    object-fit: cover;
+                    display: block;
+                    margin: 0;
+                    border: 0;
+                    transition:
+                         transform 0.4s,
+                         filter 0.3s;
+               }
+               .vid-play::after {
+                    content: "";
+                    position: absolute;
+                    inset: 0;
+                    background: linear-gradient(to top, rgba(0, 0, 0, 0.6), rgba(0, 0, 0, 0) 45%);
+               }
+               .vid-play:hover img {
+                    transform: scale(1.03);
+                    filter: brightness(1.1);
+               }
+               .vid-btn {
+                    position: absolute;
+                    left: 50%;
+                    top: 50%;
+                    z-index: 1;
+                    width: clamp(56px, 12vw, 84px);
+                    aspect-ratio: 1;
+                    transform: translate(-50%, -50%);
+                    border-radius: 50%;
+                    background: var(--btc);
+                    box-shadow:
+                         0 0 0 8px rgba(247, 147, 26, 0.25),
+                         0 10px 30px rgba(0, 0, 0, 0.5);
+                    transition: transform 0.2s;
+               }
+               .vid-btn::before {
+                    content: "";
+                    position: absolute;
+                    left: 54%;
+                    top: 50%;
+                    width: 38%;
+                    height: 38%;
+                    transform: translate(-50%, -50%);
+                    background: #1a1000;
+                    clip-path: polygon(15% 0, 100% 50%, 15% 100%);
+               }
+               .vid-play:hover .vid-btn {
+                    transform: translate(-50%, -50%) scale(1.1);
+               }
+               .vid-etq {
+                    position: absolute;
+                    left: 12px;
+                    bottom: 10px;
+                    z-index: 1;
+                    font: 700 0.78rem var(--mono);
+                    letter-spacing: 0.04em;
+                    color: #fff;
+                    text-shadow: 0 1px 4px rgba(0, 0, 0, 0.8);
+               }
+               .vid-link {
+                    display: inline-block;
+                    margin-top: 12px;
+                    font-size: 0.85rem;
+                    color: var(--info);
+                    text-decoration: none;
+               }
+               .vid-link:hover {
+                    text-decoration: underline;
+               }
+               @media (prefers-reduced-motion: reduce) {
+                    .vid-play img,
+                    .vid-btn {
+                         transition: none;
+                    }
+               }
           </style>
      </head>
 
@@ -539,6 +661,36 @@
                               <button class="btn" type="button">Abrir Manual PDF De M8AX - NerdMinerV2 - M8AX</button>
                          </a>
                     </div>
+                    <section class="vid" aria-labelledby="vidTitulo">
+                         <h2 id="vidTitulo">🎬 Mira Las Novedades En Vídeo</h2>
+                         <p>
+                              Todas Las Pantallas Nuevas Del Firmware En Acción: Juegos Que Juega La CPU Sola, Banner Gigante, Panel
+                              De Criptos Y Más. Dale Al Play Y Míralo.
+                         </p>
+                         <div class="vid-frame" id="vidFrame" data-id="PNA7BdiaQJc">
+                              <a
+                                   class="vid-play"
+                                   id="vidPlay"
+                                   href="https://youtu.be/PNA7BdiaQJc"
+                                   target="_blank"
+                                   rel="noopener"
+                                   aria-label="Reproducir el vídeo con las novedades del firmware"
+                              >
+                                   <img
+                                        src="https://i.ytimg.com/vi/PNA7BdiaQJc/hqdefault.jpg"
+                                        alt="Miniatura del vídeo con las novedades del firmware M8AX NerdMinerV2"
+                                        width="480"
+                                        height="270"
+                                        loading="lazy"
+                                   />
+                                   <span class="vid-btn" aria-hidden="true"></span>
+                                   <span class="vid-etq">▶ NOVEDADES · PANTALLAS NUEVAS</span>
+                              </a>
+                         </div>
+                         <a class="vid-link" href="https://youtu.be/PNA7BdiaQJc" target="_blank" rel="noopener"
+                              >Verlo Directamente En YouTube</a
+                         >
+                    </section>
                     <p class="note">
                          <span class="a"
                               >Si No Funciona, Activa El Modo Programación: Pulsa El Botón 1 (Abajo), Conéctalo Por USB
@@ -663,15 +815,19 @@
                     <p>
                          • ESP32-2432S028R: Si Metes Una Tarjeta MicroSD, Cada 2 Horas Guarda En Ella Las Estadísticas Del Minero ( Las
                          Mismas Que Se Envían A Telegram ): Tiempo Minando, Hashrate ( Máx. Y Mín. ), Temperatura, Shares, Mejor Dificultad,
-                         Precio De BTC, Espacio Libre En La MicroSD Y Más. Crea Un Archivo De Texto Por Día En La Carpeta
-                         <code>-M8AX-NerdMinerV2-PG-M8AX-Logs</code> ( <code>M8AX-Telegram-AAAAMMDD.TxT</code> ) Y Va Añadiendo Cada Informe Al
+                         Precio De BTC, Espacio Libre En La MicroSD Y Más. Crea Un Archivo De Texto Por Día, Ordenado Por Año Y Mes, Dentro De La Carpeta
+                         <code>-M8AX-NerdMinerV2-PG-M8AX-Logs</code> ( Por Ejemplo:
+                         <code>-M8AX-NerdMinerV2-PG-M8AX-Logs/M8AX-2026/M8AX-Noviembre/M8AX-Telegram-20261110.TxT</code> ) Y Va Añadiendo Cada Informe Al
                          Final. Funciona Aunque No Tengas Telegram Configurado, Y Si No Hay Tarjeta Simplemente No Guarda Nada. El Primer
                          Informe Se Genera A Las 2 Horas De Arrancar. La Tarjeta Solo Se Monta Un Momento Para Escribir, Así No Gasta RAM.
                     </p>
                     <p>
                          • ESP32-2432S028R: Pantallas Nuevas Donde La CPU Juega Sola: <strong>Tetris</strong>,
-                         <strong>Ajedrez</strong> ( CPU Contra CPU ), <strong>Pong</strong>, <strong>Krakout</strong> Y
-                         <strong>Snake</strong>. Y Otras Pantallas Nuevas: <strong>Juego De La Vida</strong>, <strong>Cifras</strong> ( Resuelve
+                         <strong>Ajedrez</strong> ( CPU Contra CPU ), <strong>Galaxian</strong> ( CPU Contra Los Marcianos ),
+                         <strong>Pong</strong>, <strong>Krakout</strong> Y
+                         <strong>Snake</strong>. Y Otras Pantallas Nuevas: <strong>Banner Gigante</strong> ( Letrero Con Letras Enormes Que Cruza La Pantalla Con
+                         Fecha, Hora, Hashrate Y Los Precios De Las 18 Criptos En 3 Tandas De 6, Cada Precio En USDT ),
+                         <strong>Juego De La Vida</strong>, <strong>Cifras</strong> ( Resuelve
                          Solo Cuentas Con 6 Números ), <strong>Primos A Saco</strong> ( Primos Gigantes Hasta 64 Bits ) Y
                          <strong>Lluvia Matrix</strong> Hexadecimal
                     </p>
@@ -733,16 +889,20 @@
                     <p>
                          • ESP32-2432S028R: If You Insert A MicroSD Card, It Saves The Miner Statistics To It Every 2 Hours ( The Same Ones
                          Sent To Telegram ): Mining Time, Hashrate ( Max. And Min. ), Temperature, Shares, Best Difficulty, BTC Price, Free
-                         MicroSD Space And More. It Creates One Text File Per Day In The Folder
-                         <code>-M8AX-NerdMinerV2-PG-M8AX-Logs</code> ( <code>M8AX-Telegram-YYYYMMDD.TxT</code> ) And Keeps Appending Each Report
+                         MicroSD Space And More. It Creates One Text File Per Day, Sorted By Year And Month, Inside The Folder
+                         <code>-M8AX-NerdMinerV2-PG-M8AX-Logs</code> ( For Example:
+                         <code>-M8AX-NerdMinerV2-PG-M8AX-Logs/M8AX-2026/M8AX-Noviembre/M8AX-Telegram-20261110.TxT</code> ) And Keeps Appending Each Report
                          To The End. It Works Even If You Don't Have Telegram Configured, And If There Is No Card It Simply Doesn't Save
                          Anything. The First Report Is Generated 2 Hours After Boot. The Card Is Only Mounted For A Moment To Write, So It
                          Doesn't Use Any RAM.
                     </p>
                     <p>
                          • ESP32-2432S028R: New Screens Where The CPU Plays Alone: <strong>Tetris</strong>,
-                         <strong>Chess</strong> ( CPU Vs CPU ), <strong>Pong</strong>, <strong>Krakout</strong> And
-                         <strong>Snake</strong>. And Other New Screens: <strong>Game Of Life</strong>, <strong>Countdown Numbers</strong> ( Solves
+                         <strong>Chess</strong> ( CPU Vs CPU ), <strong>Galaxian</strong> ( CPU Vs The Aliens ),
+                         <strong>Pong</strong>, <strong>Krakout</strong> And
+                         <strong>Snake</strong>. And Other New Screens: <strong>Giant Banner</strong> ( A Sign With Huge Letters Scrolling Across The Screen With
+                         Date, Time, Hashrate And The Prices Of All 18 Cryptos In 3 Batches Of 6, Each Price In USDT ),
+                         <strong>Game Of Life</strong>, <strong>Countdown Numbers</strong> ( Solves
                          Number Puzzles With 6 Numbers By Itself ), <strong>Primes Galore</strong> ( Giant Primes Up To 64 Bits ) And
                          <strong>Hexadecimal Matrix Rain</strong>
                     </p>
@@ -1028,6 +1188,34 @@
                          .catch(() => console.log("Autoplay bloqueado, requiere interacción del usuario."));
                }
                randomButton.addEventListener("click", playRandomAudio);
+
+               // Vídeo de YouTube: el reproductor no se carga hasta que se pulsa play (la página va más rápida y no hay cookies de terceros antes de tiempo)
+               (function () {
+                    const frame = document.getElementById("vidFrame");
+                    if (!frame) return;
+                    const id = frame.dataset.id,
+                         enlace = document.getElementById("vidPlay"),
+                         img = frame.querySelector("img");
+                    const grande = new Image();
+                    grande.onload = () => {
+                         if (grande.naturalWidth > 300) img.src = grande.src;
+                    };
+                    grande.src = "https://i.ytimg.com/vi/" + id + "/maxresdefault.jpg";
+                    enlace.addEventListener("click", (e) => {
+                         e.preventDefault();
+                         if (typeof stopAllAudio === "function") stopAllAudio();
+                         const f = document.createElement("iframe");
+                         f.src =
+                              "https://www.youtube-nocookie.com/embed/" + id + "?autoplay=1&rel=0&modestbranding=1&playsinline=1";
+                         f.title = "Novedades del firmware M8AX - NerdMinerV2";
+                         f.allow =
+                              "accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share";
+                         f.allowFullscreen = true;
+                         f.referrerPolicy = "strict-origin-when-cross-origin";
+                         frame.innerHTML = "";
+                         frame.appendChild(f);
+                    });
+               })();
 
                // Ticker de precios
                async function getCryptoPrices() {

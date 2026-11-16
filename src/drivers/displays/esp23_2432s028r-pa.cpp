@@ -58,7 +58,7 @@
  *           a la cadena. A cambio, reciben bitcoins recién creados como recompensa.
  *
  *
- *                     Tmp. De Programación 6H - 10070 Líneas De Código
+ *                     Tmp. De Programación 8H - 11230 Líneas De Código
  *                     ------------------------------------------------
  *
  ****************************************************************************************************************/
@@ -1816,8 +1816,10 @@ String sdEspacioTexto()
   sdHayTarjeta = false;
   if (!sdMonta())
     return "Espacio Libre En La MicroSD - SIN TARJETA";
+  uint32_t t0 = millis();
   uint64_t total = SD.totalBytes();
   uint64_t usado = SD.usedBytes();
+  Serial.printf("M8AX - SD usedBytes Tardó %lu ms\n", (unsigned long)(millis() - t0));
   uint64_t libre = total > usado ? total - usado : 0;
   String r = "Espacio Libre En La MicroSD - " + String((unsigned long)(libre / 1048576ULL)) + "/" + String((unsigned long)(total / 1048576ULL)) + " MB";
   SD.end(); // se desmonta antes de enviar a Telegram: no ocupa RAM durante la conexión segura
@@ -1836,8 +1838,17 @@ void sdGuardaTelegram(const String &texto)
   if (!sdMonta())
     return;
   struct tm *ti = localtime(&epoch);
+  static const char *MESES[12] = {"Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"};
+  char carpetaAnio[48];
+  snprintf(carpetaAnio, sizeof(carpetaAnio), "/-M8AX-NerdMinerV2-PG-M8AX-Logs/M8AX-%04d", ti->tm_year + 1900);
+  if (!SD.exists(carpetaAnio))
+    SD.mkdir(carpetaAnio);
+  char carpeta[64];
+  snprintf(carpeta, sizeof(carpeta), "%s/M8AX-%s", carpetaAnio, MESES[ti->tm_mon]);
+  if (!SD.exists(carpeta))
+    SD.mkdir(carpeta);
   char nombre[96];
-  snprintf(nombre, sizeof(nombre), "/-M8AX-NerdMinerV2-PG-M8AX-Logs/M8AX-Telegram-%04d%02d%02d.TxT", ti->tm_year + 1900, ti->tm_mon + 1, ti->tm_mday);
+  snprintf(nombre, sizeof(nombre), "%s/M8AX-Telegram-%04d%02d%02d.TxT", carpeta, ti->tm_year + 1900, ti->tm_mon + 1, ti->tm_mday);
   File w = SD.open(nombre, FILE_APPEND);
   if (w)
   {
@@ -1851,6 +1862,8 @@ void sdGuardaTelegram(const String &texto)
   SD.end(); // se desmonta: no ocupa RAM hasta el siguiente Telegram
   sdOk = false;
 }
+
+String bloqueCriptos(); // se define más abajo, junto a los precios
 
 bool recopilaTelegram()
 {
@@ -1940,6 +1953,8 @@ bool recopilaTelegram()
   cadenaEnvio += "WiFi RSSI " + String(WiFi.RSSI()) + " | Señal 1 A 6 - " + evaluarRSSI(String(WiFi.RSSI())) + "\n";
   cadenaEnvio += urlsm8ax[indice];
   cadenaEnvio += F("\n------------------------------------------------------------------------------------------------\n");
+  cadenaEnvio += bloqueCriptos();
+  cadenaEnvio += F("------------------------------------------------------------------------------------------------\n");
   if (mineria.valids.toInt() > 0)
   {
     cadenaEnvio += "||| ¡ BLOQUE MINADO ! ¡ A COBRAR ! :) |||\n";
@@ -1967,8 +1982,7 @@ bool recopilaTelegram()
     sumatele += 1; // sin bot no se envía nada, pero el contador de mensajes sigue subiendo
   if (enviado)
     sdGuardaTelegram(cadenaEnvio); // se guarda en la SD si Telegram lo recibió (o si no hay bot)
-  cadenaEnvio = "";
-  cadenaEnvio.reserve(0);
+  cadenaEnvio = "", cadenaEnvio.reserve(0);
   return enviado;
 }
 
@@ -2203,6 +2217,7 @@ Cripto criptos[NUM_CRIPTOS] = {
     {"ATOMUSDT", "ATOM", 0}};
 
 unsigned long ultimaActualizacionCriptos = 0;
+unsigned long ultimoOkCriptos = 0;
 
 bool obtenerPreciosCriptos()
 {
@@ -2226,7 +2241,8 @@ bool obtenerPreciosCriptos()
     WiFiClientSecure client;
     client.setInsecure();
     HTTPClient http;
-    http.setTimeout(4000);
+    http.setTimeout(2500);
+    http.setConnectTimeout(2500);
     if (!http.begin(client, String(hosts[h]) + query))
       continue;
     int httpCode = http.GET();
@@ -2263,6 +2279,7 @@ bool obtenerPreciosCriptos()
         }
         if (ok)
         {
+          ultimoOkCriptos = millis();
           Serial.println("M8AX - Precios De Criptos Actualizados (Binance)");
           for (int j = 0; j < NUM_CRIPTOS; j++)
           {
@@ -2298,6 +2315,69 @@ String formatoPrecio(float p)
   else
     snprintf(buf, sizeof(buf), "%.4f", p);
   return String(buf);
+}
+
+// Bloque de precios para Telegram y la SD: 6 columnas x 3 filas, todas las celdas del mismo ancho y centradas en 96 caracteres
+String bloqueCriptos()
+{
+  const int ANCHO = 96;
+  const int COLS = 6;
+  const int CELDA = ANCHO / COLS; // 16 caracteres por moneda
+  int wSim = 0, wPre = 0;
+  for (int i = 0; i < NUM_CRIPTOS; i++)
+  {
+    int a = strlen(criptos[i].simbolo);
+    int b = formatoPrecio(criptos[i].precio).length();
+    if (a > wSim)
+      wSim = a;
+    if (b > wPre)
+      wPre = b;
+  }
+  int wCelda = wSim + 1 + wPre;
+  if ((CELDA - wCelda) % 2) // que sobre lo mismo a izquierda y derecha
+  {
+    wPre++;
+    wCelda++;
+  }
+  int margen = (CELDA - wCelda) / 2;
+  if (margen < 0)
+    margen = 0;
+
+  String r;
+  r.reserve(450);
+  String t = " M8AX - PRECIOS CRIPTO (USDT) - M8AX ";
+  int izq = (ANCHO - (int)t.length()) / 2;
+  for (int i = 0; i < izq; i++)
+    r += '-';
+  r += t;
+  for (int i = 0; i < ANCHO - izq - (int)t.length(); i++)
+    r += '-';
+  r += "\n------------------------------------------------------------------------------------------------\n";
+  for (int fila = 0; fila < NUM_CRIPTOS / COLS; fila++)
+  {
+    for (int col = 0; col < COLS; col++)
+    {
+      Cripto &c = criptos[fila * COLS + col];
+      String precio = formatoPrecio(c.precio);
+      for (int i = 0; i < margen; i++)
+        r += ' ';
+      r += c.simbolo;
+      for (int i = strlen(c.simbolo); i < wSim; i++) // símbolo pegado a la izquierda
+        r += ' ';
+      r += ' ';
+      for (int i = precio.length(); i < wPre; i++) // precio pegado a la derecha
+        r += ' ';
+      r += precio;
+      for (int i = 0; i < margen; i++)
+        r += ' ';
+    }
+    r += '\n';
+  }
+  if (ultimoOkCriptos == 0)
+    r += "AVISO - Binance No Ha Contestado Desde Que Arrancó El Minero, Aún No Hay Precios\n";
+  else if ((millis() - ultimoOkCriptos) / 60000UL >= 10)
+    r += "AVISO - Binance No Contesta Desde Hace " + String((millis() - ultimoOkCriptos) / 60000UL) + " Min, Los Precios De Arriba Son De Entonces\n";
+  return r;
 }
 
 const int BARRA_CX[3] = {54, 159, 266}; // centro horizontal de cada recuadro
@@ -8453,7 +8533,6 @@ void tDisplay_Primos(unsigned long mElapsed)
   mineria = getMiningData(mElapsed);
   Serial.printf("M8AX - %s >>> Completados %s Share(s), %s Khashes, Prom. Hashrate %s KH/s %s°\n",
                 mineria.currentTime, mineria.completedShares.c_str(), mineria.totalKHashes.c_str(), mineria.currentHashRate.c_str(), mineria.temp.c_str());
-
   // Si hace rato que no nos llaman es que se ha visto otra pantalla: borrar antes de pintar
   bool limpiar = !pm.init || (millis() - pm.ultLlamada > 2500) || hasChangedScreen;
   if (!pm.init)
@@ -8516,7 +8595,6 @@ void tDisplay_Primos(unsigned long mElapsed)
         break;
       }
     }
-
     // Cambio automático cada 1 minuto
     if (autoPantallas && millis() - lastAutoChange >= 60000UL)
     {
@@ -8525,7 +8603,6 @@ void tDisplay_Primos(unsigned long mElapsed)
       lastAutoChange = millis();
       break;
     }
-
     // Calcular primos encontrados por segundo
     if (now - pmTiempoVelocidad >= 1000)
     {
@@ -8725,6 +8802,8 @@ static void cif_search(CifCtx &c, const int *vals, const int *ids, int n, int de
         switch (o)
         {
         case 0:
+          if (x + y > 1000000000)
+            continue;
           r = x + y;
           op = '+';
           break;
@@ -8735,7 +8814,7 @@ static void cif_search(CifCtx &c, const int *vals, const int *ids, int n, int de
           op = '-';
           break;
         case 2:
-          if (x == 1 || y == 1)
+          if (x == 1 || y == 1 || (int64_t)x * y > 1000000000)
             continue;
           r = x * y;
           op = '*';
@@ -9858,6 +9937,1087 @@ void esp32_2432S028R_SnakeScreen(unsigned long mElapsed)
   }
 }
 
+/****************************************************************************************************************
+ *
+ *   Escrito por: M8AX
+ *
+ *   Descripción: GALAXIAN CPU - Pantalla para ESP32_2432S028R
+ *   ----------------------------------------------------------
+ *
+ *   La CPU juega sola al Galaxian: una formación de 8x5 marcianos que se mueve de lado a lado y de vez en
+ *   cuando se lanzan en picado contra la nave, disparando por el camino. La nave decide ella sola: si hay un
+ *   disparo o un marciano en picado cerca se aparta, y si no se coloca debajo del marciano que más le
+ *   conviene (adelantándose a donde estará cuando llegue la bala) y dispara. Cada oleada es un poco más
+ *   rápida y pica más a menudo, y como la CPU esquiva peor cuanto más avanza el juego, tarde o temprano la
+ *   matan. Tiene 3 vidas; al perder la última sale GAME OVER y empieza otra partida xD...
+ *
+ *   Arriba a la izquierda la hora y arriba a la derecha el hashrate, como en las demás. Abajo van los
+ *   puntos, la oleada, las vidas y el récord.
+ *
+ *   LED: disparo = rojo corto, marciano destruido = verde, y si matan a la nave se encienden los tres a la vez.
+ *
+ *   Memoria: al arrancar el minero no ocupa NADA. Las tablas (poco más de 1 KB) se piden con malloc al entrar
+ *   en la pantalla y se liberan al salir a otra, como en el ajedrez. Solo quedan fijos el récord y las
+ *   partidas (8 bytes). Si no hubiera RAM, se salta la pantalla sin pintar nada.
+ *
+ *   Para activarla hay que pegar este bloque antes de analiCadaSegundo y meter
+ *   esp32_2432S028R_GalaxianScreen en el array esp32_2432S028RCyclicScreens[].
+ *
+ ****************************************************************************************************************/
+
+#define GAL_COLS 8
+#define GAL_ROWS 5
+#define GAL_N (GAL_COLS * GAL_ROWS)
+#define GAL_DX 26
+#define GAL_DY 12
+#define GAL_AW 12
+#define GAL_AH 7
+#define GAL_FY 36
+#define GAL_FXMIN 4
+#define GAL_FXMAX 122
+#define GAL_TOP 28
+#define GAL_SHIPY 146
+#define GAL_SW 13
+#define GAL_SH 8
+#define GAL_FRAME_MS 25
+#define GAL_FIN_MS 3000
+#define GAL_SLICE_MS 5000 // tandas largas, como en las demás
+#define GAL_VIDAS 3
+#define GAL_MAXB 3
+#define GAL_MAXE 5
+#define GAL_MAXX 6
+
+struct GalAlien
+{
+  int x, y;   // donde está
+  int dx, dy; // donde se pintó la última vez
+  int x0;
+  float ph;
+  uint8_t vivo, modo, amp; // modo: 0 formación, 1 picando, 2 volviendo
+};
+
+struct GalBala
+{
+  int x, y;
+  bool on;
+};
+
+struct GalExp
+{
+  int x, y, w, h, ttl;
+};
+
+struct GalMem
+{
+  GalAlien al[GAL_N];
+  GalBala bp[GAL_MAXB]; // las de la nave
+  GalBala be[GAL_MAXE]; // las de los marcianos
+  GalExp ex[GAL_MAXX];
+  int fx, fdir;
+  int nx, nxPintada;
+  uint16_t nCol;
+  uint8_t estado; // 0 jugando, 1 nave explotando, 2 game over, 3 oleada limpia
+  uint8_t vidas, nivel, vivos, ledPrio;
+  bool anim, sucio;
+  uint32_t puntos, fr;
+  unsigned long finAt, disparoAt, picadoAt, animAt, inmuneHasta, ledOff;
+};
+static GalMem *galM = NULL;
+static uint32_t galRecord = 0;
+static uint32_t galPartidas = 0;
+static const uint16_t GAL_COL[GAL_ROWS] = {TFT_MAGENTA, TFT_ORANGE, TFT_CYAN, TFT_GREEN, TFT_SKYBLUE};
+
+static void galLed(bool r, bool g, bool b, uint16_t ms, uint8_t prio)
+{
+  unsigned long now = millis();
+  if (galM->ledOff && now < galM->ledOff && prio < galM->ledPrio)
+    return;
+  digitalWrite(LED_PIN, r ? LOW : HIGH);
+  digitalWrite(LED_PIN_G, g ? LOW : HIGH);
+  digitalWrite(LED_PIN_B, b ? LOW : HIGH);
+  galM->ledOff = now + ms;
+  galM->ledPrio = prio;
+}
+
+static void galDibujaAlien(int x, int y, uint16_t c, bool f)
+{
+  tft.fillRect(x + 2, y, 8, 2, c);
+  tft.fillRect(x, y + 2, 12, 3, c);
+  tft.fillRect(x + 3, y + 2, 2, 1, TFT_BLACK);
+  tft.fillRect(x + 7, y + 2, 2, 1, TFT_BLACK);
+  if (f)
+  {
+    tft.fillRect(x, y + 5, 2, 2, c);
+    tft.fillRect(x + 10, y + 5, 2, 2, c);
+  }
+  else
+  {
+    tft.fillRect(x + 2, y + 5, 2, 2, c);
+    tft.fillRect(x + 8, y + 5, 2, 2, c);
+  }
+}
+
+static void galDibujaNave(int x, uint16_t c)
+{
+  tft.fillRect(x + 5, GAL_SHIPY, 3, 2, c);
+  tft.fillRect(x + 3, GAL_SHIPY + 2, 7, 2, c);
+  tft.fillRect(x, GAL_SHIPY + 4, 13, 4, c);
+}
+
+static void galStatus()
+{
+  char b[64];
+  uint32_t rec = (galM->puntos > galRecord) ? galM->puntos : galRecord;
+  snprintf(b, sizeof(b), "PTS %06lu   NIV %02u   VIDAS %u   REC %06lu",
+           (unsigned long)galM->puntos, galM->nivel, galM->vidas, (unsigned long)rec);
+  tft.setFreeFont(NULL);
+  tft.setTextFont(1);
+  tft.setTextSize(1);
+  tft.setTextColor(TFT_WHITE, TFT_BLACK);
+  tft.setTextDatum(TC_DATUM);
+  tft.setTextPadding(312);
+  tft.drawString(b, 160, 160);
+  tft.setTextPadding(0);
+  tft.setTextDatum(TL_DATUM);
+}
+
+static void galTextoFin()
+{
+  tft.setFreeFont(NULL);
+  tft.setTextFont(1);
+  tft.setTextSize(3);
+  tft.setTextColor(TFT_RED, TFT_BLACK);
+  tft.setTextDatum(MC_DATUM);
+  tft.drawString("GAME OVER", 160, 95);
+  tft.setTextDatum(TL_DATUM);
+  tft.setTextSize(1);
+}
+
+static void galExplota(int x, int y, int w, int h, int ttl)
+{
+  for (int i = 0; i < GAL_MAXX; i++)
+    if (!galM->ex[i].ttl)
+    {
+      galM->ex[i] = {x, y, w, h, ttl};
+      return;
+    }
+}
+
+static void galExplosiones()
+{
+  for (int i = 0; i < GAL_MAXX; i++)
+  {
+    GalExp *e = &galM->ex[i];
+    if (!e->ttl)
+      continue;
+    if (--e->ttl == 0)
+    {
+      tft.fillRect(e->x, e->y, e->w, e->h, TFT_BLACK);
+      continue;
+    }
+    uint16_t c = (e->ttl & 1) ? TFT_YELLOW : TFT_RED;
+    tft.fillRect(e->x + e->w / 3, e->y, e->w / 3, e->h, c);
+    tft.fillRect(e->x, e->y + e->h / 3, e->w, e->h / 3, c);
+  }
+}
+
+static void galOleada()
+{
+  galM->fx = 60;
+  galM->fdir = 1;
+  for (int i = 0; i < GAL_N; i++)
+  {
+    int hx = galM->fx + (i % GAL_COLS) * GAL_DX;
+    int hy = GAL_FY + (i / GAL_COLS) * GAL_DY;
+    galM->al[i] = {hx, hy, hx, hy, 0, 0.0f, 1, 0, 0};
+  }
+  for (int i = 0; i < GAL_MAXB; i++)
+    galM->bp[i].on = false;
+  for (int i = 0; i < GAL_MAXE; i++)
+    galM->be[i].on = false;
+  galM->vivos = GAL_N;
+  galM->picadoAt = millis() + 1500;
+}
+
+static void galNueva()
+{
+  memset(galM, 0, sizeof(GalMem));
+  galM->vidas = GAL_VIDAS;
+  galM->nivel = 1;
+  galM->nx = 150;
+  galM->nxPintada = 150;
+  galM->sucio = true;
+  galOleada();
+  digitalWrite(LED_PIN, HIGH);
+  digitalWrite(LED_PIN_G, HIGH);
+  digitalWrite(LED_PIN_B, HIGH);
+}
+
+static void galPintaTodo()
+{
+  tft.fillRect(0, GAL_TOP, 320, 170 - GAL_TOP, TFT_BLACK);
+  for (int i = 0; i < GAL_N; i++)
+  {
+    GalAlien *a = &galM->al[i];
+    if (!a->vivo)
+      continue;
+    galDibujaAlien(a->x, a->y, GAL_COL[i / GAL_COLS], galM->anim);
+    a->dx = a->x;
+    a->dy = a->y;
+  }
+  if (galM->estado == 0 || galM->estado == 3)
+  {
+    galDibujaNave(galM->nx, TFT_WHITE);
+    galM->nxPintada = galM->nx;
+    galM->nCol = TFT_WHITE;
+  }
+  galStatus();
+  if (galM->estado == 2)
+    galTextoFin();
+}
+
+static void galDisparo()
+{
+  for (int i = 0; i < GAL_MAXB; i++)
+    if (!galM->bp[i].on)
+    {
+      galM->bp[i] = {galM->nx + 6, GAL_SHIPY - 6, true};
+      galM->disparoAt = millis() + 230;
+      galLed(true, false, false, 45, 0);
+      return;
+    }
+}
+
+static void galDisparoEnemigo(GalAlien *a)
+{
+  for (int i = 0; i < GAL_MAXE; i++)
+    if (!galM->be[i].on)
+    {
+      galM->be[i] = {a->x + 5, a->y + GAL_AH, true};
+      return;
+    }
+}
+
+static void galMata(int i, bool puntua)
+{
+  GalAlien *a = &galM->al[i];
+  tft.fillRect(a->dx, a->dy, GAL_AW, GAL_AH, TFT_BLACK);
+  galExplota(a->x, a->y, GAL_AW, GAL_AH, 6);
+  a->vivo = 0;
+  if (galM->vivos)
+    galM->vivos--;
+  if (puntua)
+  {
+    uint32_t pts = 10 * (GAL_ROWS - i / GAL_COLS);
+    if (a->modo != 0)
+      pts *= 3;
+    galM->puntos += pts;
+    galM->sucio = true;
+    galLed(false, true, false, 110, 1);
+  }
+}
+
+static void galNaveMuere()
+{
+  tft.fillRect(galM->nxPintada, GAL_SHIPY, GAL_SW, GAL_SH, TFT_BLACK);
+  galExplota(galM->nxPintada - 4, GAL_SHIPY - 3, 21, 14, 16);
+  galM->estado = 1;
+  galM->finAt = millis();
+  if (galM->vidas)
+    galM->vidas--;
+  galM->sucio = true;
+  galLed(true, true, true, 450, 2);
+}
+
+static void galFin()
+{
+  galM->estado = 2;
+  galM->finAt = millis();
+  if (galM->puntos > galRecord)
+    galRecord = galM->puntos;
+  galPartidas++;
+  Serial.printf("M8AX - Galaxian: partida %lu | puntos %lu | oleada %u | record %lu\n",
+                (unsigned long)galPartidas, (unsigned long)galM->puntos, galM->nivel, (unsigned long)galRecord);
+  galStatus();
+  galTextoFin();
+}
+
+// Aquí decide la CPU: esquivar si hay peligro, y si no, apuntar y disparar
+static void galIA(unsigned long now)
+{
+  int cx = galM->nx + 6;
+  int ventana = 46 - galM->nivel * 3;
+  if (ventana < 22)
+    ventana = 22;
+  int yPeor = -1, dPeor = 0;
+  for (int i = 0; i < GAL_MAXE; i++)
+  {
+    GalBala *b = &galM->be[i];
+    if (b->on && b->y > GAL_SHIPY - ventana && b->y < GAL_SHIPY + 4 && abs(b->x + 1 - cx) < 14 && b->y > yPeor)
+    {
+      yPeor = b->y;
+      dPeor = b->x + 1 - cx;
+    }
+  }
+  for (int i = 0; i < GAL_N; i++)
+  {
+    GalAlien *a = &galM->al[i];
+    if (a->vivo && a->modo == 1 && a->y > GAL_SHIPY - ventana - 8 && abs(a->x + 6 - cx) < 20 && a->y > yPeor)
+    {
+      yPeor = a->y;
+      dPeor = a->x + 6 - cx;
+    }
+  }
+
+  int dir = 0, paso = 3;
+  if (yPeor >= 0)
+  {
+    dir = (dPeor > 0) ? -1 : 1;
+    if (dPeor == 0)
+      dir = (cx > 160) ? -1 : 1;
+    if ((galM->nx <= 3 && dir < 0) || (galM->nx >= 320 - GAL_SW - 3 && dir > 0))
+      dir = -dir;
+    paso = 4;
+  }
+  else
+  {
+    int mejor = -1, mejorD = 9999;
+    for (int i = 0; i < GAL_N; i++)
+    {
+      GalAlien *a = &galM->al[i];
+      if (!a->vivo)
+        continue;
+      int d = abs(a->x + 6 - cx);
+      if (a->modo == 1 && a->y > 50)
+        d -= 400;
+      if (d < mejorD)
+      {
+        mejorD = d;
+        mejor = i;
+      }
+    }
+    if (mejor >= 0)
+    {
+      GalAlien *a = &galM->al[mejor];
+      int lead = 0;
+      if (a->modo == 0)
+        lead = galM->fdir * ((galM->nivel > 3) ? 2 : 1) * ((GAL_SHIPY - a->y) / 6);
+      int d = a->x + 6 + lead - cx;
+      if (abs(d) > 3)
+        dir = (d > 0) ? 1 : -1;
+      if (abs(d) <= 5 && now >= galM->disparoAt)
+        galDisparo();
+    }
+  }
+  galM->nx += dir * paso;
+  if (galM->nx < 2)
+    galM->nx = 2;
+  if (galM->nx > 320 - GAL_SW - 2)
+    galM->nx = 320 - GAL_SW - 2;
+}
+
+static void galFrame(unsigned long now)
+{
+  galM->fr++;
+
+  if (galM->estado == 2)
+  {
+    if (now - galM->finAt >= GAL_FIN_MS)
+    {
+      galNueva();
+      galPintaTodo();
+    }
+    return;
+  }
+  if (galM->estado == 1 && now - galM->finAt >= 1200)
+  {
+    if (galM->vidas > 0)
+    {
+      galM->estado = 0;
+      galM->nx = 150;
+      galM->nxPintada = 150;
+      galM->nCol = 0;
+      galM->inmuneHasta = now + 1500;
+    }
+    else
+    {
+      galFin();
+      return;
+    }
+  }
+  if (galM->estado == 3 && now - galM->finAt >= 1200)
+  {
+    galM->nivel++;
+    galOleada();
+    galM->estado = 0;
+    galM->sucio = true;
+    galPintaTodo();
+  }
+
+  bool cambio = false;
+  if (now - galM->animAt >= 350)
+  {
+    galM->anim = !galM->anim;
+    galM->animAt = now;
+    cambio = true;
+  }
+
+  int paso = (galM->nivel > 3) ? 2 : 1;
+  galM->fx += galM->fdir * paso;
+  if (galM->fx >= GAL_FXMAX)
+  {
+    galM->fx = GAL_FXMAX;
+    galM->fdir = -1;
+  }
+  else if (galM->fx <= GAL_FXMIN)
+  {
+    galM->fx = GAL_FXMIN;
+    galM->fdir = 1;
+  }
+
+  int cx = galM->nx + 6;
+  bool vulnerable = (galM->estado == 0 && now >= galM->inmuneHasta);
+
+  for (int i = 0; i < GAL_N; i++)
+  {
+    GalAlien *a = &galM->al[i];
+    if (!a->vivo)
+      continue;
+    int hx = galM->fx + (i % GAL_COLS) * GAL_DX;
+    int hy = GAL_FY + (i / GAL_COLS) * GAL_DY;
+    if (a->modo == 0)
+    {
+      a->x = hx;
+      a->y = hy;
+    }
+    else if (a->modo == 1)
+    {
+      a->y += (galM->nivel > 2) ? 3 : 2;
+      a->ph += 0.11f;
+      if (galM->nivel > 1 && (galM->fr & 1))
+        a->x0 += (cx > a->x0 + 6) ? 1 : -1;
+      int xx = a->x0 + (int)(a->amp * sinf(a->ph));
+      if (xx < 0)
+        xx = 0;
+      if (xx > 308)
+        xx = 308;
+      a->x = xx;
+      if (a->y > 98 && a->y < GAL_SHIPY - 24 && (int)(esp_random() % 1000) < 7 + galM->nivel * 2)
+        galDisparoEnemigo(a);
+      if (a->y >= GAL_SHIPY + 2)
+      {
+        a->modo = 2;
+        a->x = hx;
+        a->y = GAL_TOP;
+      }
+    }
+    else
+    {
+      a->x = hx;
+      a->y += 2;
+      if (a->y >= hy)
+      {
+        a->y = hy;
+        a->modo = 0;
+      }
+    }
+    if (a->modo == 1 && vulnerable && a->x + GAL_AW > galM->nx && a->x < galM->nx + GAL_SW && a->y + GAL_AH > GAL_SHIPY)
+    {
+      galMata(i, false);
+      galNaveMuere();
+      vulnerable = false;
+      continue;
+    }
+    if (cambio || a->x != a->dx || a->y != a->dy)
+    {
+      tft.fillRect(a->dx, a->dy, GAL_AW, GAL_AH, TFT_BLACK);
+      galDibujaAlien(a->x, a->y, GAL_COL[i / GAL_COLS], galM->anim);
+      a->dx = a->x;
+      a->dy = a->y;
+    }
+  }
+
+  if (galM->estado != 3 && now >= galM->picadoAt)
+  {
+    int picando = 0;
+    for (int i = 0; i < GAL_N; i++)
+      if (galM->al[i].vivo && galM->al[i].modo == 1)
+        picando++;
+    int maxPicando = 1 + galM->nivel / 2;
+    if (maxPicando > 4)
+      maxPicando = 4;
+    if (picando < maxPicando)
+    {
+      for (int t = 0; t < 10; t++)
+      {
+        GalAlien *a = &galM->al[esp_random() % GAL_N];
+        if (a->vivo && a->modo == 0)
+        {
+          a->modo = 1;
+          a->x0 = a->x;
+          a->ph = 0.0f;
+          a->amp = 18 + esp_random() % 24;
+          break;
+        }
+      }
+    }
+    int base = 1700 - galM->nivel * 170;
+    if (base < 450)
+      base = 450;
+    galM->picadoAt = now + base + esp_random() % 500;
+  }
+
+  if (galM->estado == 0 || galM->estado == 3)
+  {
+    if (galM->estado == 0)
+      galIA(now);
+    uint16_t col = (now < galM->inmuneHasta) ? TFT_CYAN : TFT_WHITE;
+    if (galM->nx != galM->nxPintada || col != galM->nCol)
+    {
+      tft.fillRect(galM->nxPintada, GAL_SHIPY, GAL_SW, GAL_SH, TFT_BLACK);
+      galDibujaNave(galM->nx, col);
+      galM->nxPintada = galM->nx;
+      galM->nCol = col;
+    }
+  }
+
+  for (int i = 0; i < GAL_MAXB; i++)
+  {
+    GalBala *b = &galM->bp[i];
+    if (!b->on)
+      continue;
+    tft.fillRect(b->x, b->y, 2, 6, TFT_BLACK);
+    b->y -= 6;
+    if (b->y < GAL_TOP)
+    {
+      b->on = false;
+      continue;
+    }
+    for (int j = 0; j < GAL_N; j++)
+    {
+      GalAlien *a = &galM->al[j];
+      if (a->vivo && b->x + 1 >= a->x && b->x <= a->x + GAL_AW - 1 && b->y <= a->y + GAL_AH - 1 && b->y + 5 >= a->y)
+      {
+        galMata(j, true);
+        b->on = false;
+        break;
+      }
+    }
+    if (b->on)
+      tft.fillRect(b->x, b->y, 2, 6, TFT_YELLOW);
+  }
+
+  for (int i = 0; i < GAL_MAXE; i++)
+  {
+    GalBala *b = &galM->be[i];
+    if (!b->on)
+      continue;
+    tft.fillRect(b->x, b->y, 2, 5, TFT_BLACK);
+    b->y += (galM->nivel > 3) ? 4 : 3;
+    if (b->y > GAL_SHIPY + GAL_SH)
+    {
+      b->on = false;
+      continue;
+    }
+    if (vulnerable && b->x + 1 >= galM->nx && b->x <= galM->nx + GAL_SW - 1 && b->y + 4 >= GAL_SHIPY)
+    {
+      b->on = false;
+      galNaveMuere();
+      vulnerable = false;
+      continue;
+    }
+    tft.fillRect(b->x, b->y, 2, 5, TFT_RED);
+  }
+
+  galExplosiones();
+
+  if (galM->vivos == 0 && galM->estado == 0)
+  {
+    galM->estado = 3;
+    galM->finAt = now;
+  }
+  if (galM->sucio)
+  {
+    galStatus();
+    galM->sucio = false;
+  }
+}
+
+void esp32_2432S028R_GalaxianScreen(unsigned long mElapsed)
+{
+  mineria = getMiningData(mElapsed);
+  Serial.printf("M8AX - %s >>> Completados %s Share(s), %s Khashes, Prom. Hashrate %s KH/s %s°\n",
+                mineria.currentTime, mineria.completedShares.c_str(), mineria.totalKHashes.c_str(), mineria.currentHashRate.c_str(), mineria.temp.c_str());
+
+  bool redraw = hasChangedScreen;
+  if (!galM)
+  {
+    galM = (GalMem *)malloc(sizeof(GalMem));
+    if (!galM)
+    {
+      Serial.println("M8AX - Galaxian: no hay RAM libre");
+      delay(1000);
+      return;
+    }
+    galNueva();
+    redraw = true;
+  }
+  const int galMiPantalla = currentDisplayDriver->current_cyclic_screen;
+  if (redraw)
+  {
+    tft.fillRect(0, 0, 320, 170, TFT_BLACK);
+    galPintaTodo();
+  }
+  printPoolData(); // barra de abajo, solo se repinta cuando toca
+  hasChangedScreen = false;
+
+  char horaStr[9] = "";
+  char lastHora[9] = "";
+  char hashStr[16];
+  char lastHash[16] = "";
+
+  unsigned long start = millis();
+  unsigned long lastMiningUpdate = 0;
+  unsigned long lastTouchChk = 0;
+  unsigned long siguiente = start;
+  pongLeds(false);
+  galM->ledOff = 0;
+
+  while (millis() - start < GAL_SLICE_MS)
+  {
+    unsigned long now = millis();
+
+    // ---- Táctil (misma lógica que el Pong) ----
+    if (now - lastTouchChk >= 40 && now - previousTouchMillis >= 500)
+    {
+      lastTouchChk = now;
+      int16_t t_x, t_y;
+      if (touch.getXY(t_x, t_y))
+      {
+        previousTouchMillis = now;
+        autoPantallas = false;
+        if (((t_x > 109) && (t_x < 211)) && ((t_y > 185) && (t_y < 241)))
+        {
+          bottomScreenBlue ^= true;
+          hasChangedScreen = true;
+        }
+        else if ((t_x > 235) && ((t_y > 0) && (t_y < 16)))
+        {
+          esp32_2432S028R_AlternateScreenState();
+        }
+        else if (t_x > 160)
+        {
+          currentDisplayDriver->current_cyclic_screen = (currentDisplayDriver->current_cyclic_screen + 1) % currentDisplayDriver->num_cyclic_screens;
+        }
+        else
+        {
+          currentDisplayDriver->current_cyclic_screen = currentDisplayDriver->current_cyclic_screen - 1;
+          if (currentDisplayDriver->current_cyclic_screen < 0)
+            currentDisplayDriver->current_cyclic_screen = currentDisplayDriver->num_cyclic_screens - 1;
+        }
+        break;
+      }
+    }
+    // Cambio automático cada 1 minuto
+    if (autoPantallas && millis() - lastAutoChange >= 60000UL)
+    {
+      currentDisplayDriver->current_cyclic_screen =
+          (currentDisplayDriver->current_cyclic_screen + 1) % currentDisplayDriver->num_cyclic_screens;
+      lastAutoChange = millis();
+      break;
+    }
+    if (galM->ledOff && now >= galM->ledOff)
+    {
+      pongLeds(false);
+      galM->ledOff = 0;
+      galM->ledPrio = 0;
+    }
+
+    if (now >= siguiente)
+    {
+      galFrame(now);
+      siguiente = millis() + GAL_FRAME_MS;
+    }
+
+    // ---- Hora (izquierda) y hashrate (derecha), arriba como en las demás ----
+    if (now - lastMiningUpdate >= 1000)
+    {
+      lastMiningUpdate = now;
+      mineria = getMiningData(mElapsed);
+      snprintf(hashStr, sizeof(hashStr), "%s", mineria.currentHashRate.c_str());
+      time_t epoch = (time_t)timeClient.getEpochTime();
+      struct tm *ti = localtime(&epoch);
+      snprintf(horaStr, sizeof(horaStr), "%02d:%02d:%02d", ti->tm_hour, ti->tm_min, ti->tm_sec);
+      if (strcmp(horaStr, lastHora) != 0 || strcmp(hashStr, lastHash) != 0)
+      {
+        pongDrawHud(hashStr, horaStr);
+        strcpy(lastHora, horaStr);
+        strcpy(lastHash, hashStr);
+      }
+    }
+
+    delay(2);
+  }
+
+  pongLeds(false);
+  tft.setTextPadding(0);
+  tft.setTextDatum(TL_DATUM);
+
+  if (currentDisplayDriver->current_cyclic_screen != galMiPantalla)
+  {
+    free(galM);
+    galM = NULL;
+  }
+
+  cuentita++;
+  if (cuentita == 15)
+  {
+    ajustarZonaHoraria();
+    obtenerLocYTemp();
+    obtenerVariacionesBTC(variacion1dia, variacion1semana);
+  }
+}
+
+/****************************************************************************************************************
+ *
+ *   Escrito por: M8AX
+ *
+ *   Descripción: BANNER M8AX - Pantalla para ESP32_2432S028R
+ *   --------------------------------------------------------
+ *
+ *   Un letrero con letras gigantes que entra por la derecha, cruza la pantalla hasta salir por la izquierda y
+ *   vuelta a empezar, cada pasada de un color distinto. El mensaje es:
+ *
+ *       M8AX - FECHA - HORA - HASHRATE KH/s
+ *
+ *   y se vuelve a montar al empezar cada pasada, así que fecha, hora y hashrate van siempre al día.
+ *
+ *   LED: cambia cada 150 ms, rojo, verde, azul y otra vez rojo, uno solo encendido cada vez.
+ *
+ *   La librería de la pantalla no deja pasar del tamaño 7 de letra, así que aquí las letras se dibujan a mano:
+ *   cada píxel de una letra de 5x7 es un bloque de BAN_S x BAN_S píxeles de pantalla. Con BAN_S 24 las letras
+ *   ocupan toda la altura (168 píxeles). Para moverlas no se repinta nada: en cada paso solo se tapa la
+ *   franja que se queda atrás y se pinta la que entra por delante, así que no parpadea.
+ *
+ *   Memoria: al arrancar el minero no ocupa NADA. La estructura del mensaje (unos 100 bytes) se pide al entrar
+ *   en la pantalla y se libera al salir a otra, como en el ajedrez. Si no hubiera RAM, se salta la pantalla
+ *   sin pintar nada.
+ *
+ *   Ajustes: BAN_S (tamaño de los bloques, la letra mide 6 x BAN_S de ancho y 7 x BAN_S de alto; se centra
+ *   sola en vertical) y BAN_PXS (velocidad).
+ *
+ *   Para activarla hay que pegar este bloque antes de analiCadaSegundo y meter
+ *   esp32_2432S028R_BannerScreen en el array esp32_2432S028RCyclicScreens[].
+ *
+ ****************************************************************************************************************/
+
+#define BAN_S 24                      // lado de cada bloque
+#define BAN_Y ((170 - 7 * BAN_S) / 2) // la letra queda centrada en vertical
+#define BAN_MAXC (320 / BAN_S + 4)    // columnas que pueden verse a la vez
+#define BAN_PXS 500                   // píxeles por segundo
+#define BAN_FRAME_MS 20
+#define BAN_LED_MS 150
+#define BAN_SLICE_MS 5000                                              // tandas largas, como en las demás
+#define BAN_USDT 1                                                     // 1 = pone " USDT" detrás de cada precio
+#define BAN_POR_GRUPO 6                                                // criptos por tanda
+#define BAN_GRUPOS ((NUM_CRIPTOS + BAN_POR_GRUPO - 1) / BAN_POR_GRUPO) // 18 criptos = 3 tandas
+#define BAN_HASH_TODOS 0                                               // 1 = el hashrate sale en las 3 tandas, 0 = solo en la primera
+#define BAN_MSG_MAX 480                                                // sitio de sobra para fecha, día, hora, hashrate y 6 criptos
+
+static uint8_t banGrupo = 0; // tanda actual, se conserva al salir y volver al banner
+
+struct BanMem
+{
+  char msg[BAN_MSG_MAX];
+  int len;
+  int x;
+  uint8_t color;
+  uint8_t led;
+  unsigned long ledAt;
+  unsigned long t;
+};
+static BanMem *banM = NULL;
+static const uint16_t BAN_COLORS[8] = {TFT_RED, TFT_GREEN, TFT_CYAN, TFT_YELLOW, TFT_MAGENTA, TFT_ORANGE, TFT_WHITE, TFT_SKYBLUE};
+
+// Letras de 5x7: el primer byte es el carácter y los otros cinco las columnas (el bit 0 es la fila de arriba)
+static const uint8_t BAN_FONT[][6] = {
+    {' ', 0x00, 0x00, 0x00, 0x00, 0x00},
+    {'-', 0x08, 0x08, 0x08, 0x08, 0x08},
+    {'.', 0x00, 0x60, 0x60, 0x00, 0x00},
+    {'/', 0x20, 0x10, 0x08, 0x04, 0x02},
+    {'0', 0x3E, 0x51, 0x49, 0x45, 0x3E},
+    {'1', 0x00, 0x42, 0x7F, 0x40, 0x00},
+    {'2', 0x72, 0x49, 0x49, 0x49, 0x46},
+    {'3', 0x21, 0x41, 0x49, 0x4D, 0x33},
+    {'4', 0x18, 0x14, 0x12, 0x7F, 0x10},
+    {'5', 0x27, 0x45, 0x45, 0x45, 0x39},
+    {'6', 0x3C, 0x4A, 0x49, 0x49, 0x31},
+    {'7', 0x41, 0x21, 0x11, 0x09, 0x07},
+    {'8', 0x36, 0x49, 0x49, 0x49, 0x36},
+    {'9', 0x46, 0x49, 0x49, 0x29, 0x1E},
+    {':', 0x00, 0x36, 0x36, 0x00, 0x00},
+    {'A', 0x7C, 0x12, 0x11, 0x12, 0x7C},
+    {'H', 0x7F, 0x08, 0x08, 0x08, 0x7F},
+    {'K', 0x7F, 0x08, 0x14, 0x22, 0x41},
+    {'M', 0x7F, 0x02, 0x0C, 0x02, 0x7F},
+    {'X', 0x63, 0x14, 0x08, 0x14, 0x63},
+    {'B', 0x7F, 0x49, 0x49, 0x49, 0x36},
+    {'C', 0x3E, 0x41, 0x41, 0x41, 0x22},
+    {'D', 0x7F, 0x41, 0x41, 0x22, 0x1C},
+    {'E', 0x7F, 0x49, 0x49, 0x49, 0x41},
+    {'G', 0x3E, 0x41, 0x49, 0x49, 0x7A},
+    {'I', 0x00, 0x41, 0x7F, 0x41, 0x00},
+    {'J', 0x20, 0x40, 0x41, 0x3F, 0x01},
+    {'L', 0x7F, 0x40, 0x40, 0x40, 0x40},
+    {'N', 0x7F, 0x04, 0x08, 0x10, 0x7F},
+    {'O', 0x3E, 0x41, 0x41, 0x41, 0x3E},
+    {'R', 0x7F, 0x09, 0x19, 0x29, 0x46},
+    {'S', 0x46, 0x49, 0x49, 0x49, 0x31},
+    {'T', 0x01, 0x01, 0x7F, 0x01, 0x01},
+    {'U', 0x3F, 0x40, 0x40, 0x40, 0x3F},
+    {'V', 0x1F, 0x20, 0x40, 0x20, 0x1F},
+    {'P', 0x7F, 0x09, 0x09, 0x09, 0x06},
+    {'s', 0x48, 0x54, 0x54, 0x54, 0x24}};
+
+static void banLed(uint8_t k)
+{
+  digitalWrite(LED_PIN, k == 0 ? LOW : HIGH);
+  digitalWrite(LED_PIN_G, k == 1 ? LOW : HIGH);
+  digitalWrite(LED_PIN_B, k == 2 ? LOW : HIGH);
+}
+
+static const char *BAN_DIAS[7] = {"DOMINGO", "LUNES", "MARTES", "MIERCOLES", "JUEVES", "VIERNES", "SABADO"};
+
+static void banMensaje(unsigned long mElapsed)
+{
+  mineria = getMiningData(mElapsed);
+  time_t epoch = (time_t)timeClient.getEpochTime();
+  struct tm *ti = localtime(&epoch);
+  int n = snprintf(banM->msg, BAN_MSG_MAX, "M8AX - %02d/%02d/%04d - %s - %02d:%02d:%02d",
+                   ti->tm_mday, ti->tm_mon + 1, ti->tm_year + 1900, BAN_DIAS[ti->tm_wday],
+                   ti->tm_hour, ti->tm_min, ti->tm_sec);
+  if (n >= BAN_MSG_MAX)
+    n = BAN_MSG_MAX - 1;
+  // el hashrate solo sale en la primera tanda (BAN_HASH_TODOS 1 = en las tres)
+  if (banGrupo == 0 || BAN_HASH_TODOS)
+  {
+    n += snprintf(banM->msg + n, BAN_MSG_MAX - n, " - %s KH/s", mineria.currentHashRate.c_str());
+    if (n >= BAN_MSG_MAX)
+      n = BAN_MSG_MAX - 1;
+  }
+  // solo las 6 criptos que tocan en esta tanda (0-5, 6-11, 12-17)
+  int ini = banGrupo * BAN_POR_GRUPO;
+  int fin = ini + BAN_POR_GRUPO;
+  if (fin > NUM_CRIPTOS)
+    fin = NUM_CRIPTOS;
+  for (int k = ini; k < fin && n < BAN_MSG_MAX - 1; k++)
+  {
+    n += snprintf(banM->msg + n, BAN_MSG_MAX - n, " - %s %s%s",
+                  criptos[k].simbolo, formatoPrecio(criptos[k].precio).c_str(), BAN_USDT ? " USDT" : "");
+    if (n >= BAN_MSG_MAX)
+      n = BAN_MSG_MAX - 1;
+  }
+  banM->len = strlen(banM->msg);
+  banM->x = 320;
+}
+
+// Columna c del mensaje (6 por letra: 5 de la letra y una vacía de separación)
+static uint8_t banColumna(int c)
+{
+  if (c < 0 || c >= banM->len * 6 || c % 6 == 5)
+    return 0;
+  char ch = banM->msg[c / 6];
+  for (unsigned i = 0; i < sizeof(BAN_FONT) / sizeof(BAN_FONT[0]); i++)
+    if (BAN_FONT[i][0] == (uint8_t)ch)
+      return BAN_FONT[i][1 + c % 6];
+  return 0;
+}
+
+static void banRect(int x, int y, int w, int h, uint16_t c)
+{
+  if (x < 0)
+  {
+    w += x;
+    x = 0;
+  }
+  if (x + w > 320)
+    w = 320 - x;
+  if (w > 0 && h > 0)
+    tft.fillRect(x, y, w, h, c);
+}
+
+// av = lo que se ha movido el texto hacia la izquierda desde el último dibujo (0 = pintarlo entero)
+static void banPaso(int av)
+{
+  int t = -banM->x - av;
+  int c0 = (t < 0) ? 0 : t / BAN_S;
+  int r = 320 - banM->x;
+  int c1 = (r <= 0) ? -1 : (r + BAN_S - 1) / BAN_S - 1;
+  if (c1 > banM->len * 6 - 1)
+    c1 = banM->len * 6 - 1;
+  if (c1 - c0 + 1 > BAN_MAXC)
+    c1 = c0 + BAN_MAXC - 1;
+  int n = c1 - c0 + 1;
+  if (n <= 0)
+    return;
+
+  uint8_t col[BAN_MAXC];
+  for (int k = 0; k < n; k++)
+    col[k] = banColumna(c0 + k);
+
+  uint16_t color = BAN_COLORS[banM->color];
+  for (int f = 0; f < 7; f++)
+  {
+    int y = BAN_Y + f * BAN_S;
+    int k = 0;
+    while (k < n)
+    {
+      if (!(col[k] & (1 << f)))
+      {
+        k++;
+        continue;
+      }
+      int ini = k;
+      while (k < n && (col[k] & (1 << f)))
+        k++;
+      int xi = banM->x + (c0 + ini) * BAN_S;
+      int w = (k - ini) * BAN_S;
+      if (av > 0)
+      {
+        banRect(xi + w, y, av, BAN_S, TFT_BLACK); // la franja que se queda atrás
+        banRect(xi, y, av, BAN_S, color);         // la que entra por delante
+      }
+      else
+        banRect(xi, y, w, BAN_S, color);
+    }
+  }
+}
+
+void esp32_2432S028R_BannerScreen(unsigned long mElapsed)
+{
+  mineria = getMiningData(mElapsed);
+  Serial.printf("M8AX - %s >>> Completados %s Share(s), %s Khashes, Prom. Hashrate %s KH/s %s°\n",
+                mineria.currentTime, mineria.completedShares.c_str(), mineria.totalKHashes.c_str(), mineria.currentHashRate.c_str(), mineria.temp.c_str());
+
+  bool redraw = hasChangedScreen;
+  if (!banM)
+  {
+    banM = (BanMem *)malloc(sizeof(BanMem));
+    if (!banM)
+    {
+      Serial.println("M8AX - Banner: No Hay RAM Libre");
+      delay(1000);
+      return;
+    }
+    memset(banM, 0, sizeof(BanMem));
+    banM->color = esp_random() % 8;
+    banMensaje(mElapsed);
+    banM->t = millis();
+    banM->ledAt = millis();
+    redraw = true;
+  }
+  const int banMiPantalla = currentDisplayDriver->current_cyclic_screen;
+  if (redraw)
+  {
+    tft.fillRect(0, 0, 320, 170, TFT_BLACK);
+    banPaso(0);
+  }
+  printPoolData(); // barra de abajo, solo se repinta cuando toca
+  hasChangedScreen = false;
+
+  unsigned long start = millis();
+  unsigned long lastTouchChk = 0;
+  banLed(banM->led);
+
+  while (millis() - start < BAN_SLICE_MS)
+  {
+    unsigned long now = millis();
+
+    // ---- Táctil (misma lógica que el Pong) ----
+    if (now - lastTouchChk >= 40 && now - previousTouchMillis >= 500)
+    {
+      lastTouchChk = now;
+      int16_t t_x, t_y;
+      if (touch.getXY(t_x, t_y))
+      {
+        previousTouchMillis = now;
+        autoPantallas = false;
+        if (((t_x > 109) && (t_x < 211)) && ((t_y > 185) && (t_y < 241)))
+        {
+          bottomScreenBlue ^= true;
+          hasChangedScreen = true;
+        }
+        else if ((t_x > 235) && ((t_y > 0) && (t_y < 16)))
+        {
+          esp32_2432S028R_AlternateScreenState();
+        }
+        else if (t_x > 160)
+        {
+          currentDisplayDriver->current_cyclic_screen = (currentDisplayDriver->current_cyclic_screen + 1) % currentDisplayDriver->num_cyclic_screens;
+        }
+        else
+        {
+          currentDisplayDriver->current_cyclic_screen = currentDisplayDriver->current_cyclic_screen - 1;
+          if (currentDisplayDriver->current_cyclic_screen < 0)
+            currentDisplayDriver->current_cyclic_screen = currentDisplayDriver->num_cyclic_screens - 1;
+        }
+        break;
+      }
+    }
+    if (now - banM->ledAt >= BAN_LED_MS)
+    {
+      banM->led = (banM->led + 1) % 3;
+      banM->ledAt = now;
+      banLed(banM->led);
+    }
+
+    if (now - banM->t >= BAN_FRAME_MS)
+    {
+      int avance = (int)((now - banM->t) * BAN_PXS / 1000);
+      if (avance < 1)
+        avance = 1;
+      if (avance > BAN_S)
+        avance = BAN_S;
+      banM->t = now;
+      banM->x -= avance;
+      banPaso(avance);
+      if (banM->x + banM->len * 6 * BAN_S <= 0)
+      {
+        banGrupo = (banGrupo + 1) % BAN_GRUPOS; // siguiente tanda, aunque luego cambie de pantalla
+        // Cambio automático (cada 1 min): solo cuando el texto ha salido ENTERO, para no cortar las criptos
+        if (autoPantallas && millis() - lastAutoChange >= 60000UL)
+        {
+          currentDisplayDriver->current_cyclic_screen =
+              (currentDisplayDriver->current_cyclic_screen + 1) % currentDisplayDriver->num_cyclic_screens;
+          lastAutoChange = millis();
+          break;
+        }
+        banM->color = (banM->color + 1) % 8;
+        banMensaje(mElapsed);
+      }
+    }
+    delay(2);
+  }
+
+  pongLeds(false);
+  tft.setTextPadding(0);
+  tft.setTextDatum(TL_DATUM);
+
+  if (currentDisplayDriver->current_cyclic_screen != banMiPantalla)
+  {
+    free(banM);
+    banM = NULL;
+  }
+
+  cuentita++;
+  if (cuentita == 15)
+  {
+    ajustarZonaHoraria();
+    obtenerLocYTemp();
+    obtenerVariacionesBTC(variacion1dia, variacion1semana);
+  }
+}
+
 void analiCadaSegundo(unsigned long frame)
 {
   unsigned long epochTime = timeClient.getEpochTime(); // Obtener segundos desde 1970
@@ -10028,7 +11188,7 @@ void esp32_2432S028R_DoLedStuff(unsigned long frame)
   }
 }
 
-CyclicScreenFunction esp32_2432S028RCyclicScreens[] = {esp32_2432S028R_MinerScreen, tDisplay_granHash, tDisplay_hashGigante, esp32_2432S028R_BTCprice, esp32_2432S028R_ClockScreen, RelojDeNumeros, tDisplay_m8axScreen7, esp32_2432S028R_m8axScreen1, esp32_2432S028R_m8axScreen2, tDisplay_m8axScreenMegaNerd, tDisplay_m8axScreen5, tDisplay_m8axScreen6, tDisplay_Primos, esp32_2432S028R_CifrasScreen, esp32_2432S028R_TetrisScreen, esp32_2432S028R_AjedrezScreen, esp32_2432S028R_PongScreen, esp32_2432S028R_KrakoutScreen, esp32_2432S028R_SnakeScreen, esp32_2432S028R_LifeScreen, esp32_2432S028R_RainScreen, tDisplay_m8axScreen3, tDisplay_m8axScreen4};
+CyclicScreenFunction esp32_2432S028RCyclicScreens[] = {esp32_2432S028R_MinerScreen, tDisplay_granHash, tDisplay_hashGigante, esp32_2432S028R_BTCprice, esp32_2432S028R_ClockScreen, RelojDeNumeros, tDisplay_m8axScreen7, esp32_2432S028R_m8axScreen1, esp32_2432S028R_m8axScreen2, tDisplay_m8axScreenMegaNerd, tDisplay_m8axScreen5, tDisplay_m8axScreen6, esp32_2432S028R_BannerScreen, tDisplay_Primos, esp32_2432S028R_CifrasScreen, esp32_2432S028R_TetrisScreen, esp32_2432S028R_AjedrezScreen, esp32_2432S028R_GalaxianScreen, esp32_2432S028R_PongScreen, esp32_2432S028R_KrakoutScreen, esp32_2432S028R_SnakeScreen, esp32_2432S028R_LifeScreen, esp32_2432S028R_RainScreen, tDisplay_m8axScreen3, tDisplay_m8axScreen4};
 
 DisplayDriver esp32_2432S028RDriver = {
     esp32_2432S028R_Init,
