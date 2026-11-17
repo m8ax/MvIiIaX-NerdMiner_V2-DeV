@@ -791,6 +791,14 @@
                     ><img src="webflash/m8ax.png" alt="https://youtube.com/m8ax"
                /></a>
           </div>
+          <script>
+               (function () {
+                    var imgs = ["m8ax.png", "m8axweb1.png", "m8axweb2.png"];
+                    document.querySelectorAll(".dock a.logo img").forEach(function (el) {
+                         el.src = "webflash/" + imgs[Math.floor(Math.random() * imgs.length)];
+                    });
+               })();
+          </script>
 
           <div id="avisoNovedad" role="status">
                <button type="button" id="cerrarAviso" aria-label="Cerrar aviso">×</button>
@@ -822,14 +830,32 @@
                          Informe Se Genera A Las 2 Horas De Arrancar. La Tarjeta Solo Se Monta Un Momento Para Escribir, Así No Gasta RAM.
                     </p>
                     <p>
+                         • ESP32-2432S028R: Servidor Web Para Ver La MicroSD Desde El Navegador: Con El Minero Conectado A Tu WiFi, Abre
+                         <code>http://IP-DEL-MINERO</code> ( La IP Local Que Ves En Tu Router O En El Monitor Serie, Por Ejemplo
+                         <code>http://192.168.1.50</code> ) Desde Cualquier Móvil U Ordenador De Tu Misma Red. Te Pide Usuario Y Contraseña:
+                         <code>m8axminero</code> Y <code>minatupasta</code> ( Las Mismas Del Portal De Configuración ). Muestra Las Carpetas Y
+                         Archivos Con Su Tamaño Y Fecha, Con Una Barra Para Navegar Entre Carpetas. Puedes Leer Los Informes Directamente En
+                         El Navegador O Descargarlos Con El Botón ⬇, Y Al Pie Verás El Espacio Usado Y Libre De La Tarjeta, La RAM Libre, La
+                         Señal WiFi Y El Tiempo Que Lleva Encendido El Minero. La Tarjeta Se Monta Solo Cuando Entra Una Petición Y Se Desmonta
+                         Al Terminar, Así Que Ocupa Muy Poca RAM Y No Molesta Al Táctil. Si No Hay Tarjeta Te Avisa Con "No Hay MicroSD", Y Si Al
+                         Minero Le Falta Memoria La Web Espera A Que Haya Libre. Solo Funciona Dentro De Tu Red Local: No Abras El Puerto 80 De
+                         Tu Router Hacia Internet.
+                    </p>
+                    <p>
                          • ESP32-2432S028R: Pantallas Nuevas Donde La CPU Juega Sola: <strong>Tetris</strong>,
                          <strong>Ajedrez</strong> ( CPU Contra CPU ), <strong>Galaxian</strong> ( CPU Contra Los Marcianos ),
                          <strong>Pong</strong>, <strong>Krakout</strong> Y
                          <strong>Snake</strong>. Y Otras Pantallas Nuevas: <strong>Banner Gigante</strong> ( Letrero Con Letras Enormes Que Cruza La Pantalla Con
                          Fecha, Hora, Hashrate Y Los Precios De Las 18 Criptos En 3 Tandas De 6, Cada Precio En USDT ),
-                         <strong>Juego De La Vida</strong>, <strong>Cifras</strong> ( Resuelve
+                         <strong>Juego De La Vida</strong>, <strong>Fractales</strong> ( Mandelbrot, Julia, Burning Ship,
+                         Tricorn Y Newton, Calculados Por El Propio ESP32: Cada Vez Sale Uno Distinto, Con Colores Al Azar, Y Se Dibuja Poco A
+                         Poco, De Borroso A Nítido, Mientras Los LEDs Cambian De Color ), <strong>Cifras</strong> ( Resuelve
                          Solo Cuentas Con 6 Números ), <strong>Primos A Saco</strong> ( Primos Gigantes Hasta 64 Bits ) Y
                          <strong>Lluvia Matrix</strong> Hexadecimal
+                    </p>
+                    <p>
+                         • Telegram Y MicroSD: El Informe Incluye Ahora La Hora De Salida Y Puesta Del Sol De Tu Ciudad ( Calculada Por El
+                         Propio Minero ). Disponible En Los Mineros Sin Pantalla Y En El ESP32-2432S028R
                     </p>
                     <p>• Telegram: Si Un Envío Falla, Reintenta A Los 5 Minutos ( Hasta 3 Veces ) En Vez De Esperar Otras 2 Horas</p>
                     <p>• Alguna Sorpresa</p>
@@ -897,14 +923,32 @@
                          Doesn't Use Any RAM.
                     </p>
                     <p>
+                         • ESP32-2432S028R: Web Server To Browse The MicroSD From Your Browser: With The Miner Connected To Your WiFi, Open
+                         <code>http://MINER-IP</code> ( The Local IP You Can See In Your Router Or In The Serial Monitor, For Example
+                         <code>http://192.168.1.50</code> ) From Any Phone Or Computer On The Same Network. It Asks For A Username And Password:
+                         <code>m8axminero</code> And <code>minatupasta</code> ( The Same Ones As The Setup Portal ). It Shows Folders And Files
+                         With Their Size And Date, Plus A Breadcrumb Bar To Move Between Folders. You Can Read The Reports Right In The
+                         Browser Or Download Them With The ⬇ Button, And At The Bottom You Will See The Used And Free Space Of The Card, The
+                         Free RAM, The WiFi Signal And How Long The Miner Has Been On. The Card Is Only Mounted When A Request Comes In And Is
+                         Unmounted When It Finishes, So It Uses Very Little RAM And Does Not Disturb The Touch Screen. If There Is No Card It
+                         Tells You With "No Hay MicroSD", And If The Miner Is Low On Memory The Web Waits Until Some Is Free. It Only Works
+                         Inside Your Local Network: Do Not Open Port 80 On Your Router To The Internet.
+                    </p>
+                    <p>
                          • ESP32-2432S028R: New Screens Where The CPU Plays Alone: <strong>Tetris</strong>,
                          <strong>Chess</strong> ( CPU Vs CPU ), <strong>Galaxian</strong> ( CPU Vs The Aliens ),
                          <strong>Pong</strong>, <strong>Krakout</strong> And
                          <strong>Snake</strong>. And Other New Screens: <strong>Giant Banner</strong> ( A Sign With Huge Letters Scrolling Across The Screen With
                          Date, Time, Hashrate And The Prices Of All 18 Cryptos In 3 Batches Of 6, Each Price In USDT ),
-                         <strong>Game Of Life</strong>, <strong>Countdown Numbers</strong> ( Solves
+                         <strong>Game Of Life</strong>, <strong>Fractals</strong> ( Mandelbrot, Julia, Burning Ship, Tricorn And
+                         Newton, Computed By The ESP32 Itself: A Different One Every Time, With Random Colors, Drawn Little By Little From
+                         Blurry To Sharp While The LEDs Change Color ), <strong>Countdown Numbers</strong> ( Solves
                          Number Puzzles With 6 Numbers By Itself ), <strong>Primes Galore</strong> ( Giant Primes Up To 64 Bits ) And
                          <strong>Hexadecimal Matrix Rain</strong>
+                    </p>
+                    <p>
+                         • Telegram And MicroSD: The Report Now Includes Your City's Sunrise And Sunset Times ( Calculated By The Miner
+                         Itself ). Available On The Display-Less Miners And On The ESP32-2432S028R
                     </p>
                     <p>• Telegram: If A Message Fails To Send, It Retries After 5 Minutes ( Up To 3 Times ) Instead Of Waiting Another 2 Hours</p>
                     <p>• Some Surprise</p>
@@ -1169,8 +1213,14 @@
                     redButton.classList.remove("is-playing");
                     randomButton.classList.remove("is-playing");
                }
+               function pausarVideo() {
+                    const f = document.querySelector("#vidFrame iframe");
+                    if (f && f.contentWindow)
+                         f.contentWindow.postMessage('{"event":"command","func":"pauseVideo","args":[]}', "*");
+               }
                redButton.addEventListener("click", () => {
                     stopAllAudio();
+                    pausarVideo();
                     audioRed.src = fondos[Math.floor(Math.random() * fondos.length)];
                     audioRed.volume = 0.5;
                     audioRed
@@ -1180,6 +1230,7 @@
                });
                function playRandomAudio() {
                     stopAllAudio();
+                    pausarVideo();
                     audioRandom.src = audios[Math.floor(Math.random() * audios.length)];
                     audioRandom.volume = 0.5;
                     audioRandom
@@ -1206,7 +1257,7 @@
                          if (typeof stopAllAudio === "function") stopAllAudio();
                          const f = document.createElement("iframe");
                          f.src =
-                              "https://www.youtube-nocookie.com/embed/" + id + "?autoplay=1&rel=0&modestbranding=1&playsinline=1";
+                              "https://www.youtube-nocookie.com/embed/" + id + "?autoplay=1&rel=0&modestbranding=1&playsinline=1&enablejsapi=1";
                          f.title = "Novedades del firmware M8AX - NerdMinerV2";
                          f.allow =
                               "accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share";

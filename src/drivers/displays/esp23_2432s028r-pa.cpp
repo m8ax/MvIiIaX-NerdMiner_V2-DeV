@@ -58,7 +58,7 @@
  *           a la cadena. A cambio, reciben bitcoins recién creados como recompensa.
  *
  *
- *                     Tmp. De Programación 8H - 11230 Líneas De Código
+ *                     Tmp. De Programación 9H - 12075 Líneas De Código
  *                     ------------------------------------------------
  *
  ****************************************************************************************************************/
@@ -66,7 +66,7 @@
 // Invocando las poderosas librerías que hacen posible esta obra maestra del minado nerd
 
 #include "displayDriver.h"
-#if defined ESP32_2432S028R || ESP32_2432S028_2USB
+#if defined(ESP32_2432S028R) || defined(ESP32_2432S028_2USB)
 #include <TFT_eSPI.h>
 #include <TFT_eTouch.h>
 #include "media/images_320_170.h"
@@ -85,6 +85,7 @@
 #include "rotation.h"
 #include <clientntp.h>
 #include <WiFiClient.h>
+#include <WebServer.h>
 #include <time.h>
 #include <ctime>
 #include <WiFi.h>
@@ -707,6 +708,71 @@ String getPublicIP()
   return publicIP;
 }
 
+// ===== Salida Y Puesta De Sol (cálculo local, sin internet) =====
+static char salidaypuesta[48] = "";
+
+static void solHora(char *o, double t)
+{
+  t = fmod(t, 24.0);
+  if (t < 0)
+    t += 24.0;
+  int h = (int)t;
+  int mi = (int)((t - h) * 60.0 + 0.5);
+  if (mi >= 60)
+  {
+    mi = 0;
+    h = (h + 1) % 24;
+  }
+  snprintf(o, 6, "%02d:%02d", h, mi);
+}
+
+static void calcSol(double lat, double lng)
+{
+  salidaypuesta[0] = 0;
+  time_t epoch = (time_t)timeClient.getEpochTime();
+  if (epoch < 1700000000) // reloj sin poner
+    return;
+  struct tm ti;
+  localtime_r(&epoch, &ti);
+  int year = ti.tm_year + 1900, month = ti.tm_mon + 1, day = ti.tm_mday;
+  int a = (14 - month) / 12;
+  int y = year + 4800 - a;
+  int m = month + 12 * a - 3;
+  double jd = day + (153 * m + 2) / 5 + 365.0 * y + y / 4 - y / 100 + y / 400 - 32045;
+  double T = (jd - 2451545.0) / 36525.0;
+  double L0 = fmod(280.46646 + T * (36000.76983 + T * 0.0003032), 360.0);
+  double M = 357.52911 + T * (35999.05029 - 0.0001537 * T);
+  double e = 0.016708634 - T * (0.000042037 + 0.0000001267 * T);
+  double Mr = M * DEG_TO_RAD;
+  double C = sin(Mr) * (1.914602 - T * (0.004817 + 0.000014 * T)) + sin(2 * Mr) * (0.019993 - 0.000101 * T) + sin(3 * Mr) * 0.000289;
+  double omega = 125.04 - 1934.136 * T;
+  double appLong = L0 + C - 0.00569 - 0.00478 * sin(omega * DEG_TO_RAD);
+  double seconds = 21.448 - T * (46.815 + T * (0.00059 - T * 0.001813));
+  double eps = 23.0 + (26.0 + seconds / 60.0) / 60.0 + 0.00256 * cos(omega * DEG_TO_RAD);
+  double decl = asin(sin(eps * DEG_TO_RAD) * sin(appLong * DEG_TO_RAD));
+  double yy = tan(eps / 2.0 * DEG_TO_RAD);
+  yy = yy * yy;
+  double L0r = L0 * DEG_TO_RAD;
+  double eot = 4.0 * RAD_TO_DEG * (yy * sin(2 * L0r) - 2 * e * sin(Mr) + 4 * e * yy * sin(Mr) * cos(2 * L0r) - 0.5 * yy * yy * sin(4 * L0r) - 1.25 * e * e * sin(2 * Mr));
+  double cosH = cos(90.833 * DEG_TO_RAD) / (cos(lat * DEG_TO_RAD) * cos(decl)) - tan(lat * DEG_TO_RAD) * tan(decl);
+  if (cosH > 1)
+  {
+    strcpy(salidaypuesta, "El Sol No Sale Hoy ( Noche Polar )");
+    return;
+  }
+  if (cosH < -1)
+  {
+    strcpy(salidaypuesta, "Sol Todo El Día ( Día Polar )");
+    return;
+  }
+  double H = acos(cosH) * RAD_TO_DEG / 15.0;
+  double noon = (720.0 - 4.0 * lng - eot) / 60.0;
+  char s1[6], s2[6];
+  solHora(s1, noon - H + Settings.Timezone);
+  solHora(s2, noon + H + Settings.Timezone);
+  snprintf(salidaypuesta, sizeof(salidaypuesta), "Sol ^ - %s | Sol v - %s", s1, s2);
+}
+
 std::pair<String, String> obtenerCiudadYTemperatura(const String &ip)
 {
   String ciudad = "ERROR", temperatura = "ERROR";
@@ -731,6 +797,8 @@ std::pair<String, String> obtenerCiudadYTemperatura(const String &ip)
     ciudad = doc["city"].as<String>();
     latitud = String(doc["lat"].as<float>(), 6);
     longitud = String(doc["lon"].as<float>(), 6);
+    if (!doc["lat"].isNull() && !doc["lon"].isNull())
+      calcSol(doc["lat"].as<double>(), doc["lon"].as<double>());
     Serial.println("M8AX - Obtenida Ciudad");
   }
   else
@@ -768,6 +836,7 @@ std::pair<String, String> obtenerCiudadYTemperatura(const String &ip)
 
 void obtenerLocYTemp()
 {
+  salidaypuesta[0] = 0;
   Tresultado.first.clear();
   Tresultado.second.clear();
   Tresultado.first.reserve(0);
@@ -1641,7 +1710,7 @@ uint32_t segundosDesdeCompilacion()
   return (uint32_t)(currentEpoch - compiledEpoch);
 }
 
-bool enviarMensajeATelegram(String mensaje)
+bool enviarMensajeATelegram(const String &mensaje)
 {
   bool ok = false;
   // Verificar y reconectar WiFi si es necesario
@@ -1664,15 +1733,9 @@ bool enviarMensajeATelegram(String mensaje)
   client.setInsecure();
   String mensajeCodificado = urlEncode(mensaje); // Mirar función
   mensajeCodificado.reserve(mensajeCodificado.length() + 100);
-  mensaje = "";
-  mensaje.reserve(0);
-
   // Reemplazar los saltos de línea con %0A
-
   mensajeCodificado.replace("\n", "%0A");
-
   Serial.println("M8AX - Enviando Mensaje A Telegram...");
-
   String url = "https://api.telegram.org/bot" + BOT_TOKEN + "/sendMessage?chat_id=" + CHAT_ID + "&text=" + mensajeCodificado;
   url.reserve(url.length() + 50);
   mensajeCodificado = "";
@@ -1680,7 +1743,9 @@ bool enviarMensajeATelegram(String mensaje)
 
   if (client.connect("api.telegram.org", 443))
   {
-    client.print(String("GET ") + url + " HTTP/1.1\r\n" + "Host: api.telegram.org\r\n" + "Connection: close\r\n\r\n");
+    client.print("GET ");
+    client.print(url);
+    client.print(" HTTP/1.1\r\nHost: api.telegram.org\r\nConnection: close\r\n\r\n");
     unsigned long t0 = millis();
     while (!client.available() && client.connected() && millis() - t0 < 5000)
     {
@@ -1738,21 +1803,18 @@ String convertirARomanos(int num)
 
 std::string obtenerDiaSemana(const std::string &fecha)
 {
-  const char *diasem[] = {"Dom", "Lun", "Mar", "Mie", "Jue", "Vie", "Sab"};
-
-  int dia = std::stoi(fecha.substr(0, 2));
-  int mes = std::stoi(fecha.substr(3, 2)) - 1;
-  int anio = std::stoi(fecha.substr(6, 4));
-
-  std::tm timeStruct = {};
-  timeStruct.tm_mday = dia;
-  timeStruct.tm_mon = mes;
-  timeStruct.tm_year = anio - 1900;
-
-  std::mktime(&timeStruct);
-  int diaSemana = timeStruct.tm_wday; // 0 = domingo, 1 = lunes, ...
-
-  return diasem[diaSemana];
+  static const char *diasem[] = {"Dom", "Lun", "Mar", "Mie", "Jue", "Vie", "Sab"};
+  int dia = 1, mes = 1, anio = 1970;
+  if (sscanf(fecha.c_str(), "%d/%d/%d", &dia, &mes, &anio) != 3)
+    return "???";
+  std::tm t = {};
+  t.tm_mday = dia;
+  t.tm_mon = mes - 1;
+  t.tm_year = anio - 1900;
+  std::mktime(&t);
+  if (t.tm_wday < 0 || t.tm_wday > 6)
+    return "???";
+  return diasem[t.tm_wday];
 }
 
 String lunitaporc(String currentDate, String currentTime)
@@ -1796,15 +1858,27 @@ String lunitaporc(String currentDate, String currentTime)
 
 static SPIClass sdSPI(SD_BUS); // bus aparte del de la pantalla (pines 18/19/23/5 de la placa)
 static bool sdOk = false;
-static bool sdHayTarjeta = false;
+static bool sdGuardadoCiclo = false;
 
 static bool sdMonta()
 {
   if (sdOk)
     return true;
   uint32_t antes = ESP.getFreeHeap();
-  sdSPI.begin(SD_SCK, SD_MISO, SD_MOSI, SD_CS);
-  sdOk = SD.begin(SD_CS, sdSPI, 20000000);
+  hSPI.end(); // libera el bus del táctil
+  for (int i = 0; i < 3 && !sdOk; i++)
+  {
+    sdSPI.begin(SD_SCK, SD_MISO, SD_MOSI, SD_CS);
+    sdOk = SD.begin(SD_CS, sdSPI, 10000000);
+    if (!sdOk)
+    {
+      SD.end();
+      sdSPI.end();
+      delay(30);
+    }
+  }
+  if (!sdOk)
+    hSPI.begin(TOUCH_CLK, TOUCH_MISO, TOUCH_MOSI, ETOUCH_CS); // sin tarjeta: devuelve el bus al táctil
   if (sdOk && !SD.exists("/-M8AX-NerdMinerV2-PG-M8AX-Logs"))
     SD.mkdir("/-M8AX-NerdMinerV2-PG-M8AX-Logs");
   Serial.printf("M8AX - SD %s (RAM Usada: %d Bytes)\n", sdOk ? "Montada" : "No Encontrada", (int)(antes - ESP.getFreeHeap()));
@@ -1813,7 +1887,6 @@ static bool sdMonta()
 
 String sdEspacioTexto()
 {
-  sdHayTarjeta = false;
   if (!sdMonta())
     return "Espacio Libre En La MicroSD - SIN TARJETA";
   uint32_t t0 = millis();
@@ -1823,20 +1896,19 @@ String sdEspacioTexto()
   uint64_t libre = total > usado ? total - usado : 0;
   String r = "Espacio Libre En La MicroSD - " + String((unsigned long)(libre / 1048576ULL)) + "/" + String((unsigned long)(total / 1048576ULL)) + " MB";
   SD.end(); // se desmonta antes de enviar a Telegram: no ocupa RAM durante la conexión segura
+  sdSPI.end();
+  hSPI.begin(TOUCH_CLK, TOUCH_MISO, TOUCH_MOSI, ETOUCH_CS); // devuelve el bus al táctil
   sdOk = false;
-  sdHayTarjeta = true;
   return r;
 }
 
-void sdGuardaTelegram(const String &texto)
+bool sdGuardaTelegram(const String &texto)
 {
-  if (!sdHayTarjeta) // en el chequeo de espacio no había tarjeta: ni se intenta
-    return;
   time_t epoch = (time_t)timeClient.getEpochTime();
   if (epoch < 1700000000) // aun sin hora de internet, no se guarda
-    return;
+    return false;
   if (!sdMonta())
-    return;
+    return false;
   struct tm *ti = localtime(&epoch);
   static const char *MESES[12] = {"Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"};
   char carpetaAnio[48];
@@ -1849,18 +1921,310 @@ void sdGuardaTelegram(const String &texto)
     SD.mkdir(carpeta);
   char nombre[96];
   snprintf(nombre, sizeof(nombre), "%s/M8AX-Telegram-%04d%02d%02d.TxT", carpeta, ti->tm_year + 1900, ti->tm_mon + 1, ti->tm_mday);
+  bool ok = false;
   File w = SD.open(nombre, FILE_APPEND);
   if (w)
   {
     w.print(texto);
-    w.print("\n\n"); // termina la última línea y deja una línea en blanco antes del siguiente
+    w.print("\n\n");
     w.close();
+    ok = true;
     Serial.println("M8AX - Telegram Guardado En La SD...");
   }
   else
     Serial.println("M8AX - No Se Pudo Escribir En La SD...");
-  SD.end(); // se desmonta: no ocupa RAM hasta el siguiente Telegram
+  SD.end();
+  sdSPI.end();
+  hSPI.begin(TOUCH_CLK, TOUCH_MISO, TOUCH_MOSI, ETOUCH_CS); // devuelve el bus al táctil
   sdOk = false;
+  return ok;
+}
+
+/***************************************************************************
+ *  SERVIDOR WEB DE LA MICROSD
+ *
+ *  Monta la SD solo cuando entra una petición y la desmonta al terminar,
+ *  así el bus SPI vuelve al táctil. Lista carpetas primero y archivos
+ *  después, con tamaño en B / KB / MB / GB, fecha de modificación,
+ *  migas de pan para navegar y un pie con espacio usado y libre de la
+ *  tarjeta y datos del ESP32. El CSS vive en flash y todo se manda por
+ *  trozos directamente desde buffers de pila, sin String ni copias.
+ ***************************************************************************/
+static WebServer web(80);
+
+#define WEB_USER "m8axminero"
+#define WEB_PASS "minatupasta"
+#define WEB_RAM_MIN 30000
+
+static const char WEB_CSS[] PROGMEM =
+    "<!doctype html><meta charset=utf-8>"
+    "<meta name=viewport content='width=device-width,initial-scale=1'>"
+    "<title>M8AX-NerdminerV2-PG-M8AX &middot; MicroSD</title>"
+    "<link id=ic rel=icon>"
+    "<style>"
+    "body{margin:0;font:15px system-ui,sans-serif;background:#0f1419;color:#d7dde4}"
+    "main{max-width:760px;margin:auto;padding:14px}"
+    "h1{font-size:18px;margin:0 0 10px;color:#f7931a}"
+    "a{color:#6cb6ff;text-decoration:none}"
+    ".m{padding:8px 10px;background:#1a212b;border-radius:8px;margin-bottom:8px;word-break:break-all}"
+    ".r{display:flex;align-items:center;gap:8px;padding:9px 10px;border-bottom:1px solid #222b36}"
+    ".r:hover{background:#1a212b}"
+    ".n{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}"
+    ".s{color:#8b98a5;font-size:12px;white-space:nowrap}"
+    ".f{margin-top:12px;color:#8b98a5;font-size:12px;line-height:1.7}"
+    ".h{display:flex;align-items:center;gap:12px;margin-bottom:10px}"
+    ".h img{height:42px}.h h1{margin:0}"
+    "</style><main><div class=h>"
+    "<img id=lg onerror=\"this.style.display='none'\">"
+    "<h1>M8AX-NerdminerV2-PG-M8AX &middot; MicroSD</h1></div>"
+    "<script>"
+    "var u='https://m8ax.github.io/MvIiIaX-NerdMiner_V2-DeV/webflash/m8axweb'+(1+Math.floor(Math.random()*2))+'.png';"
+    "document.getElementById('lg').src=u;document.getElementById('ic').href=u;"
+    "</script>";
+
+static bool rutaOk(const char *p) { return p[0] == '/' && !strstr(p, ".."); }
+
+static void webEnv(const char *s) { web.sendContent(s, strlen(s)); }
+
+static void webSdCierra()
+{
+  SD.end();
+  sdSPI.end();
+  hSPI.begin(TOUCH_CLK, TOUCH_MISO, TOUCH_MOSI, ETOUCH_CS); // devuelve el bus al táctil
+  sdOk = false;
+}
+
+static void webTam(char *o, size_t n, uint64_t b)
+{
+  if (b < 1024)
+    snprintf(o, n, "%u B", (unsigned)b);
+  else if (b < 1048576ULL)
+    snprintf(o, n, "%.1f KB", b / 1024.0);
+  else if (b < 1073741824ULL)
+    snprintf(o, n, "%.2f MB", b / 1048576.0);
+  else
+    snprintf(o, n, "%.2f GB", b / 1073741824.0);
+}
+
+static void webFecha(char *o, size_t n, time_t t)
+{
+  o[0] = 0;
+  if (t < 1000000000)
+    return; // reloj sin poner
+  struct tm tm;
+  localtime_r(&t, &tm);
+  strftime(o, n, "%d/%m/%y %H:%M", &tm);
+}
+
+static void webEsc(char *o, size_t n, const char *s)
+{
+  size_t i = 0;
+  for (; *s && i + 7 < n; s++)
+  {
+    const char *r = *s == '&' ? "&amp;" : *s == '<' ? "&lt;"
+                                      : *s == '>'   ? "&gt;"
+                                      : *s == '\''  ? "&#39;"
+                                                    : nullptr;
+    if (r)
+    {
+      strcpy(o + i, r);
+      i += strlen(r);
+    }
+    else
+      o[i++] = *s;
+  }
+  o[i] = 0;
+}
+
+static void webUrl(char *o, size_t n, const char *s)
+{
+  size_t i = 0;
+  for (; *s && i + 4 < n; s++)
+  {
+    if (isalnum((uint8_t)*s) || strchr("-_./", *s))
+      o[i++] = *s;
+    else
+      i += snprintf(o + i, 4, "%%%02X", (uint8_t)*s);
+  }
+  o[i] = 0;
+}
+
+static void webListar()
+{
+  if (!web.authenticate(WEB_USER, WEB_PASS))
+    return web.requestAuthentication();
+  if (!sdMonta())
+    return web.send(200, "text/plain; charset=utf-8", "No Hay MicroSD");
+  char dir[128] = "/";
+  if (web.hasArg("d"))
+    strlcpy(dir, web.arg("d").c_str(), sizeof(dir));
+  if (!rutaOk(dir))
+  {
+    webSdCierra();
+    return web.send(400, "text/plain; charset=utf-8", "Ruta No Válida");
+  }
+  size_t dl = strlen(dir);
+  if (dl > 1 && dir[dl - 1] == '/')
+    dir[dl - 1] = 0;
+  File root = SD.open(dir);
+  if (!root || !root.isDirectory())
+  {
+    if (root)
+      root.close();
+    webSdCierra();
+    return web.send(404, "text/plain; charset=utf-8", "No Existe");
+  }
+  web.setContentLength(CONTENT_LENGTH_UNKNOWN);
+  web.send(200, "text/html; charset=utf-8", "");
+  web.sendContent(WEB_CSS, sizeof(WEB_CSS) - 1);
+
+  char ruta[128], enc[192], nom[64], tam[16], tar[16], u[16], v[16], l[600];
+
+  webEnv("<div class=m><a href='/'>&#128190; SD</a>");
+  ruta[0] = 0; // aquí hace de acumulador de la miga
+  for (const char *p = dir + 1; *p;)
+  {
+    const char *e = strchr(p, '/');
+    size_t ln = e ? (size_t)(e - p) : strlen(p);
+    if (ln)
+    {
+      char seg[40];
+      strlcpy(seg, p, ln + 1 < sizeof(seg) ? ln + 1 : sizeof(seg));
+      size_t a = strlen(ruta);
+      snprintf(ruta + a, sizeof(ruta) - a, "/%s", seg);
+      webUrl(enc, sizeof(enc), ruta);
+      webEsc(nom, sizeof(nom), seg);
+      snprintf(l, sizeof(l), " / <a href='/?d=%s'>%s</a>", enc, nom);
+      webEnv(l);
+    }
+    p = e ? e + 1 : p + ln;
+  }
+  webEnv("</div>");
+
+  if (strcmp(dir, "/"))
+  {
+    strlcpy(ruta, dir, sizeof(ruta));
+    char *s = strrchr(ruta, '/');
+    if (s == ruta)
+      ruta[1] = 0;
+    else
+      *s = 0;
+    webUrl(enc, sizeof(enc), ruta);
+    snprintf(l, sizeof(l), "<div class=r><span>&#11014;</span><a class=n href='/?d=%s'>..</a></div>", enc);
+    webEnv(l);
+  }
+
+  int nd = 0, nf = 0;
+  uint64_t tot = 0;
+  for (int pasada = 0; pasada < 2; pasada++) // primero carpetas, luego archivos
+  {
+    root.rewindDirectory();
+    while (nd + nf < 200)
+    {
+      File f = root.openNextFile();
+      if (!f)
+        break;
+      bool d = f.isDirectory();
+      if (d == (pasada == 0))
+      {
+        snprintf(ruta, sizeof(ruta), "%s%s%s", dir, strcmp(dir, "/") ? "/" : "", f.name());
+        webUrl(enc, sizeof(enc), ruta);
+        webEsc(nom, sizeof(nom), f.name());
+        webFecha(u, sizeof(u), f.getLastWrite());
+        if (d)
+        {
+          nd++;
+          snprintf(l, sizeof(l),
+                   "<div class=r><span>&#128193;</span><a class=n href='/?d=%s'>%s</a>"
+                   "<span class=s>%s</span></div>",
+                   enc, nom, u);
+        }
+        else
+        {
+          nf++;
+          tot += f.size();
+          webTam(tam, sizeof(tam), f.size());
+          snprintf(l, sizeof(l),
+                   "<div class=r><span>&#128196;</span><a class=n href='/f?p=%s'>%s</a>"
+                   "<span class=s>%s</span><span class=s>%s</span>"
+                   "<a href='/f?p=%s&dl=1' title=Descargar>&#11015;</a></div>",
+                   enc, nom, u, tam, enc);
+        }
+        webEnv(l);
+      }
+      f.close();
+    }
+  }
+  root.close();
+
+  uint64_t tb = SD.totalBytes(), ub = SD.usedBytes();
+  webTam(tam, sizeof(tam), tot);
+  webTam(tar, sizeof(tar), tb);
+  webTam(u, sizeof(u), ub);
+  webTam(v, sizeof(v), tb > ub ? tb - ub : 0);
+  const char *tipo = SD.cardType() == CARD_MMC ? "MMC" : SD.cardType() == CARD_SD ? "SDSC"
+                                                                                  : "SDHC/SDXC";
+  unsigned long min = millis() / 60000UL;
+  snprintf(l, sizeof(l),
+           "<div class=f>%d Carpetas &middot; %d Archivos &middot; %s En Esta Carpeta<br>"
+           "Tarjeta %s %s &middot; Usado %s &middot; Libre %s<br>"
+           "RAM Libre %u KB &middot; WiFi %d dBm &middot; Activo %luh %02lum</div></main>",
+           nd, nf, tam, tipo, tar, u, v, (unsigned)(ESP.getFreeHeap() / 1024), WiFi.RSSI(), min / 60, min % 60);
+  webEnv(l);
+  web.sendContent("");
+  webSdCierra();
+}
+
+static void webArchivo()
+{
+  if (!web.authenticate(WEB_USER, WEB_PASS))
+    return web.requestAuthentication();
+  if (!sdMonta())
+    return web.send(200, "text/plain; charset=utf-8", "No Hay MicroSD");
+  char p[128];
+  strlcpy(p, web.arg("p").c_str(), sizeof(p));
+  if (!rutaOk(p))
+  {
+    webSdCierra();
+    return web.send(400, "text/plain; charset=utf-8", "Ruta No Válida");
+  }
+  File f = SD.open(p, FILE_READ);
+  if (!f || f.isDirectory())
+  {
+    if (f)
+      f.close();
+    webSdCierra();
+    return web.send(404, "text/plain; charset=utf-8", "No Existe");
+  }
+  if (web.hasArg("dl"))
+  {
+    char cab[160];
+    snprintf(cab, sizeof(cab), "attachment; filename=\"%s\"", strrchr(p, '/') + 1);
+    web.sendHeader("Content-Disposition", cab);
+    web.streamFile(f, "application/octet-stream");
+  }
+  else
+    web.streamFile(f, "text/plain; charset=utf-8");
+  f.close();
+  webSdCierra();
+}
+
+void webAtender()
+{
+  if (ESP.getMaxAllocHeap() < WEB_RAM_MIN)
+    return;
+  static bool iniciado = false;
+  if (!iniciado)
+  {
+    if (WiFi.status() != WL_CONNECTED)
+      return;
+    web.on("/", webListar);
+    web.on("/f", webArchivo);
+    web.begin();
+    iniciado = true;
+    Serial.printf("\nM8AX - Servidor Web De La SD En http://%s\n", WiFi.localIP().toString().c_str());
+  }
+  web.handleClient();
 }
 
 String bloqueCriptos(); // se define más abajo, junto a los precios
@@ -1930,7 +2294,13 @@ bool recopilaTelegram()
     Tresultado.second = "xxC";
     Serial.println("M8AX - No Se Pudo Obtener La Ciudad O La Temperatura.");
   }
-  cadenaEnvio += quitarAcentos(Tresultado.first) + ", " + Tresultado.second + " | UTC " + ((zonilla >= 0) ? "+" : "") + String(zonilla) + " | " + LUNAP + "\n";
+  cadenaEnvio += quitarAcentos(Tresultado.first) + ", " + Tresultado.second;
+  if (salidaypuesta[0])
+  {
+    cadenaEnvio += String(" | ") + salidaypuesta;
+    Serial.printf("M8AX - %s\n", salidaypuesta);
+  }
+  cadenaEnvio += String(" | UTC ") + ((zonilla >= 0) ? "+" : "") + String(zonilla) + " | " + LUNAP + "\n";
   cadenaEnvio += "Tiempo Minando - " + (mineria.timeMining.substring(0, mineria.timeMining.indexOf(" ")).length() == 1 ? "0" + mineria.timeMining.substring(0, mineria.timeMining.indexOf(" ")) : mineria.timeMining.substring(0, mineria.timeMining.indexOf(" "))) + " Días" + mineria.timeMining.substring(mineria.timeMining.indexOf(" ") + 1) + "\n";
   cadenaEnvio += "HR Actual - " + mineria.currentHashRate + " KH/s ( MAX - " + String(maxkh) + " | MIN - " + String(minkh) + " )\n";
   cadenaEnvio += "Temp. De CPU - " + mineria.temp + "° ( MAX - " + String(maxtemp) + "° | MIN - " + String(mintemp) + "° ) | " + obtenerEstadoTemperatura(mineria.temp.toInt()) + "\n";
@@ -1976,12 +2346,13 @@ bool recopilaTelegram()
   cadenaEnvio += F("\n------------------------------------------------------------------------------------------------");
   bool botOk = (BOT_TOKEN != "NO CONFIGURADO" && CHAT_ID != "NO CONFIGURADO");
   bool enviado = true;
+  if (!sdGuardadoCiclo && sdGuardaTelegram(cadenaEnvio))
+    sdGuardadoCiclo = true;
+  Serial.printf("M8AX - Tamaño Del Mensaje: %u Caracteres\n", (unsigned)cadenaEnvio.length());
   if (botOk)
-    enviado = enviarMensajeATelegram(cadenaEnvio); // con bot: se envía a Telegram
+    enviado = enviarMensajeATelegram(cadenaEnvio);
   else
-    sumatele += 1; // sin bot no se envía nada, pero el contador de mensajes sigue subiendo
-  if (enviado)
-    sdGuardaTelegram(cadenaEnvio); // se guarda en la SD si Telegram lo recibió (o si no hay bot)
+    sumatele += 1;
   cadenaEnvio = "", cadenaEnvio.reserve(0);
   return enviado;
 }
@@ -2668,7 +3039,7 @@ void esp32_2432S028R_MinerScreen(unsigned long mElapsed)
     obtenerVariacionesBTC(variacion1dia, variacion1semana);
   }
   Serial.printf("M8AX - %s >>> Completados %s Share(s), %s Khashes, Prom. Hashrate %s KH/s %s°\n",
-                mineria.currentTime, mineria.completedShares.c_str(), mineria.totalKHashes.c_str(), mineria.currentHashRate.c_str(), mineria.temp.c_str());
+                mineria.currentTime.c_str(), mineria.completedShares.c_str(), mineria.totalKHashes.c_str(), mineria.currentHashRate.c_str(), mineria.temp.c_str());
   manejandoLeds(mineria.currentHashRate.toFloat());
 #ifdef DEBUG_MEMORY
   // Print heap
@@ -2748,7 +3119,7 @@ void esp32_2432S028R_ClockScreen(unsigned long mElapsed)
   // Delete sprite to free the memory heap
   background.deleteSprite();
   Serial.printf("M8AX - %s >>> Completados %s Share(s), %s Khashes, Prom. Hashrate %s KH/s %s°\n",
-                mineria.currentTime, mineria.completedShares.c_str(), mineria.totalKHashes.c_str(), mineria.currentHashRate.c_str(), mineria.temp.c_str());
+                mineria.currentTime.c_str(), mineria.completedShares.c_str(), mineria.totalKHashes.c_str(), mineria.currentHashRate.c_str(), mineria.temp.c_str());
   cuentita++;
   if (cuentita == 15)
   {
@@ -2816,7 +3187,7 @@ void esp32_2432S028R_m8axScreen2(unsigned long mElapsed)
   // Print background screen
   background.pushImage(-190, 0, ImagenM8AXWidth, ImagenM8AXHeight, M8AXQuote1);
   Serial.printf("M8AX - %s >>> Completados %s Share(s), %s Khashes, Prom. Hashrate %s KH/s %s°\n",
-                mineria.currentTime, mineria.completedShares.c_str(), mineria.totalKHashes.c_str(), mineria.currentHashRate.c_str(), mineria.temp.c_str());
+                mineria.currentTime.c_str(), mineria.completedShares.c_str(), mineria.totalKHashes.c_str(), mineria.currentHashRate.c_str(), mineria.temp.c_str());
   cuentita++;
   if (cuentita == 15)
   {
@@ -2894,7 +3265,7 @@ void RelojDeNumeros(unsigned long mElapsed)
   // Print background screen
   background.pushImage(-190, 0, ImagenM8AXWidth, ImagenM8AXHeight, ImagenM8AX);
   Serial.printf("M8AX - %s >>> Completados %s Share(s), %s Khashes, Prom. Hashrate %s KH/s %s°\n",
-                mineria.currentTime, mineria.completedShares.c_str(), mineria.totalKHashes.c_str(), mineria.currentHashRate.c_str(), mineria.temp.c_str());
+                mineria.currentTime.c_str(), mineria.completedShares.c_str(), mineria.totalKHashes.c_str(), mineria.currentHashRate.c_str(), mineria.temp.c_str());
   tft.setTextSize(3);
   tft.setCursor(3, 2);
   colorI = esp_random() % (sizeof(colors) / sizeof(colors[0]));
@@ -3052,7 +3423,7 @@ void esp32_2432S028R_m8axScreen1(unsigned long mElapsed)
   hasChangedScreen = false;
   int wdtOffset = 190;
   Serial.printf("M8AX - %s >>> Completados %s Share(s), %s Khashes, Prom. Hashrate %s KH/s %s°\n",
-                mineria.currentTime, mineria.completedShares.c_str(), mineria.totalKHashes.c_str(), mineria.currentHashRate.c_str(), mineria.temp.c_str());
+                mineria.currentTime.c_str(), mineria.completedShares.c_str(), mineria.totalKHashes.c_str(), mineria.currentHashRate.c_str(), mineria.temp.c_str());
   colorIndex = esp_random() % (sizeof(colors) / sizeof(colors[0]));
   relojAnalogicoM8AX(horis, minutis, secondis);
   tft.setCursor(4, 42);
@@ -3162,7 +3533,7 @@ void tDisplay_m8axScreen4(unsigned long mElapsed)
     tft.fillRect(0, 0, 320, 170, TFT_BLACK);
   }
   Serial.printf("M8AX - %s >>> Completados %s Share(s), %s Khashes, Prom. Hashrate %s KH/s %s°\n",
-                mineria.currentTime, mineria.completedShares.c_str(), mineria.totalKHashes.c_str(), mineria.currentHashRate.c_str(), mineria.temp.c_str());
+                mineria.currentTime.c_str(), mineria.completedShares.c_str(), mineria.totalKHashes.c_str(), mineria.currentHashRate.c_str(), mineria.temp.c_str());
   colorI = esp_random() % (sizeof(colors) / sizeof(colors[0]));
   if (colorI % 2 == 0)
   {
@@ -3226,7 +3597,7 @@ void tDisplay_m8axScreen5(unsigned long mElapsed)
   sprintf(hora, "%02d:%02d", horita, minutitos);
   solouna = 0;
   Serial.printf("M8AX - %s >>> Completados %s Share(s), %s Khashes, Prom. Hashrate %s KH/s %s°\n",
-                mineria.currentTime, mineria.completedShares.c_str(), mineria.totalKHashes.c_str(), mineria.currentHashRate.c_str(), mineria.temp.c_str());
+                mineria.currentTime.c_str(), mineria.completedShares.c_str(), mineria.totalKHashes.c_str(), mineria.currentHashRate.c_str(), mineria.temp.c_str());
   if (hasChangedScreen)
     tft.pushImage(0, 0, initWidth, initHeight, M8AXRelojLunar);
   printPoolData();
@@ -3312,7 +3683,7 @@ void tDisplay_m8axScreen6(unsigned long mElapsed)
   sprintf(fecha, "%02d/%02d/%04d", dia, mes, anio);
   solounavez = 0;
   Serial.printf("M8AX - %s >>> Completados %s Share(s), %s Khashes, Prom. Hashrate %s KH/s %s°\n",
-                mineria.currentTime, mineria.completedShares.c_str(), mineria.totalKHashes.c_str(), mineria.currentHashRate.c_str(), mineria.temp.c_str());
+                mineria.currentTime.c_str(), mineria.completedShares.c_str(), mineria.totalKHashes.c_str(), mineria.currentHashRate.c_str(), mineria.temp.c_str());
   if (hasChangedScreen)
     tft.pushImage(0, 0, initWidth, initHeight, M8AXRelojLunar);
   printPoolData();
@@ -3403,7 +3774,7 @@ void tDisplay_m8axScreen7(unsigned long mElapsed)
   int minutitos = timeinfo->tm_min;                    // Minutos
   int segundos = timeinfo->tm_sec;                     // Segundos
   Serial.printf("M8AX - %s >>> Completados %s Share(s), %s Khashes, Prom. Hashrate %s KH/s %s°\n",
-                mineria.currentTime, mineria.completedShares.c_str(), mineria.totalKHashes.c_str(), mineria.currentHashRate.c_str(), mineria.temp.c_str());
+                mineria.currentTime.c_str(), mineria.completedShares.c_str(), mineria.totalKHashes.c_str(), mineria.currentHashRate.c_str(), mineria.temp.c_str());
   if (hasChangedScreen)
     tft.pushImage(0, 0, initWidth, initHeight, M8AXRelojLunar);
   printPoolData();
@@ -3661,7 +4032,7 @@ void tDisplay_m8axScreen3(unsigned long mElapsed)
   solouna = 0;
   String btcm8 = "bitcoin:bc1qljq00pm2plq2l9jxzdzt0xc8t79j9wcmu7r8em";
   Serial.printf("M8AX - %s >>> Completados %s Share(s), %s Khashes, Prom. Hashrate %s KH/s %s°\n",
-                mineria.currentTime, mineria.completedShares.c_str(), mineria.totalKHashes.c_str(), mineria.currentHashRate.c_str(), mineria.temp.c_str());
+                mineria.currentTime.c_str(), mineria.completedShares.c_str(), mineria.totalKHashes.c_str(), mineria.currentHashRate.c_str(), mineria.temp.c_str());
   if (hasChangedScreen)
     tft.pushImage(0, 0, initWidth, initHeight, M8AXRelojLunar);
   printPoolData();
@@ -3779,7 +4150,7 @@ void tDisplay_m8axScreenMegaNerd(unsigned long mElapsed)
   int horas = horita, minutos = minutitos;
   colorI = esp_random() % (sizeof(colors) / sizeof(colors[0]));
   Serial.printf("M8AX - %s >>> Completados %s Share(s), %s Khashes, Prom. Hashrate %s KH/s %s°\n",
-                mineria.currentTime, mineria.completedShares.c_str(), mineria.totalKHashes.c_str(), mineria.currentHashRate.c_str(), mineria.temp.c_str());
+                mineria.currentTime.c_str(), mineria.completedShares.c_str(), mineria.totalKHashes.c_str(), mineria.currentHashRate.c_str(), mineria.temp.c_str());
   if (hasChangedScreen)
     tft.pushImage(0, 0, initWidth, initHeight, M8AXRelojLunar);
   printPoolData();
@@ -4006,7 +4377,7 @@ void esp32_2432S028R_BTCprice(unsigned long mElapsed)
   // Delete sprite to free the memory heap
   background.deleteSprite();
   Serial.printf("M8AX - %s >>> Completados %s Share(s), %s Khashes, Prom. Hashrate %s KH/s %s°\n",
-                mineria.currentTime, mineria.completedShares.c_str(), mineria.totalKHashes.c_str(), mineria.currentHashRate.c_str(), mineria.temp.c_str());
+                mineria.currentTime.c_str(), mineria.completedShares.c_str(), mineria.totalKHashes.c_str(), mineria.currentHashRate.c_str(), mineria.temp.c_str());
   cuentita++;
   if (cuentita == 15)
   {
@@ -4058,7 +4429,7 @@ void tDisplay_granHash(unsigned long mElapsed)
   sprintf(fecha, "%02d/%02d/%04d", dia, mes, anio);
   detectar = 0;
   Serial.printf("M8AX - %s >>> Completados %s Share(s), %s Khashes, Prom. Hashrate %s KH/s %s°\n",
-                mineria.currentTime, mineria.completedShares.c_str(), mineria.totalKHashes.c_str(), mineria.currentHashRate.c_str(), mineria.temp.c_str());
+                mineria.currentTime.c_str(), mineria.completedShares.c_str(), mineria.totalKHashes.c_str(), mineria.currentHashRate.c_str(), mineria.temp.c_str());
   if (hasChangedScreen)
     tft.pushImage(0, 0, initWidth, initHeight, M8AXQuote2);
   printPoolData();
@@ -4546,7 +4917,7 @@ void esp32_2432S028R_PongScreen(unsigned long mElapsed)
 {
   mineria = getMiningData(mElapsed);
   Serial.printf("M8AX - %s >>> Completados %s Share(s), %s Khashes, Prom. Hashrate %s KH/s %s°\n",
-                mineria.currentTime, mineria.completedShares.c_str(), mineria.totalKHashes.c_str(), mineria.currentHashRate.c_str(), mineria.temp.c_str());
+                mineria.currentTime.c_str(), mineria.completedShares.c_str(), mineria.totalKHashes.c_str(), mineria.currentHashRate.c_str(), mineria.temp.c_str());
 
   bool redraw = hasChangedScreen;
   if (!pg.init)
@@ -4756,7 +5127,7 @@ void esp32_2432S028R_PongScreen(unsigned long mElapsed)
         strcpy(lastHash, hashStr);
       }
     }
-
+    webAtender();
     delay(10);
   }
 
@@ -4915,7 +5286,7 @@ void esp32_2432S028R_LifeScreen(unsigned long mElapsed)
 {
   mineria = getMiningData(mElapsed);
   Serial.printf("M8AX - %s >>> Completados %s Share(s), %s Khashes, Prom. Hashrate %s KH/s %s°\n",
-                mineria.currentTime, mineria.completedShares.c_str(), mineria.totalKHashes.c_str(), mineria.currentHashRate.c_str(), mineria.temp.c_str());
+                mineria.currentTime.c_str(), mineria.completedShares.c_str(), mineria.totalKHashes.c_str(), mineria.currentHashRate.c_str(), mineria.temp.c_str());
 
   bool redraw = hasChangedScreen;
   if (!lf.init)
@@ -5061,7 +5432,7 @@ void esp32_2432S028R_LifeScreen(unsigned long mElapsed)
         strcpy(lastDer, der);
       }
     }
-
+    webAtender();
     delay(10);
   }
 
@@ -5369,7 +5740,7 @@ void esp32_2432S028R_KrakoutScreen(unsigned long mElapsed)
 {
   mineria = getMiningData(mElapsed);
   Serial.printf("M8AX - %s >>> Completados %s Share(s), %s Khashes, Prom. Hashrate %s KH/s %s°\n",
-                mineria.currentTime, mineria.completedShares.c_str(), mineria.totalKHashes.c_str(), mineria.currentHashRate.c_str(), mineria.temp.c_str());
+                mineria.currentTime.c_str(), mineria.completedShares.c_str(), mineria.totalKHashes.c_str(), mineria.currentHashRate.c_str(), mineria.temp.c_str());
 
   bool redraw = hasChangedScreen;
   if (!bk.init)
@@ -5619,7 +5990,7 @@ void esp32_2432S028R_KrakoutScreen(unsigned long mElapsed)
         strcpy(lastDer, der);
       }
     }
-
+    webAtender();
     delay(10);
   }
 
@@ -5685,7 +6056,7 @@ void esp32_2432S028R_KrakoutScreen(unsigned long mElapsed)
 #define CH_KI(s) ((s) == 1 ? 0 : 1)
 
 #ifndef CH_TT_BITS
-#define CH_TT_BITS 10 // tabla de transposicion: 2^11 entradas x 8 bytes = 16 KB (pon 10 para 8 KB, 12 para 32 KB)
+#define CH_TT_BITS 10 // tabla de transposicion: 2^10 entradas x 8 bytes = 8 KB (pon 11 para 16 KB, 12 para 32 KB)
 #endif
 #ifndef CH_TT_RESERVA
 #define CH_TT_RESERVA 60000 // bytes de heap que deben quedar libres tras reservar la tabla (si no cabe, juega sin tabla)
@@ -7344,7 +7715,7 @@ void esp32_2432S028R_AjedrezScreen(unsigned long mElapsed)
 {
   mineria = getMiningData(mElapsed);
   Serial.printf("M8AX - %s >>> Completados %s Share(s), %s Khashes, Prom. Hashrate %s KH/s %s°\n",
-                mineria.currentTime, mineria.completedShares.c_str(), mineria.totalKHashes.c_str(), mineria.currentHashRate.c_str(), mineria.temp.c_str());
+                mineria.currentTime.c_str(), mineria.completedShares.c_str(), mineria.totalKHashes.c_str(), mineria.currentHashRate.c_str(), mineria.temp.c_str());
 
   if (!chMemAlloc()) // sin RAM libre no se juega (y no se rompe nada de las otras pantallas)
   {
@@ -7460,7 +7831,7 @@ void esp32_2432S028R_AjedrezScreen(unsigned long mElapsed)
         strcpy(lastHash, hashStr);
       }
     }
-
+    webAtender();
     delay(10);
   }
 
@@ -8018,7 +8389,7 @@ void esp32_2432S028R_TetrisScreen(unsigned long mElapsed)
 {
   mineria = getMiningData(mElapsed);
   Serial.printf("M8AX - %s >>> Completados %s Share(s), %s Khashes, Prom. Hashrate %s KH/s %s°\n",
-                mineria.currentTime, mineria.completedShares.c_str(), mineria.totalKHashes.c_str(), mineria.currentHashRate.c_str(), mineria.temp.c_str());
+                mineria.currentTime.c_str(), mineria.completedShares.c_str(), mineria.totalKHashes.c_str(), mineria.currentHashRate.c_str(), mineria.temp.c_str());
 
   uint8_t b[TT_ROWS][TT_COLS]; // el campo vive aqui, en la pila, solo mientras dura la tanda
   if (!tt.init)
@@ -8125,7 +8496,7 @@ void esp32_2432S028R_TetrisScreen(unsigned long mElapsed)
         strcpy(lastHash, hashStr);
       }
     }
-
+    webAtender();
     delay(5);
   }
 
@@ -8532,7 +8903,7 @@ void tDisplay_Primos(unsigned long mElapsed)
 {
   mineria = getMiningData(mElapsed);
   Serial.printf("M8AX - %s >>> Completados %s Share(s), %s Khashes, Prom. Hashrate %s KH/s %s°\n",
-                mineria.currentTime, mineria.completedShares.c_str(), mineria.totalKHashes.c_str(), mineria.currentHashRate.c_str(), mineria.temp.c_str());
+                mineria.currentTime.c_str(), mineria.completedShares.c_str(), mineria.totalKHashes.c_str(), mineria.currentHashRate.c_str(), mineria.temp.c_str());
   // Si hace rato que no nos llaman es que se ha visto otra pantalla: borrar antes de pintar
   bool limpiar = !pm.init || (millis() - pm.ultLlamada > 2500) || hasChangedScreen;
   if (!pm.init)
@@ -8640,7 +9011,7 @@ void tDisplay_Primos(unsigned long mElapsed)
         strcpy(lastHash, hashStr);
       }
     }
-
+    webAtender();
     delay(5);
   }
 
@@ -9079,7 +9450,7 @@ void esp32_2432S028R_CifrasScreen(unsigned long mElapsed)
 {
   mineria = getMiningData(mElapsed);
   Serial.printf("M8AX - %s >>> Completados %s Share(s), %s Khashes, Prom. Hashrate %s KH/s %s°\n",
-                mineria.currentTime, mineria.completedShares.c_str(), mineria.totalKHashes.c_str(), mineria.currentHashRate.c_str(), mineria.temp.c_str());
+                mineria.currentTime.c_str(), mineria.completedShares.c_str(), mineria.totalKHashes.c_str(), mineria.currentHashRate.c_str(), mineria.temp.c_str());
 
   bool redraw = hasChangedScreen;
   if (!cf.init)
@@ -9182,7 +9553,7 @@ void esp32_2432S028R_CifrasScreen(unsigned long mElapsed)
       cifWinT = now;
       cifDrawRate();
     }
-
+    webAtender();
     delay(10);
   }
 
@@ -9300,7 +9671,7 @@ void esp32_2432S028R_RainScreen(unsigned long mElapsed)
 {
   mineria = getMiningData(mElapsed);
   Serial.printf("M8AX - %s >>> Completados %s Share(s), %s Khashes, Prom. Hashrate %s KH/s %s°\n",
-                mineria.currentTime, mineria.completedShares.c_str(), mineria.totalKHashes.c_str(), mineria.currentHashRate.c_str(), mineria.temp.c_str());
+                mineria.currentTime.c_str(), mineria.completedShares.c_str(), mineria.totalKHashes.c_str(), mineria.currentHashRate.c_str(), mineria.temp.c_str());
 
   bool redraw = hasChangedScreen;
   if (!rainInit)
@@ -9435,7 +9806,7 @@ void esp32_2432S028R_RainScreen(unsigned long mElapsed)
         strcpy(lastDer, der);
       }
     }
-
+    webAtender();
     delay(10);
   }
 
@@ -9802,7 +10173,7 @@ void esp32_2432S028R_SnakeScreen(unsigned long mElapsed)
 {
   mineria = getMiningData(mElapsed);
   Serial.printf("M8AX - %s >>> Completados %s Share(s), %s Khashes, Prom. Hashrate %s KH/s %s°\n",
-                mineria.currentTime, mineria.completedShares.c_str(), mineria.totalKHashes.c_str(), mineria.currentHashRate.c_str(), mineria.temp.c_str());
+                mineria.currentTime.c_str(), mineria.completedShares.c_str(), mineria.totalKHashes.c_str(), mineria.currentHashRate.c_str(), mineria.temp.c_str());
 
   bool redraw = hasChangedScreen;
   if (!snkM)
@@ -9914,7 +10285,7 @@ void esp32_2432S028R_SnakeScreen(unsigned long mElapsed)
         strcpy(lastHash, hashStr);
       }
     }
-
+    webAtender();
     delay(5);
   }
 
@@ -10547,7 +10918,7 @@ void esp32_2432S028R_GalaxianScreen(unsigned long mElapsed)
 {
   mineria = getMiningData(mElapsed);
   Serial.printf("M8AX - %s >>> Completados %s Share(s), %s Khashes, Prom. Hashrate %s KH/s %s°\n",
-                mineria.currentTime, mineria.completedShares.c_str(), mineria.totalKHashes.c_str(), mineria.currentHashRate.c_str(), mineria.temp.c_str());
+                mineria.currentTime.c_str(), mineria.completedShares.c_str(), mineria.totalKHashes.c_str(), mineria.currentHashRate.c_str(), mineria.temp.c_str());
 
   bool redraw = hasChangedScreen;
   if (!galM)
@@ -10655,7 +11026,7 @@ void esp32_2432S028R_GalaxianScreen(unsigned long mElapsed)
         strcpy(lastHash, hashStr);
       }
     }
-
+    webAtender();
     delay(2);
   }
 
@@ -10897,7 +11268,7 @@ void esp32_2432S028R_BannerScreen(unsigned long mElapsed)
 {
   mineria = getMiningData(mElapsed);
   Serial.printf("M8AX - %s >>> Completados %s Share(s), %s Khashes, Prom. Hashrate %s KH/s %s°\n",
-                mineria.currentTime, mineria.completedShares.c_str(), mineria.totalKHashes.c_str(), mineria.currentHashRate.c_str(), mineria.temp.c_str());
+                mineria.currentTime.c_str(), mineria.completedShares.c_str(), mineria.totalKHashes.c_str(), mineria.currentHashRate.c_str(), mineria.temp.c_str());
 
   bool redraw = hasChangedScreen;
   if (!banM)
@@ -10996,6 +11367,7 @@ void esp32_2432S028R_BannerScreen(unsigned long mElapsed)
         banMensaje(mElapsed);
       }
     }
+    webAtender();
     delay(2);
   }
 
@@ -11014,6 +11386,475 @@ void esp32_2432S028R_BannerScreen(unsigned long mElapsed)
   {
     ajustarZonaHoraria();
     obtenerLocYTemp();
+    obtenerVariacionesBTC(variacion1dia, variacion1semana);
+  }
+}
+
+/********************************************************************************************
+ *  PANTALLA FRACTALES - Mandelbrot, Julia, Burning Ship, Tricorn y Newton, calculados por el ESP32
+ ********************************************************************************************/
+#define FRAC_W 320
+#define FRAC_H 152
+#define FRAC_SLICE_MS 5000 // tandas de 5 s como las demás
+#define FRAC_HOLD_MS 8000  // tiempo que se queda el fractal terminado antes de sacar otro
+
+struct FracEstado
+{
+  uint8_t tipo; // 0 Mandelbrot, 1 Julia, 2 Burning Ship, 3 Tricorn, 4 Newton
+  float cx, cy, ancho;
+  float jx, jy; // constante c de Julia
+  int iterMax;
+  float escala;
+  uint16_t paso; // 0..152 filas pintadas
+  unsigned long holdHasta;
+  char nombre[16];
+  uint16_t pal[256];
+};
+
+static FracEstado fr;
+static uint16_t frLinea[FRAC_W];
+static bool fracInit = false;
+
+static float fracRnd() { return (esp_random() >> 8) / 16777216.0f; }
+
+static uint16_t fracDim(uint16_t c, int f) // oscurece un color RGB565 ( f = 0..255 )
+{
+  int r = ((c >> 11) & 31) * f / 255;
+  int g = ((c >> 5) & 63) * f / 255;
+  int b = (c & 31) * f / 255;
+  return (r << 11) | (g << 5) | b;
+}
+
+static uint16_t fracPunto(float x, float y)
+{
+  int n = 0;
+  float r2 = 0;
+
+  if (fr.tipo == 4) // ---- Newton z^3 - 1 ----
+  {
+    float zx = x, zy = y;
+    for (n = 0; n < 40; n++)
+    {
+      float z2x = zx * zx - zy * zy, z2y = 2 * zx * zy;
+      float z3x = z2x * zx - z2y * zy, z3y = z2x * zy + z2y * zx;
+      float nx = 2 * z3x + 1, ny = 2 * z3y;
+      float ax = 3 * z2x, ay = 3 * z2y;
+      float den = ax * ax + ay * ay;
+      if (den < 1e-12f)
+        return 0;
+      zx = (nx * ax + ny * ay) / den;
+      zy = (ny * ax - nx * ay) / den;
+      float d0 = (zx - 1) * (zx - 1) + zy * zy;
+      float d1 = (zx + 0.5f) * (zx + 0.5f) + (zy - 0.8660254f) * (zy - 0.8660254f);
+      float d2 = (zx + 0.5f) * (zx + 0.5f) + (zy + 0.8660254f) * (zy + 0.8660254f);
+      int raiz = -1;
+      if (d0 < 1e-4f)
+        raiz = 0;
+      else if (d1 < 1e-4f)
+        raiz = 1;
+      else if (d2 < 1e-4f)
+        raiz = 2;
+      if (raiz >= 0)
+      {
+        int f = 255 - n * 22;
+        if (f < 60)
+          f = 60;
+        return fracDim(fr.pal[raiz * 85], f);
+      }
+    }
+    return 0;
+  }
+
+  float zx, zy, cx, cy;
+  if (fr.tipo == 1) // Julia: z empieza en el punto, c fija
+  {
+    zx = x;
+    zy = y;
+    cx = fr.jx;
+    cy = fr.jy;
+  }
+  else // Mandelbrot, Burning Ship y Tricorn: z empieza en 0, c es el punto
+  {
+    zx = 0;
+    zy = 0;
+    cx = x;
+    cy = y;
+    if (fr.tipo == 0) // atajo: cardioide y bulbo principal, dentro seguro
+    {
+      float q = (x - 0.25f) * (x - 0.25f) + y * y;
+      if (q * (q + (x - 0.25f)) < 0.25f * y * y)
+        return 0;
+      if ((x + 1.0f) * (x + 1.0f) + y * y < 0.0625f)
+        return 0;
+    }
+  }
+
+  if (fr.tipo == 2) // Burning Ship
+  {
+    while (n < fr.iterMax)
+    {
+      float zx2 = zx * zx, zy2 = zy * zy;
+      r2 = zx2 + zy2;
+      if (r2 > 256.0f)
+        break;
+      zy = fabsf(2 * zx * zy) + cy;
+      zx = zx2 - zy2 + cx;
+      n++;
+    }
+  }
+  else if (fr.tipo == 3) // Tricorn
+  {
+    while (n < fr.iterMax)
+    {
+      float zx2 = zx * zx, zy2 = zy * zy;
+      r2 = zx2 + zy2;
+      if (r2 > 256.0f)
+        break;
+      zy = -2 * zx * zy + cy;
+      zx = zx2 - zy2 + cx;
+      n++;
+    }
+  }
+  else // Mandelbrot y Julia
+  {
+    while (n < fr.iterMax)
+    {
+      float zx2 = zx * zx, zy2 = zy * zy;
+      r2 = zx2 + zy2;
+      if (r2 > 256.0f)
+        break;
+      zy = 2 * zx * zy + cy;
+      zx = zx2 - zy2 + cx;
+      n++;
+    }
+  }
+
+  if (n >= fr.iterMax)
+    return 0;                                   // dentro del conjunto: negro
+  float mu = n + 1.0f - log2f(0.5f * logf(r2)); // color suave, sin bandas
+  return fr.pal[((int)(mu * fr.escala)) & 255];
+}
+
+static void fracNuevo()
+{
+  fr.tipo = esp_random() % 5;
+  fr.paso = 0;
+  fr.holdHasta = 0;
+  fr.ancho = 3.4f;
+  fr.cx = -0.5f;
+  fr.cy = 0.0f;
+
+  switch (fr.tipo)
+  {
+  case 0: // Mandelbrot: vista completa o zoom a un sitio famoso con un poco de azar
+  {
+    static const float pts[][2] = {{-0.7436f, 0.1318f}, {0.2820f, 0.0107f}, {-0.0880f, 0.6540f}, {-1.7549f, 0.0f}, {-1.9854f, 0.0f}, {-0.7269f, 0.1889f}, {-0.1600f, 1.0405f}};
+    if (esp_random() % 6 != 0)
+    {
+      int p = esp_random() % 7;
+      fr.ancho = 3.0f / (float)(1 << (2 + esp_random() % 7)); // de 0.75 a 0.012 ( el float no da para más )
+      fr.cx = pts[p][0] + (fracRnd() - 0.5f) * fr.ancho * 0.4f;
+      fr.cy = pts[p][1] + (fracRnd() - 0.5f) * fr.ancho * 0.4f;
+    }
+    strcpy(fr.nombre, "MANDELBROT");
+    break;
+  }
+  case 1: // Julia: constante conocida o una al azar en un círculo
+  {
+    static const float cs[][2] = {{-0.8f, 0.156f}, {-0.4f, 0.6f}, {0.285f, 0.01f}, {-0.70176f, -0.3842f}, {-0.835f, -0.2321f}, {-0.7269f, 0.1889f}, {0.355f, 0.355f}};
+    if (esp_random() & 1)
+    {
+      int p = esp_random() % 7;
+      fr.jx = cs[p][0];
+      fr.jy = cs[p][1];
+    }
+    else
+    {
+      float a = fracRnd() * 6.2831853f;
+      fr.jx = 0.7885f * cosf(a);
+      fr.jy = 0.7885f * sinf(a);
+    }
+    fr.ancho = 1.8f + fracRnd() * 1.4f;
+    fr.cx = (fracRnd() - 0.5f) * 0.4f;
+    fr.cy = (fracRnd() - 0.5f) * 0.3f;
+    strcpy(fr.nombre, "JULIA");
+    break;
+  }
+  case 2: // Burning Ship
+  {
+    static const float pts[][2] = {{-1.76f, -0.03f}, {-1.65f, -0.04f}, {-1.86f, -0.005f}, {-1.62f, -0.02f}};
+    if (esp_random() % 5 == 0)
+    {
+      fr.cx = -0.5f;
+      fr.cy = -0.5f;
+      fr.ancho = 3.6f;
+    }
+    else
+    {
+      int p = esp_random() % 4;
+      fr.ancho = 0.4f / (float)(1 << (esp_random() % 5));
+      fr.cx = pts[p][0] + (fracRnd() - 0.5f) * fr.ancho * 0.4f;
+      fr.cy = pts[p][1] + (fracRnd() - 0.5f) * fr.ancho * 0.4f;
+    }
+    strcpy(fr.nombre, "BURNING SHIP");
+    break;
+  }
+  case 3: // Tricorn
+    fr.ancho = 0.4f + fracRnd() * 3.0f;
+    fr.cx = -0.3f + (fracRnd() - 0.5f) * 1.0f;
+    fr.cy = (fracRnd() - 0.5f) * 0.8f;
+    strcpy(fr.nombre, "TRICORN");
+    break;
+  default: // Newton
+    fr.ancho = 0.15f + fracRnd() * 3.5f;
+    fr.cx = (fracRnd() - 0.5f) * 2.0f;
+    fr.cy = (fracRnd() - 0.5f) * 1.4f;
+    strcpy(fr.nombre, "NEWTON");
+    break;
+  }
+
+  fr.iterMax = 60 + (int)(35.0f * log2f(3.4f / fr.ancho));
+  if (fr.iterMax < 60)
+    fr.iterMax = 60;
+  if (fr.iterMax > 300)
+    fr.iterMax = 300;
+  fr.escala = 3.0f + fracRnd() * 6.0f;
+
+  // Paleta nueva al azar ( 3 ondas de color con fase distinta )
+  float pf[3], pd[3];
+  for (int k = 0; k < 3; k++)
+  {
+    pf[k] = 1.0f + (float)(esp_random() % 2);
+    pd[k] = fracRnd();
+  }
+  for (int i = 0; i < 256; i++)
+  {
+    float t = i / 255.0f;
+    float r = 0.5f + 0.5f * cosf(6.2831853f * (pf[0] * t + pd[0]));
+    float g = 0.5f + 0.5f * cosf(6.2831853f * (pf[1] * t + pd[1]));
+    float b = 0.5f + 0.5f * cosf(6.2831853f * (pf[2] * t + pd[2]));
+    fr.pal[i] = tft.color565((uint8_t)(r * 255), (uint8_t)(g * 255), (uint8_t)(b * 255));
+  }
+}
+
+// Orden de pintado entrelazado: primero borroso ( bloques de 8 filas ), luego se afina hasta 1 fila
+static void fracPaso(uint16_t s, int &y, int &h)
+{
+  if (s < 19)
+  {
+    y = s * 8;
+    h = 8;
+  }
+  else if (s < 38)
+  {
+    y = (s - 19) * 8 + 4;
+    h = 4;
+  }
+  else if (s < 76)
+  {
+    y = (s - 38) * 4 + 2;
+    h = 2;
+  }
+  else
+  {
+    y = (s - 76) * 2 + 1;
+    h = 1;
+  }
+}
+
+static void fracPintaFila(int y, int h)
+{
+  float alto = fr.ancho * ((float)FRAC_H / (float)FRAC_W);
+  float py = fr.cy + ((float)y / (float)FRAC_H - 0.5f) * alto;
+  float dx = fr.ancho / (float)FRAC_W;
+  float px = fr.cx - fr.ancho * 0.5f;
+  for (int i = 0; i < FRAC_W; i++)
+  {
+    frLinea[i] = fracPunto(px, py);
+    px += dx;
+  }
+  tft.startWrite();
+  tft.setAddrWindow(0, y, FRAC_W, h);
+  for (int k = 0; k < h; k++)
+    tft.pushColors(frLinea, FRAC_W, true);
+  tft.endWrite();
+}
+
+/****************************************************************************************************************
+ *
+ *   LEDs De La Pantalla Fractal
+ *   ---------------------------
+ *   Mientras se pinta parpadean cambiando de color según lo fino que va el dibujo: rojo en el borroso,
+ *   luego amarillo, verde y cian al afinar. Al terminar, destello blanco. Cuando sale un fractal nuevo,
+ *   destello magenta. Sin delay, el apagado lo hace el bucle con ledApagarEn.
+ *
+ ****************************************************************************************************************/
+
+static void fracLed(bool r, bool g, bool b)
+{
+  digitalWrite(LED_PIN, r ? LOW : HIGH);
+  digitalWrite(LED_PIN_G, g ? LOW : HIGH);
+  digitalWrite(LED_PIN_B, b ? LOW : HIGH);
+}
+
+static void fracLedEtapa(uint16_t paso)
+{
+  if (paso < 19)
+    fracLed(true, false, false);
+  else if (paso < 38)
+    fracLed(true, true, false);
+  else if (paso < 76)
+    fracLed(false, true, false);
+  else
+    fracLed(false, true, true);
+}
+
+void esp32_2432S028R_FractalScreen(unsigned long mElapsed)
+{
+  mineria = getMiningData(mElapsed);
+  Serial.printf("M8AX - %s >>> Completados %s Share(s), %s Khashes, Prom. Hashrate %s KH/s %s°\n",
+                mineria.currentTime.c_str(), mineria.completedShares.c_str(), mineria.totalKHashes.c_str(), mineria.currentHashRate.c_str(), mineria.temp.c_str());
+
+  bool redraw = hasChangedScreen;
+  if (!fracInit)
+  {
+    fracInit = true;
+    redraw = true;
+  }
+
+  if (redraw) // cada vez que se entra en la pantalla sale un fractal distinto
+  {
+    fracNuevo();
+    tft.fillRect(0, 0, 320, 170, TFT_BLACK);
+  }
+  printPoolData();
+  hasChangedScreen = false;
+
+  char hashStr[16];
+  snprintf(hashStr, sizeof(hashStr), "%s", mineria.currentHashRate.c_str());
+  char izq[24], der[24];
+  char lastIzq[24] = "", lastDer[24] = "";
+
+  unsigned long start = millis();
+  unsigned long lastHud = 0;
+  unsigned long lastMiningUpdate = 0;
+  unsigned long lastTouchChk = 0;
+  pongLeds(false);
+  unsigned long ledApagarEn = 0;
+  unsigned long ledSigue = 0;
+
+  while (millis() - start < FRAC_SLICE_MS)
+  {
+    unsigned long now = millis();
+
+    // ---- Tactil (misma logica que esp32_2432S028R_DoLedStuff) ----
+    if (now - lastTouchChk >= 40 && now - previousTouchMillis >= 500)
+    {
+      lastTouchChk = now;
+      int16_t t_x, t_y;
+      if (touch.getXY(t_x, t_y))
+      {
+        previousTouchMillis = now;
+        autoPantallas = false;
+        if (((t_x > 109) && (t_x < 211)) && ((t_y > 185) && (t_y < 241)))
+        {
+          bottomScreenBlue ^= true;
+          hasChangedScreen = true;
+        }
+        else if ((t_x > 235) && ((t_y > 0) && (t_y < 16)))
+        {
+          esp32_2432S028R_AlternateScreenState();
+        }
+        else if (t_x > 160)
+        {
+          currentDisplayDriver->current_cyclic_screen = (currentDisplayDriver->current_cyclic_screen + 1) % currentDisplayDriver->num_cyclic_screens;
+        }
+        else
+        {
+          currentDisplayDriver->current_cyclic_screen = currentDisplayDriver->current_cyclic_screen - 1;
+          if (currentDisplayDriver->current_cyclic_screen < 0)
+            currentDisplayDriver->current_cyclic_screen = currentDisplayDriver->num_cyclic_screens - 1;
+        }
+        break;
+      }
+    }
+
+    // Cambio automático cada 1 minuto
+    if (autoPantallas && millis() - lastAutoChange >= 60000UL)
+    {
+      currentDisplayDriver->current_cyclic_screen =
+          (currentDisplayDriver->current_cyclic_screen + 1) % currentDisplayDriver->num_cyclic_screens;
+      lastAutoChange = millis();
+      break;
+    }
+
+    if (ledApagarEn && now >= ledApagarEn)
+    {
+      pongLeds(false);
+      ledApagarEn = 0;
+    }
+    if (fr.paso < FRAC_H && !ledApagarEn && now >= ledSigue)
+    {
+      fracLedEtapa(fr.paso);
+      ledApagarEn = now + 60;
+      ledSigue = now + 260;
+    }
+
+    // ---- Fractal: una tanda de filas por vuelta ----
+    if (fr.paso < FRAC_H)
+    {
+      int y, h;
+      fracPaso(fr.paso, y, h);
+      fracPintaFila(y, h);
+      fr.paso++;
+      if (fr.paso == FRAC_H) // terminado: destello azul y a esperar
+      {
+        fr.holdHasta = millis() + FRAC_HOLD_MS;
+        fracLed(true, true, true);
+        ledApagarEn = millis() + 150;
+      }
+    }
+    else if (now >= fr.holdHasta) // toca otro fractal nuevo
+    {
+      fracNuevo();
+      tft.fillRect(0, 0, 320, FRAC_H, TFT_BLACK);
+      fracLed(true, false, true);
+      ledApagarEn = millis() + 100;
+    }
+
+    // ---- Hashrate (cada segundo) ----
+    if (now - lastMiningUpdate >= 1000)
+    {
+      lastMiningUpdate = now;
+      mineria = getMiningData(mElapsed);
+      snprintf(hashStr, sizeof(hashStr), "%s", mineria.currentHashRate.c_str());
+    }
+
+    // ---- Textos de abajo ----
+    if (now - lastHud >= 200)
+    {
+      lastHud = now;
+      snprintf(izq, sizeof(izq), "%s", fr.nombre);
+      snprintf(der, sizeof(der), "%s KH/s", hashStr);
+      if (strcmp(izq, lastIzq) != 0 || strcmp(der, lastDer) != 0)
+      {
+        lifeDrawHud(izq, der);
+        strcpy(lastIzq, izq);
+        strcpy(lastDer, der);
+      }
+    }
+    webAtender();
+    delay(fr.paso < FRAC_H ? 1 : 10); // cede CPU al minero
+  }
+
+  pongLeds(false);
+  tft.setTextPadding(0);
+  tft.setTextDatum(TL_DATUM);
+
+  cuentita++;
+  if (cuentita == 15)
+  {
+    ajustarZonaHoraria(), obtenerLocYTemp();
     obtenerVariacionesBTC(variacion1dia, variacion1semana);
   }
 }
@@ -11077,15 +11918,17 @@ void analiCadaSegundo(unsigned long frame)
     if (enviado)
     {
       fallosSeguidos = 0;
+      sdGuardadoCiclo = false;
       lastTelegramEpochTime = epochTime; // Actualiza el tiempo de la última ejecución
     }
     else if (++fallosSeguidos < 4)
     {
-      lastTelegramEpochTime = epochTime - interval + 300; // falló: reintenta en 5 minutos (hasta 3 veces)
+      lastTelegramEpochTime = epochTime - interval + ((interval > 300UL) ? 300UL : interval);
     }
     else
     {
       fallosSeguidos = 0;
+      sdGuardadoCiclo = false;
       lastTelegramEpochTime = epochTime; // 4 fallos seguidos: espera las 2 horas normales
     }
   }
@@ -11093,6 +11936,7 @@ void analiCadaSegundo(unsigned long frame)
 
 void esp32_2432S028R_AnimateCurrentScreen(unsigned long frame)
 {
+  webAtender();
   uncontadormas++;
   if (uncontadormas % 5 == 0)
   {
@@ -11172,9 +12016,10 @@ void esp32_2432S028R_DoLedStuff(unsigned long frame)
     break;
   case NM_Connecting:
     if (currentMillis - previousMillis >= 500)
-    { // 0.5sec blink
+    {
       previousMillis = currentMillis;
-      digitalWrite(LED_PIN, HIGH), digitalWrite(LED_PIN_B, !digitalRead(LED_PIN)); // Cambia el estado del LED
+      digitalWrite(LED_PIN, HIGH);                      // rojo apagado
+      digitalWrite(LED_PIN_B, !digitalRead(LED_PIN_B)); // azul parpadea
     }
     break;
   case NM_hashing:
@@ -11188,7 +12033,7 @@ void esp32_2432S028R_DoLedStuff(unsigned long frame)
   }
 }
 
-CyclicScreenFunction esp32_2432S028RCyclicScreens[] = {esp32_2432S028R_MinerScreen, tDisplay_granHash, tDisplay_hashGigante, esp32_2432S028R_BTCprice, esp32_2432S028R_ClockScreen, RelojDeNumeros, tDisplay_m8axScreen7, esp32_2432S028R_m8axScreen1, esp32_2432S028R_m8axScreen2, tDisplay_m8axScreenMegaNerd, tDisplay_m8axScreen5, tDisplay_m8axScreen6, esp32_2432S028R_BannerScreen, tDisplay_Primos, esp32_2432S028R_CifrasScreen, esp32_2432S028R_TetrisScreen, esp32_2432S028R_AjedrezScreen, esp32_2432S028R_GalaxianScreen, esp32_2432S028R_PongScreen, esp32_2432S028R_KrakoutScreen, esp32_2432S028R_SnakeScreen, esp32_2432S028R_LifeScreen, esp32_2432S028R_RainScreen, tDisplay_m8axScreen3, tDisplay_m8axScreen4};
+CyclicScreenFunction esp32_2432S028RCyclicScreens[] = {esp32_2432S028R_MinerScreen, tDisplay_granHash, tDisplay_hashGigante, esp32_2432S028R_BTCprice, esp32_2432S028R_ClockScreen, RelojDeNumeros, tDisplay_m8axScreen7, esp32_2432S028R_m8axScreen1, esp32_2432S028R_m8axScreen2, tDisplay_m8axScreenMegaNerd, tDisplay_m8axScreen5, tDisplay_m8axScreen6, esp32_2432S028R_BannerScreen, tDisplay_Primos, esp32_2432S028R_CifrasScreen, esp32_2432S028R_TetrisScreen, esp32_2432S028R_AjedrezScreen, esp32_2432S028R_GalaxianScreen, esp32_2432S028R_PongScreen, esp32_2432S028R_KrakoutScreen, esp32_2432S028R_SnakeScreen, esp32_2432S028R_LifeScreen, esp32_2432S028R_FractalScreen, esp32_2432S028R_RainScreen, tDisplay_m8axScreen3, tDisplay_m8axScreen4};
 
 DisplayDriver esp32_2432S028RDriver = {
     esp32_2432S028R_Init,
