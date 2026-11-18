@@ -71,7 +71,7 @@
  *   5 - "Forma De Almacenar Valor Que No Depende De Gobiernos Ni Instituciones." – Barry Silbert, CEO De Digital Currency Group.
  *
  *
- *              ///\\\ --- Minimizando Código, Maximizando Funcionalidad. Solo 2310 Líneas De Código En 8h --- ///\\\
+ *              ///\\\ --- Minimizando Código, Maximizando Funcionalidad. Solo 2315 Líneas De Código En 8h --- ///\\\
  *
  *                                                     .M8AX Corp. - ¡A Minar!
  *
@@ -162,6 +162,7 @@ double parpadeosPorSegundo = 1.0;
 const unsigned long interval = 60 * 2 * 60;
 const unsigned long minStartupTime = interval;
 unsigned long lastTelegramEpochTime = 0, startTime = 0, epochTime, tiempoInicio, tiempoTranscurrido;
+
 mining_data data;
 moonPhase mymoonPhase;
 
@@ -1314,17 +1315,18 @@ void convertirTiempo(const char *input, char *output)
 
 std::string obtenerDiaSemana(const std::string &fecha)
 {
-  const char *diasem[] = {"Dom", "Lun", "Mar", "Mie", "Jue", "Vie", "Sab"};
-  int dia = std::stoi(fecha.substr(0, 2));
-  int mes = std::stoi(fecha.substr(3, 2)) - 1;
-  int anio = std::stoi(fecha.substr(6, 4));
-  std::tm timeStruct = {};
-  timeStruct.tm_mday = dia;
-  timeStruct.tm_mon = mes;
-  timeStruct.tm_year = anio - 1900;
-  std::mktime(&timeStruct);
-  int diaSemana = timeStruct.tm_wday;
-  return diasem[diaSemana];
+  static const char *diasem[] = {"Dom", "Lun", "Mar", "Mie", "Jue", "Vie", "Sab"};
+  int dia = 1, mes = 1, anio = 1970;
+  if (sscanf(fecha.c_str(), "%d/%d/%d", &dia, &mes, &anio) != 3)
+    return "???";
+  std::tm t = {};
+  t.tm_mday = dia;
+  t.tm_mon = mes - 1;
+  t.tm_year = anio - 1900;
+  std::mktime(&t);
+  if (t.tm_wday < 0 || t.tm_wday > 6)
+    return "???";
+  return diasem[t.tm_wday];
 }
 
 void sincronizarTiempo()
@@ -1451,7 +1453,7 @@ String convertirARomanos(int num)
   return result;
 }
 
-bool enviarMensajeATelegram(String mensaje)
+bool enviarMensajeATelegram(String &mensaje)
 {
   bool ok = false;
   if (WiFi.status() != WL_CONNECTED)
@@ -1471,12 +1473,18 @@ bool enviarMensajeATelegram(String mensaje)
   client.setInsecure();
   String mensajeCodificado = urlEncode(mensaje);
   mensajeCodificado.replace("\n", "%0A");
+  mensaje = "", mensaje.reserve(0);
   Serial.println("M8AX - Enviando Mensaje A Telegram...");
-  String url = "https://api.telegram.org/bot" + BOT_TOKEN + "/sendMessage?chat_id=" + CHAT_ID + "&text=" + mensajeCodificado;
-  mensajeCodificado = "";
   if (client.connect("api.telegram.org", 443))
   {
-    client.print(String("GET ") + url + " HTTP/1.1\r\n" + "Host: api.telegram.org\r\n" + "Connection: close\r\n\r\n");
+    client.print("GET https://api.telegram.org/bot");
+    client.print(BOT_TOKEN);
+    client.print("/sendMessage?chat_id=");
+    client.print(CHAT_ID);
+    client.print("&text=");
+    client.print(mensajeCodificado);
+    client.print(" HTTP/1.1\r\nHost: api.telegram.org\r\nConnection: close\r\n\r\n");
+    mensajeCodificado = "", mensajeCodificado.reserve(0);
     unsigned long t0 = millis();
     while (!client.available() && client.connected() && millis() - t0 < 5000)
     {
@@ -1500,6 +1508,7 @@ bool enviarMensajeATelegram(String mensaje)
   }
   else
   {
+    mensajeCodificado = "", mensajeCodificado.reserve(0);
     Serial.println("M8AX - Error De Conexión, Mensaje A Telegram Falló...");
     client.stop();
     sincroLED3();
@@ -1710,11 +1719,7 @@ bool recopilaTelegram()
   }
   bool enviado = enviarMensajeATelegram(cadenaEnvio);
   resultadoStr = "";
-  resultadoStr.reserve(0);
-  cadenaEnvio = "";
-  cadenaEnvio.reserve(0);
-  valor = "";
-  valor.reserve(0);
+  resultadoStr.reserve(0), cadenaEnvio = "", cadenaEnvio.reserve(0), valor = "", valor.reserve(0);
   return enviado;
 }
 

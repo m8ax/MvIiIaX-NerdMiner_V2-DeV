@@ -47,8 +47,8 @@
  *
  *                              PARA MÁS INFORMACIÓN LEER PDF
  *
- *                     Tmp. De Programación 22H - 9615 Líneas De Código
- *                     ------------------------------------------------
+ *                     Tmp. De Programación 24H - 11010 Líneas De Código
+ *                     -------------------------------------------------
  *
  ********************************************************************************************/
 
@@ -125,28 +125,39 @@ float anterBTC = 0.0, maxkh = 0.00, minkh = 1000.00, porcentaje = 0.00;
 const char *nombrecillo;
 const char *apiUrl = "http://ip-api.com/json/";
 const char *serverName = "https://dummyjson.com/quotes/random";
-const char *criptomonedas[] = {
-    "BTC-USD",   // Bitcoin
-    "ETH-USD",   // Ethereum
-    "BNB-USD",   // Binance Coin
-    "SOL-USD",   // Solana
-    "XRP-USD",   // Ripple
-    "ADA-USD",   // Cardano
-    "AVAX-USD",  // Avalanche
-    "DOGE-USD",  // Dogecoin (Elon Musk)
-    "DOT-USD",   // Polkadot
-    "LINK-USD",  // Chainlink
-    "MATIC-USD", // Polygon (Matic)
-    "ATOM-USD",  // Cosmos
-    "HBAR-USD",  // Hedera
-    "UNI-USD",   // Uniswap
-    "ALGO-USD",  // Algorand
-    "FET-USD",   // Fetch.AI
-    "NEAR-USD",  // Near Protocol (añadido)
-    "APT-USD",   // Aptos (añadido)
-    "ARB-USD",   // Arbitrum (añadido)
-    "TRUMP-USD"  // TrumpCoin
+
+// Criptomonedas De Binance, Todas De Golpe
+
+#define NUM_CRIPTOS 20
+
+struct CriptoInfo
+{
+  const char *simbolo;
+  const char *nombre;
+  float precio;
 };
+
+CriptoInfo criptomonedas[NUM_CRIPTOS] = {
+    {"BTCUSDT", "BTC", 0},
+    {"ETHUSDT", "ETH", 0},
+    {"XRPUSDT", "XRP", 0},
+    {"ADAUSDT", "ADA", 0},
+    {"SOLUSDT", "SOL", 0},
+    {"BNBUSDT", "BNB", 0},
+    {"DOGEUSDT", "DOGE", 0},
+    {"TRXUSDT", "TRX", 0},
+    {"AVAXUSDT", "AVAX", 0},
+    {"LINKUSDT", "LINK", 0},
+    {"SUIUSDT", "SUI", 0},
+    {"DOTUSDT", "DOT", 0},
+    {"LTCUSDT", "LTC", 0},
+    {"BCHUSDT", "BCH", 0},
+    {"XLMUSDT", "XLM", 0},
+    {"UNIUSDT", "UNI", 0},
+    {"NEARUSDT", "NEAR", 0},
+    {"ATOMUSDT", "ATOM", 0},
+    {"AAVEUSDT", "AAVE", 0},
+    {"FILUSDT", "FIL", 0}};
 const char *ciudades[] = {
     "Nueva York", "Londres", "Paris", "Tokio", "Sidney",
     "Los Angeles", "Beijing", "Moscu", "Delhi", "Buenos Aires",
@@ -605,21 +616,18 @@ String convertirARomanos(int num)
 
 std::string obtenerDiaSemana(const std::string &fecha)
 {
-  const char *diasem[] = {"Dom", "Lun", "Mar", "Mie", "Jue", "Vie", "Sab"};
-
-  int dia = std::stoi(fecha.substr(0, 2));
-  int mes = std::stoi(fecha.substr(3, 2)) - 1;
-  int anio = std::stoi(fecha.substr(6, 4));
-
-  std::tm timeStruct = {};
-  timeStruct.tm_mday = dia;
-  timeStruct.tm_mon = mes;
-  timeStruct.tm_year = anio - 1900;
-
-  std::mktime(&timeStruct);
-  int diaSemana = timeStruct.tm_wday; // 0 = domingo, 1 = lunes, ...
-
-  return diasem[diaSemana];
+  static const char *diasem[] = {"Dom", "Lun", "Mar", "Mie", "Jue", "Vie", "Sab"};
+  int dia = 1, mes = 1, anio = 1970;
+  if (sscanf(fecha.c_str(), "%d/%d/%d", &dia, &mes, &anio) != 3)
+    return "???";
+  std::tm t = {};
+  t.tm_mday = dia;
+  t.tm_mon = mes - 1;
+  t.tm_year = anio - 1900;
+  std::mktime(&t);
+  if (t.tm_wday < 0 || t.tm_wday > 6)
+    return "???";
+  return diasem[t.tm_wday];
 }
 
 // Función para quitar acentos de una cadena de texto
@@ -836,7 +844,7 @@ static void cifras_search(CifrasCtx &c, const int *vals, const int *ids, int n, 
         }
         if ((++c.nodes & 0x3FF) == 0)
         {
-          if (millis() > c.deadline)
+          if ((int32_t)(millis() - c.deadline) > 0)
           {
             c.done = true;
             return;
@@ -1068,7 +1076,7 @@ const char *factorize(uint32_t number)
 
 // Función que envía un texto que contiene estadísticas de minería a tu canal de telegram
 
-bool enviarMensajeATelegram(String mensaje)
+bool enviarMensajeATelegram(String &mensaje)
 {
   bool ok = false;
   // Verificar y reconectar WiFi si es necesario
@@ -1107,7 +1115,9 @@ bool enviarMensajeATelegram(String mensaje)
 
   if (client.connect("api.telegram.org", 443))
   {
-    client.print(String("GET ") + url + " HTTP/1.1\r\n" + "Host: api.telegram.org\r\n" + "Connection: close\r\n\r\n");
+    client.print("GET ");
+    client.print(url);
+    client.print(" HTTP/1.1\r\nHost: api.telegram.org\r\nConnection: close\r\n\r\n");
     unsigned long t0 = millis();
     while (!client.available() && client.connected() && millis() - t0 < 5000)
     {
@@ -1206,7 +1216,7 @@ bool recopilaTelegram()
   cadenaEnvio += "Bloques Hasta El Halving - " + String(telrb) + "\n";
   long int hechos = 210000 - telrb.toInt();
   cadenaEnvio += "Bloques Minados Post-Halving - " + String(hechos) + "\n";
-  char buffer[10];
+  char buffer[20];
   dtostrf((hechos * 100.0) / 210000.0, 0, 3, buffer); // Convierte float a string con 3 decimales
   cadenaEnvio += "% Completado Desde El Último Halving - " + String(buffer) + "%\n";
   cadenaEnvio += "Pool De Minería - " + Settings.PoolAddress + "\n";
@@ -1273,7 +1283,7 @@ void datosPantallaTextoPlano()
   cadenaEnvio2 += ". Bloques Hasta El Halving - " + String(telrb);
   long int hechos = 210000 - telrb.toInt();
   cadenaEnvio2 += ". Bloques Minados Post-Halving - " + String(hechos);
-  char buffer[10];
+  char buffer[20];
   dtostrf((hechos * 100.0) / 210000.0, 0, 3, buffer); // Convierte float a string con 5 decimales
   cadenaEnvio2 += ". % Completado Desde El Último Halving - " + String(buffer) + "%";
   cadenaEnvio2 += ". % Restante Para Próximo Halving - " + String(100.000 - round(atof(buffer) * 1000) / 1000, 3) + "%";
@@ -2303,107 +2313,89 @@ void obtenerNoticias()
   }
 }
 
-/**
- * Obtiene el precio de un par de divisas de la API de Coinbase.
- *
- * Realiza una solicitud HTTPS a la API de Coinbase para obtener el precio actual de una criptomoneda o par de divisas especificado.
- *
- * @param currency_pair El par de divisas para obtener el precio (ej. "BTC-USD").
- * @return El precio actual de la criptomoneda en formato flotante, o -1 si hay un error de conexión o de procesamiento.
- */
-
-float obtenerPrecio(String currency_pair)
+bool preciosBinanceLote(const char *host, float *precios)
 {
-  if (WiFi.status() != WL_CONNECTED)
+  String url = "https://" + String(host) + "/api/v3/ticker/price?symbols=%5B";
+  for (int i = 0; i < NUM_CRIPTOS; i++)
   {
-    Serial.println("M8AX - WiFi No Conectado, Intentando Reconectar...");
-    WiFi.disconnect();
-    WiFi.reconnect();
-    delay(500);
+    if (i > 0)
+      url += ",";
+    url += "%22" + String(criptomonedas[i].simbolo) + "%22";
   }
+  url += "%5D";
 
   WiFiClientSecure client;
-  client.setInsecure(); // Desactiva verificación SSL (Coinbase usa HTTPS)
-
-  const char *host = "api.coinbase.com";
-  const int port = 443; // HTTPS usa el puerto 443
-
-  Serial.print("M8AX - Conectando A ");
-  Serial.println(host);
-
-  if (!client.connect(host, port))
+  client.setInsecure();
+  HTTPClient http;
+  http.setTimeout(5000);
+  if (!http.begin(client, url))
+    return false;
+  int codigo = http.GET();
+  if (codigo != 200)
   {
-    Serial.println("M8AX - Error: No Se Pudo Conectar Al Servidor");
+    Serial.printf("M8AX - %s Responde %d\n", host, codigo);
+    http.end();
+    return false;
+  }
+  String payload = http.getString();
+  http.end();
+
+  DynamicJsonDocument doc(4096);
+  if (deserializeJson(doc, payload))
+    return false;
+
+  JsonArray lista = doc.as<JsonArray>();
+  for (JsonObject item : lista)
+  {
+    const char *simbolo = item["symbol"] | "";
+    for (int i = 0; i < NUM_CRIPTOS; i++)
+      if (strcmp(simbolo, criptomonedas[i].simbolo) == 0)
+        precios[i] = atof(item["price"] | "-1");
+  }
+  return true;
+}
+
+float precioBinanceUno(const char *host, const char *simbolo)
+{
+  String url = "https://" + String(host) + "/api/v3/ticker/price?symbol=" + simbolo;
+  WiFiClientSecure client;
+  client.setInsecure();
+  HTTPClient http;
+  http.setTimeout(5000);
+  if (!http.begin(client, url))
     return -1;
-  }
-
-  // Construimos la petición HTTP manualmente
-  String url = "/v2/prices/" + currency_pair + "/spot";
-  client.print(String("GET ") + url + " HTTP/1.1\r\n" + "Host: " + host + "\r\n" + "User-Agent: ESP32\r\n" + "Connection: close\r\n\r\n");
-  url = "";
-  url.reserve(0);
-
-  // Esperamos la respuesta del servidor
-  unsigned long timeout = millis();
-  while (client.available() == 0)
+  float precio = -1;
+  if (http.GET() == 200)
   {
-    if (millis() - timeout > 2000)
-    { // Timeout de 2 segundos
-      Serial.println("M8AX - Error: Se Pasó El Tiempo De Espera");
-      client.stop();
-      return -1;
-    }
+    DynamicJsonDocument doc(256);
+    if (!deserializeJson(doc, http.getString()))
+      precio = atof(doc["price"] | "-1");
   }
+  http.end();
+  return precio;
+}
 
-  // Leemos y descartamos los headers HTTP
-  while (client.available())
+bool obtenerPreciosTodos(float *precios)
+{
+  for (int i = 0; i < NUM_CRIPTOS; i++)
+    precios[i] = -1;
+  if (WiFi.status() != WL_CONNECTED)
+    return false;
+
+  if (preciosBinanceLote("api.binance.com", precios))
+    return true;
+  if (preciosBinanceLote("data-api.binance.vision", precios))
+    return true;
+
+  // Seguramente hay un par deslistado: una a una, y la deslistada se queda en ERROR
+  bool alguno = false;
+  for (int i = 0; i < NUM_CRIPTOS && abortar == 0; i++)
   {
-    String linea = client.readStringUntil('\n');
-    if (linea == "\r")
-    {
-      break; // Fin de los headers
-    }
+    precios[i] = precioBinanceUno("data-api.binance.vision", criptomonedas[i].simbolo);
+    if (precios[i] > 0)
+      alguno = true;
   }
-  // Leemos solo el JSON de la respuesta
-  String payload = "";
-  while (client.available())
-  {
-    payload += client.readString();
-  }
-
-  Serial.println("M8AX - Respuesta De La API:");
-  Serial.println(payload);
-
-  client.stop(); // Cerramos la conexión
-
-  // Parseamos el JSON con menos consumo de RAM
-  DynamicJsonDocument doc(256);
-  DeserializationError error = deserializeJson(doc, payload);
-
-  if (error)
-  {
-    Serial.println("M8AX - Error Al Parsear JSON: ");
-    Serial.println(error.c_str());
-    payload = "";
-    payload.reserve(0);
-    return -1;
-  }
-
-  // Extraemos el precio si existe
-  if (doc.containsKey("data") && doc["data"].containsKey("amount"))
-  {
-    float precio = doc["data"]["amount"].as<float>();
-    payload = "";
-    payload.reserve(0);
-    return precio;
-  }
-  else
-  {
-    Serial.println("M8AX - El JSON No Tiene El Formato Esperado.");
-    payload = "";
-    payload.reserve(0);
-    return -1;
-  }
+  return alguno;
 }
 
 // Función que recibe un número entero y devuelve una cadena con el número en morse
@@ -4170,7 +4162,6 @@ void tDisplay_m8axScreen4(unsigned long mElapsed)
                 data.completedShares.c_str(), data.totalKHashes.c_str(), data.currentHashRate.c_str(), data.temp.c_str());
   if (esPrimo(rndnumero))
   {
-    background.pushImage(0, 0, CreditosScreenWidth, CreditosScreenHeight, CreditosScreen);
     String rndnumeroStr = String(rndnumero);
     tft.fillRect(167, 137, 123, 19, TFT_BLACK);
     tft.setCursor(169, 139);
@@ -4581,7 +4572,7 @@ void tDisplay_m8axScreen9(unsigned long mElapsed)
   String RDia = convertirARomanos(dia);
   String RMes = convertirARomanos(mes);
   String RAnio = convertirARomanos(anio);
-  String TempCPU = convertirARomanos(std::stoi(data.temp.c_str()));
+  String TempCPU = convertirARomanos(atoi(data.temp.c_str()));
   if (actualizarc == 0)
   {
     random_number = 1 + (esp_random() % 4);
@@ -4725,7 +4716,7 @@ void tDisplay_m8axScreen10(unsigned long mElapsed)
   String RDia = ABinario(dia);
   String RMes = ABinario(mes);
   String RAnio = ABinario(anio);
-  String TempCPU = ABinario(std::stoi(data.temp.c_str()));
+  String TempCPU = ABinario(atoi(data.temp.c_str()));
   if (actualizarc == 0)
   {
     random_number = 1 + (esp_random() % 4);
@@ -4870,7 +4861,7 @@ void tDisplay_m8axScreen11(unsigned long mElapsed)
   String anio = dataa.currentDate.substring(6, 10);
   int anio2d = anio.substring(0, 2).toInt();  // Extraer los primeros dos dígitos
   int aniol2d = anio.substring(2, 4).toInt(); // Extraer los últimos dos dígitos
-  String TempCPU = Amorse(std::stoi(data.temp.c_str()));
+  String TempCPU = Amorse(atoi(data.temp.c_str()));
   String hRoman = Amorse(horas);
   String mRoman = Amorse(minutos);
   String sRoman = Amorse(segundos);
@@ -5152,11 +5143,11 @@ void tDisplay_m8axScreen13(unsigned long mElapsed)
     tft.setCursor((tft.width() - tft.textWidth("ESPERA...")) / 2, 93);
     tft.print("ESPERA...");
     tft.setTextSize(1);
-    float precios[20];
-    for (int iii = 0; iii < 20; iii++)
+    float precios[NUM_CRIPTOS];
+    for (int iii = 0; iii < NUM_CRIPTOS; iii++)
       precios[iii] = -2; // -2 = todavía sin pedir
-    for (int iii = 0; iii < 20 && abortar == 0; iii++)
-      precios[iii] = obtenerPrecio(criptomonedas[iii]);
+    if (abortar == 0)
+      obtenerPreciosTodos(precios);
     // Quitar el mensaje: repone el fondo
     background.pushSprite(0, 0);
     int segundosAhora = timeClient.getSeconds() % 60;
@@ -5179,7 +5170,7 @@ void tDisplay_m8axScreen13(unsigned long mElapsed)
       colorI = esp_random() % (sizeof(colors) / sizeof(colors[0]));
       tft.setTextColor(colors[colorI]);
       tft.setCursor(x, y);
-      tft.print(criptomonedas[iii]);
+      tft.print(criptomonedas[iii].nombre);
       tft.setCursor(x, y + 15);
       if (precios[iii] != -1)
       {
@@ -5190,7 +5181,7 @@ void tDisplay_m8axScreen13(unsigned long mElapsed)
       {
         tft.print("$-ERROR-$");
         Serial.print("M8AX - Error Al Obtener El Precio De ");
-        Serial.println(criptomonedas[iii]);
+        Serial.println(criptomonedas[iii].nombre);
       }
     }
     actualizarc++;
@@ -5417,7 +5408,7 @@ void tDisplay_m8axScreen15(unsigned long mElapsed)
   tft.setTextColor(TFT_WHITE);
   float tflops = ((hashRa * 1000) * 2560) / 1000000000000;
   tft.setCursor(4, 100);
-  char buffer[10];               // Buffer para almacenar el número formateado
+  char buffer[20];               // Buffer para almacenar el número formateado
   dtostrf(tflops, 8, 6, buffer); // (valor, ancho mínimo, decimales, buffer)
   tft.print(buffer);
   tft.setCursor(4, 115);
@@ -7373,7 +7364,7 @@ static int chQ(ChGame &g, int alpha, int beta, int ply)
 {
   if ((++chNodes & 255) == 0)
   {
-    if (millis() > chDeadline)
+    if ((int32_t)(millis() - chDeadline) > 0)
       chAbort = true;
     if ((chNodes & 2047) == 0)
       CH_CEDE();
@@ -7433,7 +7424,7 @@ static int chNeg(ChGame &g, int depth, int alpha, int beta, int ply, bool nulaOK
 {
   if ((++chNodes & 255) == 0)
   {
-    if (millis() > chDeadline)
+    if ((int32_t)(millis() - chDeadline) > 0)
       chAbort = true;
     if ((chNodes & 2047) == 0)
       CH_CEDE();
@@ -7664,8 +7655,8 @@ static bool chElegir(ChGame &g, ChMove &out, int profMax, uint32_t ms, const uin
 
   for (int d = 1; d <= profMax; d++)
   {
-    chDeadline = (d == 1) ? 0xFFFFFFFFu : t0 + ms; // la primera vuelta siempre se completa
-    for (int i = 1; i < n; i++)                    // la mejor de la vuelta anterior, primero
+    chDeadline = (d == 1) ? t0 + 600000u : t0 + ms; // la primera vuelta siempre se completa
+    for (int i = 1; i < n; i++)                     // la mejor de la vuelta anterior, primero
     {
       ChMove m = root[i];
       int16_t v = rs[i];
@@ -8175,7 +8166,7 @@ void tDisplay_Ajedrez(unsigned long mElapsed)
   // La RAM del motor solo existe durante esta llamada: se reserva ahora y se devuelve al final
   if (!chMemAlloc())
   {
-    Serial.printf("M8AX - ### Ajedrez: sin RAM para el motor ( libre %u, mayor bloque %u ) ###\n", (unsigned)ESP.getFreeHeap(), (unsigned)ESP.getMaxAllocHeap());
+    Serial.printf("M8AX - ### Ajedrez: Sin RAM Para El Motor ( Libre %u, Mayor Bloque %u ) ###\n", (unsigned)ESP.getFreeHeap(), (unsigned)ESP.getMaxAllocHeap());
     delay(1000);
     return;
   }
@@ -9295,7 +9286,8 @@ void tDisplay_Primos(unsigned long mElapsed)
   // Inicializar el cronometro solamente la primera vez
   if (pmTiempoVelocidad == 0)
     pmTiempoVelocidad = start;
-
+  if (limpiar)
+    pmTiempoVelocidad = millis();
   while (millis() - start < PM_SLICE_MS)
   {
     unsigned long now = millis();
@@ -9345,6 +9337,1397 @@ void tDisplay_Primos(unsigned long mElapsed)
   pm.ultLlamada = millis();
 }
 
+/****************************************************************************************************************
+ *
+ *   Escrito por: M8AX
+ *
+ *   Descripción: FRACTALES - Pantalla para NerdminerV2 ( T-Display )
+ *   ----------------------------------------------------------------
+ *
+ *   Mandelbrot, Julia, Burning Ship, Tricorn y Newton calculados por el ESP32. Se pinta entrelazado: primero
+ *   borroso en bloques de 8 filas y luego se va afinando hasta 1 fila. Al terminar se queda unos segundos
+ *   y sale otro fractal con zoom, paleta y constante al azar. Cada vez que se entra en la pantalla sale uno nuevo.
+ *
+ *   Abajo a la izquierda el nombre del fractal y a la derecha el hashrate.
+ *
+ *   Aquí no hay táctil ni LEDs: el cambio de pantalla lo hace el driver, por eso las tandas son de 1 s y el
+ *   fractal a medio pintar se guarda en una struct estática ( unos 1,2 KB, nada de heap ).
+ *
+ *   Para activarla hay que pegar este bloque antes del array tDisplayCyclicScreens[] y meter tDisplay_Fractal.
+ *
+ ****************************************************************************************************************/
+
+#define FRAC_W 320
+#define FRAC_H 152
+#define FRAC_SLICE_MS 1000 // tandas de 1 s: el driver cambia de pantalla entre llamadas
+#define FRAC_HOLD_MS 8000  // tiempo que se queda el fractal terminado antes de sacar otro
+
+struct FracEstado
+{
+  uint8_t tipo; // 0 Mandelbrot, 1 Julia, 2 Burning Ship, 3 Tricorn, 4 Newton
+  float cx, cy, ancho;
+  float jx, jy; // constante c de Julia
+  int iterMax;
+  float escala;
+  uint16_t paso; // 0..152 filas pintadas
+  unsigned long holdHasta;
+  char nombre[16];
+  uint16_t pal[256];
+};
+
+static FracEstado fr;
+static uint16_t frLinea[FRAC_W];
+static bool fracInit = false;
+static unsigned long fracUlt = 0; // cuándo terminó la última tanda
+
+static float fracRnd() { return (esp_random() >> 8) / 16777216.0f; }
+
+static uint16_t fracDim(uint16_t c, int f) // oscurece un color RGB565 ( f = 0..255 )
+{
+  int r = ((c >> 11) & 31) * f / 255;
+  int g = ((c >> 5) & 63) * f / 255;
+  int b = (c & 31) * f / 255;
+  return (r << 11) | (g << 5) | b;
+}
+
+static uint16_t fracPunto(float x, float y)
+{
+  int n = 0;
+  float r2 = 0;
+
+  if (fr.tipo == 4) // ---- Newton z^3 - 1 ----
+  {
+    float zx = x, zy = y;
+    for (n = 0; n < 40; n++)
+    {
+      float z2x = zx * zx - zy * zy, z2y = 2 * zx * zy;
+      float z3x = z2x * zx - z2y * zy, z3y = z2x * zy + z2y * zx;
+      float nx = 2 * z3x + 1, ny = 2 * z3y;
+      float ax = 3 * z2x, ay = 3 * z2y;
+      float den = ax * ax + ay * ay;
+      if (den < 1e-12f)
+        return 0;
+      zx = (nx * ax + ny * ay) / den;
+      zy = (ny * ax - nx * ay) / den;
+      float d0 = (zx - 1) * (zx - 1) + zy * zy;
+      float d1 = (zx + 0.5f) * (zx + 0.5f) + (zy - 0.8660254f) * (zy - 0.8660254f);
+      float d2 = (zx + 0.5f) * (zx + 0.5f) + (zy + 0.8660254f) * (zy + 0.8660254f);
+      int raiz = -1;
+      if (d0 < 1e-4f)
+        raiz = 0;
+      else if (d1 < 1e-4f)
+        raiz = 1;
+      else if (d2 < 1e-4f)
+        raiz = 2;
+      if (raiz >= 0)
+      {
+        int f = 255 - n * 22;
+        if (f < 60)
+          f = 60;
+        return fracDim(fr.pal[raiz * 85], f);
+      }
+    }
+    return 0;
+  }
+
+  float zx, zy, cx, cy;
+  if (fr.tipo == 1) // Julia: z empieza en el punto, c fija
+  {
+    zx = x;
+    zy = y;
+    cx = fr.jx;
+    cy = fr.jy;
+  }
+  else // Mandelbrot, Burning Ship y Tricorn: z empieza en 0, c es el punto
+  {
+    zx = 0;
+    zy = 0;
+    cx = x;
+    cy = y;
+    if (fr.tipo == 0) // atajo: cardioide y bulbo principal, dentro seguro
+    {
+      float q = (x - 0.25f) * (x - 0.25f) + y * y;
+      if (q * (q + (x - 0.25f)) < 0.25f * y * y)
+        return 0;
+      if ((x + 1.0f) * (x + 1.0f) + y * y < 0.0625f)
+        return 0;
+    }
+  }
+
+  if (fr.tipo == 2) // Burning Ship
+  {
+    while (n < fr.iterMax)
+    {
+      float zx2 = zx * zx, zy2 = zy * zy;
+      r2 = zx2 + zy2;
+      if (r2 > 256.0f)
+        break;
+      zy = fabsf(2 * zx * zy) + cy;
+      zx = zx2 - zy2 + cx;
+      n++;
+    }
+  }
+  else if (fr.tipo == 3) // Tricorn
+  {
+    while (n < fr.iterMax)
+    {
+      float zx2 = zx * zx, zy2 = zy * zy;
+      r2 = zx2 + zy2;
+      if (r2 > 256.0f)
+        break;
+      zy = -2 * zx * zy + cy;
+      zx = zx2 - zy2 + cx;
+      n++;
+    }
+  }
+  else // Mandelbrot y Julia
+  {
+    while (n < fr.iterMax)
+    {
+      float zx2 = zx * zx, zy2 = zy * zy;
+      r2 = zx2 + zy2;
+      if (r2 > 256.0f)
+        break;
+      zy = 2 * zx * zy + cy;
+      zx = zx2 - zy2 + cx;
+      n++;
+    }
+  }
+
+  if (n >= fr.iterMax)
+    return 0;                                   // dentro del conjunto: negro
+  float mu = n + 1.0f - log2f(0.5f * logf(r2)); // color suave, sin bandas
+  return fr.pal[((int)(mu * fr.escala)) & 255];
+}
+
+static void fracNuevo()
+{
+  fr.tipo = esp_random() % 5;
+  fr.paso = 0;
+  fr.holdHasta = 0;
+  fr.ancho = 3.4f;
+  fr.cx = -0.5f;
+  fr.cy = 0.0f;
+
+  switch (fr.tipo)
+  {
+  case 0: // Mandelbrot: vista completa o zoom a un sitio famoso con un poco de azar
+  {
+    static const float pts[][2] = {{-0.7436f, 0.1318f}, {0.2820f, 0.0107f}, {-0.0880f, 0.6540f}, {-1.7549f, 0.0f}, {-1.9854f, 0.0f}, {-0.7269f, 0.1889f}, {-0.1600f, 1.0405f}};
+    if (esp_random() % 6 != 0)
+    {
+      int p = esp_random() % 7;
+      fr.ancho = 3.0f / (float)(1 << (2 + esp_random() % 7)); // de 0.75 a 0.012 ( el float no da para más )
+      fr.cx = pts[p][0] + (fracRnd() - 0.5f) * fr.ancho * 0.4f;
+      fr.cy = pts[p][1] + (fracRnd() - 0.5f) * fr.ancho * 0.4f;
+    }
+    strcpy(fr.nombre, "MANDELBROT");
+    break;
+  }
+  case 1: // Julia: constante conocida o una al azar en un círculo
+  {
+    static const float cs[][2] = {{-0.8f, 0.156f}, {-0.4f, 0.6f}, {0.285f, 0.01f}, {-0.70176f, -0.3842f}, {-0.835f, -0.2321f}, {-0.7269f, 0.1889f}, {0.355f, 0.355f}};
+    if (esp_random() & 1)
+    {
+      int p = esp_random() % 7;
+      fr.jx = cs[p][0];
+      fr.jy = cs[p][1];
+    }
+    else
+    {
+      float a = fracRnd() * 6.2831853f;
+      fr.jx = 0.7885f * cosf(a);
+      fr.jy = 0.7885f * sinf(a);
+    }
+    fr.ancho = 1.8f + fracRnd() * 1.4f;
+    fr.cx = (fracRnd() - 0.5f) * 0.4f;
+    fr.cy = (fracRnd() - 0.5f) * 0.3f;
+    strcpy(fr.nombre, "JULIA");
+    break;
+  }
+  case 2: // Burning Ship
+  {
+    static const float pts[][2] = {{-1.76f, -0.03f}, {-1.65f, -0.04f}, {-1.86f, -0.005f}, {-1.62f, -0.02f}};
+    if (esp_random() % 5 == 0)
+    {
+      fr.cx = -0.5f;
+      fr.cy = -0.5f;
+      fr.ancho = 3.6f;
+    }
+    else
+    {
+      int p = esp_random() % 4;
+      fr.ancho = 0.4f / (float)(1 << (esp_random() % 5));
+      fr.cx = pts[p][0] + (fracRnd() - 0.5f) * fr.ancho * 0.4f;
+      fr.cy = pts[p][1] + (fracRnd() - 0.5f) * fr.ancho * 0.4f;
+    }
+    strcpy(fr.nombre, "BURNING SHIP");
+    break;
+  }
+  case 3: // Tricorn
+    fr.ancho = 0.4f + fracRnd() * 3.0f;
+    fr.cx = -0.3f + (fracRnd() - 0.5f) * 1.0f;
+    fr.cy = (fracRnd() - 0.5f) * 0.8f;
+    strcpy(fr.nombre, "TRICORN");
+    break;
+  default: // Newton
+    fr.ancho = 0.15f + fracRnd() * 3.5f;
+    fr.cx = (fracRnd() - 0.5f) * 2.0f;
+    fr.cy = (fracRnd() - 0.5f) * 1.4f;
+    strcpy(fr.nombre, "NEWTON");
+    break;
+  }
+
+  fr.iterMax = 60 + (int)(35.0f * log2f(3.4f / fr.ancho));
+  if (fr.iterMax < 60)
+    fr.iterMax = 60;
+  if (fr.iterMax > 300)
+    fr.iterMax = 300;
+  fr.escala = 3.0f + fracRnd() * 6.0f;
+
+  // Paleta nueva al azar ( 3 ondas de color con fase distinta )
+  float pf[3], pd[3];
+  for (int k = 0; k < 3; k++)
+  {
+    pf[k] = 1.0f + (float)(esp_random() % 2);
+    pd[k] = fracRnd();
+  }
+  for (int i = 0; i < 256; i++)
+  {
+    float t = i / 255.0f;
+    float r = 0.5f + 0.5f * cosf(6.2831853f * (pf[0] * t + pd[0]));
+    float g = 0.5f + 0.5f * cosf(6.2831853f * (pf[1] * t + pd[1]));
+    float b = 0.5f + 0.5f * cosf(6.2831853f * (pf[2] * t + pd[2]));
+    fr.pal[i] = tft.color565((uint8_t)(r * 255), (uint8_t)(g * 255), (uint8_t)(b * 255));
+  }
+}
+
+// Orden de pintado entrelazado: primero borroso ( bloques de 8 filas ), luego se afina hasta 1 fila
+static void fracPaso(uint16_t s, int &y, int &h)
+{
+  if (s < 19)
+  {
+    y = s * 8;
+    h = 8;
+  }
+  else if (s < 38)
+  {
+    y = (s - 19) * 8 + 4;
+    h = 4;
+  }
+  else if (s < 76)
+  {
+    y = (s - 38) * 4 + 2;
+    h = 2;
+  }
+  else
+  {
+    y = (s - 76) * 2 + 1;
+    h = 1;
+  }
+}
+
+static void fracPintaFila(int y, int h)
+{
+  float alto = fr.ancho * ((float)FRAC_H / (float)FRAC_W);
+  float py = fr.cy + ((float)y / (float)FRAC_H - 0.5f) * alto;
+  float dx = fr.ancho / (float)FRAC_W;
+  float px = fr.cx - fr.ancho * 0.5f;
+  for (int i = 0; i < FRAC_W; i++)
+  {
+    frLinea[i] = fracPunto(px, py);
+    px += dx;
+  }
+  tft.startWrite();
+  tft.setAddrWindow(0, y, FRAC_W, h);
+  for (int k = 0; k < h; k++)
+    tft.pushColors(frLinea, FRAC_W, true);
+  tft.endWrite();
+}
+
+static void fracDrawHud(const char *izq, const char *der)
+{
+  tft.setFreeFont(NULL);
+  tft.setTextFont(1);
+  tft.setTextSize(2);
+  tft.setTextColor(TFT_WHITE, TFT_BLACK);
+  tft.setTextPadding(150);
+  tft.setTextDatum(TL_DATUM);
+  tft.drawString(izq, 4, 153);
+  tft.setTextDatum(TR_DATUM);
+  tft.drawString(der, 316, 153);
+  tft.setTextPadding(0);
+  tft.setTextDatum(TL_DATUM);
+}
+
+void tDisplay_Fractal(unsigned long mElapsed)
+{
+  mineria = getMiningData(mElapsed);
+  Serial.printf("M8AX - >>> Completados %s Share(s), %s Khashes, Prom. Hashrate %s KH/s %s°\n",
+                mineria.completedShares.c_str(), mineria.totalKHashes.c_str(), mineria.currentHashRate.c_str(), mineria.temp.c_str());
+
+  // Si hace rato que no nos llaman es que se ha visto otra pantalla: fractal nuevo y todo en negro
+  bool limpiar = !fracInit || (millis() - fracUlt > 2500);
+  fracInit = true;
+  if (limpiar)
+  {
+    fracNuevo();
+    tft.fillRect(0, 0, 320, 170, TFT_BLACK);
+  }
+
+  char hashStr[16];
+  snprintf(hashStr, sizeof(hashStr), "%s", mineria.currentHashRate.c_str());
+  char izq[24], der[24];
+  char lastIzq[24] = "", lastDer[24] = "";
+
+  unsigned long start = millis();
+  unsigned long lastHud = 0;
+  unsigned long lastMiningUpdate = 0;
+
+  while (millis() - start < FRAC_SLICE_MS)
+  {
+    unsigned long now = millis();
+
+    // ---- Fractal: una tanda de filas por vuelta ----
+    if (fr.paso < FRAC_H)
+    {
+      int y, h;
+      fracPaso(fr.paso, y, h);
+      fracPintaFila(y, h);
+      fr.paso++;
+      if (fr.paso == FRAC_H) // terminado: a esperar
+        fr.holdHasta = millis() + FRAC_HOLD_MS;
+    }
+    else if (now >= fr.holdHasta) // toca otro fractal nuevo
+    {
+      fracNuevo();
+      tft.fillRect(0, 0, 320, FRAC_H, TFT_BLACK);
+    }
+
+    // ---- Hashrate (cada segundo) ----
+    if (now - lastMiningUpdate >= 1000)
+    {
+      lastMiningUpdate = now;
+      mineria = getMiningData(mElapsed);
+      snprintf(hashStr, sizeof(hashStr), "%s", mineria.currentHashRate.c_str());
+    }
+
+    // ---- Textos de abajo ----
+    if (now - lastHud >= 200)
+    {
+      lastHud = now;
+      snprintf(izq, sizeof(izq), "%s", fr.nombre);
+      snprintf(der, sizeof(der), "%s KH/s", hashStr);
+      if (strcmp(izq, lastIzq) != 0 || strcmp(der, lastDer) != 0)
+      {
+        fracDrawHud(izq, der);
+        strcpy(lastIzq, izq);
+        strcpy(lastDer, der);
+      }
+    }
+    delay(fr.paso < FRAC_H ? 1 : 10); // cede CPU al minero
+  }
+
+  tft.setTextPadding(0);
+  tft.setTextDatum(TL_DATUM);
+  fracUlt = millis();
+}
+
+/****************************************************************************************************************
+ *
+ *   Escrito por: M8AX
+ *
+ *   Descripción: GALAXIAS N CUERPOS - Pantalla para NerdminerV2 ( T-Display )
+ *   -------------------------------------------------------------------------
+ *
+ *   Dos galaxias de 160 cuerpos cada una, con su núcleo pesado y sus estrellas en órbita, se acercan y chocan.
+ *   Cada cuerpo atrae a todos los demás de verdad ( gravedad de Newton en 3D ), así que en cada paso el ESP32
+ *   resuelve 51.040 interacciones. Los pasos se encadenan sin parar hasta que toca pintar el cuadro ( cada
+ *   40 ms ), o sea que la CPU va a tope todo el rato.
+ *
+ *   Abajo a la izquierda sale cuántos millones de interacciones por segundo se calculan de verdad y a la
+ *   derecha el hashrate. La cámara gira despacio. Una galaxia azul y la otra naranja; cuanto más rápida va
+ *   una estrella, más brillante. Cada 5000 pasos nace otra pareja con inclinaciones y giros al azar.
+ *
+ *   Memoria: los unos 16 KB de los cuerpos se piden con malloc al entrar y se devuelven cuando se detecta que
+ *   se ha salido a otra pantalla. Si no hay RAM, se salta la pantalla y lo dice por el puerto serie.
+ *   Si aprieta la RAM, baja NBD_N ( 240 va de sobra y cuesta casi la mitad ).
+ *
+ *   Para activarla hay que pegar este bloque antes del array tDisplayCyclicScreens[] y meter tDisplay_Galaxias.
+ *
+ ****************************************************************************************************************/
+
+#define NBD_N 320 // cuerpos: 2 núcleos + estrellas (par, y mejor que no baje de 8)
+#define NBD_PARES ((NBD_N * (NBD_N - 1)) / 2)
+#define NBD_DT 0.002f
+#define NBD_EPS2 0.0064f // suavizado al cuadrado
+#define NBD_EC2 0.36f    // suavizado al cuadrado entre los dos núcleos
+#define NBD_MC 12.0f     // masa de cada núcleo
+#define NBD_MS 0.02f     // masa de cada estrella
+#define NBD_ESC 48.0f    // píxeles por unidad
+#define NBD_ALTO 152
+#define NBD_FRAME_MS 40
+#define NBD_SLICE_MS 1000 // tandas de 1 s: el driver cambia de pantalla entre llamadas
+#define NBD_PASOS_MAX 5000
+
+struct NbdMem
+{
+  float x[NBD_N], y[NBD_N], z[NBD_N];
+  float vx[NBD_N], vy[NBD_N], vz[NBD_N];
+  float m[NBD_N];
+  float ax[NBD_N], ay[NBD_N], az[NBD_N];
+  int16_t px[NBD_N], py[NBD_N]; // dónde está pintado cada cuerpo (-1 = en ningún sitio)
+  int16_t nx[NBD_N], ny[NBD_N];
+  uint8_t gal[NBD_N];
+  uint32_t pasos;
+  float giro;
+};
+static NbdMem *nbd = NULL;
+static float nbdMint = 0;        // millones de interacciones por segundo ( suavizado )
+static unsigned long nbdUlt = 0; // cuándo terminó la última tanda
+
+static const uint16_t NBD_COL_A[8] = {0x0010, 0x001F, 0x041F, 0x07FF, 0x4FFF, 0x8FFF, 0xCFFF, 0xFFFF};
+static const uint16_t NBD_COL_B[8] = {0x4000, 0x8000, 0xC000, 0xF800, 0xFC00, 0xFD20, 0xFFE0, 0xFFFF};
+
+static float nbdRnd() { return (esp_random() >> 8) / 16777216.0f; }
+
+static inline float nbdRsqrt(float x)
+{
+  float h = 0.5f * x;
+  uint32_t i;
+  memcpy(&i, &x, 4);
+  i = 0x5f3759df - (i >> 1);
+  memcpy(&x, &i, 4);
+  return x * (1.5f - h * x * x);
+}
+
+static void nbdGalaxia(int nucleo, int ini, int fin, float cx, float cy, float cz, float vx, float vy, float vz, float incl, float sentido)
+{
+  float si = sinf(incl), co = cosf(incl);
+  nbd->x[nucleo] = cx;
+  nbd->y[nucleo] = cy;
+  nbd->z[nucleo] = cz;
+  nbd->vx[nucleo] = vx;
+  nbd->vy[nucleo] = vy;
+  nbd->vz[nucleo] = vz;
+  nbd->m[nucleo] = NBD_MC;
+  for (int i = ini; i < fin; i++)
+  {
+    float r = 0.25f + 0.75f * powf(nbdRnd(), 0.7f);
+    float a = nbdRnd() * 6.2831853f;
+    float v = sqrtf(NBD_MC / r) * (0.97f + 0.06f * nbdRnd()) * sentido; // velocidad circular
+    float px = r * cosf(a), pz = r * sinf(a), py = (nbdRnd() - 0.5f) * 0.04f;
+    float qx = -sinf(a) * v, qz = cosf(a) * v;
+    nbd->x[i] = cx + px;
+    nbd->y[i] = cy + py * co - pz * si;
+    nbd->z[i] = cz + py * si + pz * co;
+    nbd->vx[i] = vx + qx;
+    nbd->vy[i] = vy - qz * si;
+    nbd->vz[i] = vz + qz * co;
+    nbd->m[i] = NBD_MS;
+  }
+}
+
+static void nbdNueva()
+{
+  memset(nbd, 0, sizeof(NbdMem));
+  float off = (nbdRnd() < 0.5f ? -1.0f : 1.0f) * (1.8f + 0.6f * nbdRnd());
+  float vv = 1.0f + 0.2f * nbdRnd();
+  int mitad = 2 + (NBD_N - 2) / 2;
+  nbdGalaxia(0, 2, mitad, -1.6f, 0, -off / 2, vv, 0, 0, nbdRnd() * 3.1416f, nbdRnd() < 0.5f ? 1.0f : -1.0f);
+  nbdGalaxia(1, mitad, NBD_N, 1.6f, 0, off / 2, -vv, 0, 0, nbdRnd() * 3.1416f, nbdRnd() < 0.5f ? 1.0f : -1.0f);
+  for (int i = 0; i < NBD_N; i++)
+  {
+    nbd->gal[i] = (i == 0 || (i >= 2 && i < mitad)) ? 0 : 1;
+    nbd->px[i] = nbd->py[i] = -1;
+  }
+}
+
+static void nbdPaso()
+{
+  NbdMem *m = nbd;
+  for (int i = 0; i < NBD_N; i++)
+    m->ax[i] = m->ay[i] = m->az[i] = 0;
+
+  for (int i = 0; i < NBD_N - 1; i++)
+  {
+    float xi = m->x[i], yi = m->y[i], zi = m->z[i], mi = m->m[i];
+    float axi = 0, ayi = 0, azi = 0;
+    for (int j = (i == 0 ? 2 : i + 1); j < NBD_N; j++) // el par de núcleos (0,1) va aparte
+    {
+      float dx = m->x[j] - xi, dy = m->y[j] - yi, dz = m->z[j] - zi;
+      float inv = nbdRsqrt(dx * dx + dy * dy + dz * dz + NBD_EPS2);
+      float f = inv * inv * inv;
+      float fi = f * m->m[j], fj = f * mi;
+      axi += dx * fi;
+      ayi += dy * fi;
+      azi += dz * fi;
+      m->ax[j] -= dx * fj;
+      m->ay[j] -= dy * fj;
+      m->az[j] -= dz * fj;
+    }
+    m->ax[i] += axi;
+    m->ay[i] += ayi;
+    m->az[i] += azi;
+  }
+
+  float dx = m->x[1] - m->x[0], dy = m->y[1] - m->y[0], dz = m->z[1] - m->z[0];
+  float inv = nbdRsqrt(dx * dx + dy * dy + dz * dz + NBD_EC2);
+  float f = inv * inv * inv * NBD_MC;
+  m->ax[0] += dx * f;
+  m->ay[0] += dy * f;
+  m->az[0] += dz * f;
+  m->ax[1] -= dx * f;
+  m->ay[1] -= dy * f;
+  m->az[1] -= dz * f;
+
+  for (int i = 0; i < NBD_N; i++)
+  {
+    m->vx[i] += m->ax[i] * NBD_DT;
+    m->vy[i] += m->ay[i] * NBD_DT;
+    m->vz[i] += m->az[i] * NBD_DT;
+    m->x[i] += m->vx[i] * NBD_DT;
+    m->y[i] += m->vy[i] * NBD_DT;
+    m->z[i] += m->vz[i] * NBD_DT;
+  }
+}
+
+static void nbdDibuja()
+{
+  NbdMem *m = nbd;
+  float cg = cosf(m->giro), sg = sinf(m->giro);
+  const float ct = 0.58f, st = 0.81f; // la cámara mira desde arriba, inclinada unos 55 grados
+
+  for (int i = 0; i < NBD_N; i++)
+  {
+    float x1 = m->x[i] * cg - m->z[i] * sg;
+    float z1 = m->x[i] * sg + m->z[i] * cg;
+    float y1 = m->y[i] * ct - z1 * st;
+    int sx = 160 + (int)(x1 * NBD_ESC);
+    int sy = NBD_ALTO / 2 + (int)(y1 * NBD_ESC);
+    if (sx < 3 || sx > 316 || sy < 3 || sy > NBD_ALTO - 4)
+      sx = sy = -1;
+    m->nx[i] = sx;
+    m->ny[i] = sy;
+  }
+
+  for (int i = 0; i < NBD_N; i++)
+  {
+    if (m->px[i] >= 0 && (m->px[i] != m->nx[i] || m->py[i] != m->ny[i]))
+    {
+      if (i < 2)
+        tft.fillCircle(m->px[i], m->py[i], 3, TFT_BLACK);
+      else
+        tft.drawPixel(m->px[i], m->py[i], TFT_BLACK);
+    }
+  }
+
+  for (int i = 2; i < NBD_N; i++)
+  {
+    if (m->nx[i] < 0)
+      continue;
+    int b = (int)((m->vx[i] * m->vx[i] + m->vy[i] * m->vy[i] + m->vz[i] * m->vz[i]) * 0.025f);
+    if (b > 7)
+      b = 7;
+    tft.drawPixel(m->nx[i], m->ny[i], m->gal[i] ? NBD_COL_B[b] : NBD_COL_A[b]);
+  }
+  if (m->nx[0] >= 0)
+    tft.fillCircle(m->nx[0], m->ny[0], 3, 0x5FFF);
+  if (m->nx[1] >= 0)
+    tft.fillCircle(m->nx[1], m->ny[1], 3, TFT_YELLOW);
+
+  memcpy(m->px, m->nx, sizeof(m->px));
+  memcpy(m->py, m->ny, sizeof(m->py));
+}
+
+static void nbdDrawHud(const char *izq, const char *der)
+{
+  tft.setFreeFont(NULL);
+  tft.setTextFont(1);
+  tft.setTextSize(2);
+  tft.setTextColor(TFT_WHITE, TFT_BLACK);
+  tft.setTextPadding(150);
+  tft.setTextDatum(TL_DATUM);
+  tft.drawString(izq, 4, 153);
+  tft.setTextDatum(TR_DATUM);
+  tft.drawString(der, 316, 153);
+  tft.setTextPadding(0);
+  tft.setTextDatum(TL_DATUM);
+}
+
+void tDisplay_Galaxias(unsigned long mElapsed)
+{
+  mineria = getMiningData(mElapsed);
+  Serial.printf("M8AX - >>> Completados %s Share(s), %s Khashes, Prom. Hashrate %s KH/s %s°\n",
+                mineria.completedShares.c_str(), mineria.totalKHashes.c_str(), mineria.currentHashRate.c_str(), mineria.temp.c_str());
+
+  // Si hace rato que no nos llaman es que se ha visto otra pantalla: borrar antes de pintar
+  bool limpiar = (millis() - nbdUlt > 2500);
+  if (!nbd)
+  {
+    nbd = (NbdMem *)malloc(sizeof(NbdMem));
+    if (!nbd)
+    {
+      Serial.printf("M8AX - ### Galaxias: Sin RAM ( Libre %u, Mayor Bloque %u ) ###\n", (unsigned)ESP.getFreeHeap(), (unsigned)ESP.getMaxAllocHeap());
+      delay(1000);
+      return;
+    }
+    nbdNueva();
+    nbdMint = 0;
+    limpiar = true;
+  }
+  const int nbdMiPantalla = currentDisplayDriver->current_cyclic_screen;
+  if (limpiar)
+  {
+    tft.fillRect(0, 0, 320, 170, TFT_BLACK);
+    for (int i = 0; i < NBD_N; i++)
+      nbd->px[i] = nbd->py[i] = -1;
+  }
+
+  char hashStr[16];
+  snprintf(hashStr, sizeof(hashStr), "%s", mineria.currentHashRate.c_str());
+  char izq[24], der[24];
+  char lastIzq[24] = "", lastDer[24] = "";
+
+  unsigned long start = millis();
+  unsigned long lastMiningUpdate = 0;
+
+  while (millis() - start < NBD_SLICE_MS)
+  {
+    // ---- Física a tope hasta que toque pintar ----
+    unsigned long tf = millis();
+    uint32_t k = 0;
+    do
+    {
+      nbdPaso();
+      nbd->pasos++;
+      k++;
+    } while (millis() - tf < NBD_FRAME_MS);
+
+    nbd->giro += 0.012f;
+    nbdDibuja();
+
+    if (nbd->pasos >= NBD_PASOS_MAX)
+    {
+      nbdNueva();
+      tft.fillRect(0, 0, 320, NBD_ALTO, TFT_BLACK);
+    }
+
+    unsigned long now = millis();
+    float inst = k * (float)NBD_PARES / ((now - tf) * 1000.0f);
+    nbdMint = (nbdMint == 0) ? inst : nbdMint * 0.7f + inst * 0.3f;
+
+    if (now - lastMiningUpdate >= 1000)
+    {
+      lastMiningUpdate = now;
+      mineria = getMiningData(mElapsed);
+      snprintf(hashStr, sizeof(hashStr), "%s", mineria.currentHashRate.c_str());
+    }
+
+    snprintf(izq, sizeof(izq), "%.1fM INT/S", nbdMint);
+    snprintf(der, sizeof(der), "%s KH/s", hashStr);
+    if (strcmp(izq, lastIzq) != 0 || strcmp(der, lastDer) != 0)
+    {
+      nbdDrawHud(izq, der);
+      strcpy(lastIzq, izq);
+      strcpy(lastDer, der);
+    }
+    delay(1);
+  }
+
+  tft.setTextPadding(0);
+  tft.setTextDatum(TL_DATUM);
+  nbdUlt = millis();
+
+  // Si el driver ya ha cambiado de pantalla, se devuelven los 16 KB
+  if (currentDisplayDriver->current_cyclic_screen != nbdMiPantalla)
+  {
+    free(nbd);
+    nbd = NULL;
+  }
+}
+
+/****************************************************************************************************************
+ *
+ *   Escrito por: M8AX
+ *
+ *   Descripción: GALAXIAN CPU - Pantalla para NerdminerV2 ( T-Display )
+ *   --------------------------------------------------------------------
+ *
+ *   La CPU juega sola al Galaxian: una formación de 8x5 marcianos que se mueve de lado a lado y de vez en
+ *   cuando se lanzan en picado contra la nave, disparando por el camino. La nave decide ella sola: si hay un
+ *   disparo o un marciano en picado cerca se aparta, y si no se coloca debajo del marciano que más le
+ *   conviene ( adelantándose a donde estará cuando llegue la bala ) y dispara. Cada oleada es un poco más
+ *   rápida y pica más a menudo, y como la CPU esquiva peor cuanto más avanza el juego, tarde o temprano la
+ *   matan. Tiene 3 vidas; al perder la última sale GAME OVER y empieza otra partida xD...
+ *
+ *   Arriba a la izquierda la hora y arriba a la derecha el hashrate, como en las demás. Abajo van los
+ *   puntos, la oleada, las vidas y el récord. Sin LEDs: esta placa no los tiene.
+ *
+ *   Memoria: las tablas ( poco más de 1 KB ) se piden con malloc al entrar y se devuelven cuando se detecta
+ *   que se ha salido a otra pantalla. Solo quedan fijos el récord y las partidas ( 8 bytes ).
+ *
+ *   Para activarla hay que pegar este bloque antes del array tDisplayCyclicScreens[] y meter tDisplay_Galaxian.
+ *
+ ****************************************************************************************************************/
+
+#define GAL_COLS 8
+#define GAL_ROWS 5
+#define GAL_N (GAL_COLS * GAL_ROWS)
+#define GAL_DX 26
+#define GAL_DY 12
+#define GAL_AW 12
+#define GAL_AH 7
+#define GAL_FY 36
+#define GAL_FXMIN 4
+#define GAL_FXMAX 122
+#define GAL_TOP 28
+#define GAL_SHIPY 146
+#define GAL_SW 13
+#define GAL_SH 8
+#define GAL_FRAME_MS 25
+#define GAL_FIN_MS 3000
+#define GAL_SLICE_MS 1000 // tandas de 1 s: el driver cambia de pantalla entre llamadas
+#define GAL_VIDAS 3
+#define GAL_MAXB 3
+#define GAL_MAXE 5
+#define GAL_MAXX 6
+
+struct GalAlien
+{
+  int x, y;   // donde está
+  int dx, dy; // donde se pintó la última vez
+  int x0;
+  float ph;
+  uint8_t vivo, modo, amp; // modo: 0 formación, 1 picando, 2 volviendo
+};
+
+struct GalBala
+{
+  int x, y;
+  bool on;
+};
+
+struct GalExp
+{
+  int x, y, w, h, ttl;
+};
+
+struct GalMem
+{
+  GalAlien al[GAL_N];
+  GalBala bp[GAL_MAXB]; // las de la nave
+  GalBala be[GAL_MAXE]; // las de los marcianos
+  GalExp ex[GAL_MAXX];
+  int fx, fdir;
+  int nx, nxPintada;
+  uint16_t nCol;
+  uint8_t estado; // 0 jugando, 1 nave explotando, 2 game over, 3 oleada limpia
+  uint8_t vidas, nivel, vivos;
+  bool anim, sucio;
+  uint32_t puntos, fr;
+  unsigned long finAt, disparoAt, picadoAt, animAt, inmuneHasta;
+};
+static GalMem *galM = NULL;
+static uint32_t galRecord = 0;
+static uint32_t galPartidas = 0;
+static unsigned long galUlt = 0; // cuándo terminó la última tanda
+static const uint16_t GAL_COL[GAL_ROWS] = {TFT_MAGENTA, TFT_ORANGE, TFT_CYAN, TFT_GREEN, TFT_SKYBLUE};
+
+static void galDibujaAlien(int x, int y, uint16_t c, bool f)
+{
+  tft.fillRect(x + 2, y, 8, 2, c);
+  tft.fillRect(x, y + 2, 12, 3, c);
+  tft.fillRect(x + 3, y + 2, 2, 1, TFT_BLACK);
+  tft.fillRect(x + 7, y + 2, 2, 1, TFT_BLACK);
+  if (f)
+  {
+    tft.fillRect(x, y + 5, 2, 2, c);
+    tft.fillRect(x + 10, y + 5, 2, 2, c);
+  }
+  else
+  {
+    tft.fillRect(x + 2, y + 5, 2, 2, c);
+    tft.fillRect(x + 8, y + 5, 2, 2, c);
+  }
+}
+
+static void galDibujaNave(int x, uint16_t c)
+{
+  tft.fillRect(x + 5, GAL_SHIPY, 3, 2, c);
+  tft.fillRect(x + 3, GAL_SHIPY + 2, 7, 2, c);
+  tft.fillRect(x, GAL_SHIPY + 4, 13, 4, c);
+}
+
+static void galStatus()
+{
+  char b[64];
+  uint32_t rec = (galM->puntos > galRecord) ? galM->puntos : galRecord;
+  snprintf(b, sizeof(b), "PTS %06lu   NIV %02u   VIDAS %u   REC %06lu",
+           (unsigned long)galM->puntos, galM->nivel, galM->vidas, (unsigned long)rec);
+  tft.setFreeFont(NULL);
+  tft.setTextFont(1);
+  tft.setTextSize(1);
+  tft.setTextColor(TFT_WHITE, TFT_BLACK);
+  tft.setTextDatum(TC_DATUM);
+  tft.setTextPadding(312);
+  tft.drawString(b, 160, 160);
+  tft.setTextPadding(0);
+  tft.setTextDatum(TL_DATUM);
+}
+
+static void galTextoFin()
+{
+  tft.setFreeFont(NULL);
+  tft.setTextFont(1);
+  tft.setTextSize(3);
+  tft.setTextColor(TFT_RED, TFT_BLACK);
+  tft.setTextDatum(MC_DATUM);
+  tft.drawString("GAME OVER", 160, 95);
+  tft.setTextDatum(TL_DATUM);
+  tft.setTextSize(1);
+}
+
+static void galExplota(int x, int y, int w, int h, int ttl)
+{
+  for (int i = 0; i < GAL_MAXX; i++)
+    if (!galM->ex[i].ttl)
+    {
+      galM->ex[i] = {x, y, w, h, ttl};
+      return;
+    }
+}
+
+static void galExplosiones()
+{
+  for (int i = 0; i < GAL_MAXX; i++)
+  {
+    GalExp *e = &galM->ex[i];
+    if (!e->ttl)
+      continue;
+    if (--e->ttl == 0)
+    {
+      tft.fillRect(e->x, e->y, e->w, e->h, TFT_BLACK);
+      continue;
+    }
+    uint16_t c = (e->ttl & 1) ? TFT_YELLOW : TFT_RED;
+    tft.fillRect(e->x + e->w / 3, e->y, e->w / 3, e->h, c);
+    tft.fillRect(e->x, e->y + e->h / 3, e->w, e->h / 3, c);
+  }
+}
+
+static void galOleada()
+{
+  galM->fx = 60;
+  galM->fdir = 1;
+  for (int i = 0; i < GAL_N; i++)
+  {
+    int hx = galM->fx + (i % GAL_COLS) * GAL_DX;
+    int hy = GAL_FY + (i / GAL_COLS) * GAL_DY;
+    galM->al[i] = {hx, hy, hx, hy, 0, 0.0f, 1, 0, 0};
+  }
+  for (int i = 0; i < GAL_MAXB; i++)
+    galM->bp[i].on = false;
+  for (int i = 0; i < GAL_MAXE; i++)
+    galM->be[i].on = false;
+  galM->vivos = GAL_N;
+  galM->picadoAt = millis() + 1500;
+}
+
+static void galNueva()
+{
+  memset(galM, 0, sizeof(GalMem));
+  galM->vidas = GAL_VIDAS;
+  galM->nivel = 1;
+  galM->nx = 150;
+  galM->nxPintada = 150;
+  galM->sucio = true;
+  galOleada();
+}
+
+static void galPintaTodo()
+{
+  tft.fillRect(0, GAL_TOP, 320, 170 - GAL_TOP, TFT_BLACK);
+  for (int i = 0; i < GAL_N; i++)
+  {
+    GalAlien *a = &galM->al[i];
+    if (!a->vivo)
+      continue;
+    galDibujaAlien(a->x, a->y, GAL_COL[i / GAL_COLS], galM->anim);
+    a->dx = a->x;
+    a->dy = a->y;
+  }
+  if (galM->estado == 0 || galM->estado == 3)
+  {
+    galDibujaNave(galM->nx, TFT_WHITE);
+    galM->nxPintada = galM->nx;
+    galM->nCol = TFT_WHITE;
+  }
+  galStatus();
+  if (galM->estado == 2)
+    galTextoFin();
+}
+
+static void galDisparo()
+{
+  for (int i = 0; i < GAL_MAXB; i++)
+    if (!galM->bp[i].on)
+    {
+      galM->bp[i] = {galM->nx + 6, GAL_SHIPY - 6, true};
+      galM->disparoAt = millis() + 230;
+      return;
+    }
+}
+
+static void galDisparoEnemigo(GalAlien *a)
+{
+  for (int i = 0; i < GAL_MAXE; i++)
+    if (!galM->be[i].on)
+    {
+      galM->be[i] = {a->x + 5, a->y + GAL_AH, true};
+      return;
+    }
+}
+
+static void galMata(int i, bool puntua)
+{
+  GalAlien *a = &galM->al[i];
+  tft.fillRect(a->dx, a->dy, GAL_AW, GAL_AH, TFT_BLACK);
+  galExplota(a->x, a->y, GAL_AW, GAL_AH, 6);
+  a->vivo = 0;
+  if (galM->vivos)
+    galM->vivos--;
+  if (puntua)
+  {
+    uint32_t pts = 10 * (GAL_ROWS - i / GAL_COLS);
+    if (a->modo != 0)
+      pts *= 3;
+    galM->puntos += pts;
+    galM->sucio = true;
+  }
+}
+
+static void galNaveMuere()
+{
+  tft.fillRect(galM->nxPintada, GAL_SHIPY, GAL_SW, GAL_SH, TFT_BLACK);
+  galExplota(galM->nxPintada - 4, GAL_SHIPY - 3, 21, 14, 16);
+  galM->estado = 1;
+  galM->finAt = millis();
+  if (galM->vidas)
+    galM->vidas--;
+  galM->sucio = true;
+}
+
+static void galFin()
+{
+  galM->estado = 2;
+  galM->finAt = millis();
+  if (galM->puntos > galRecord)
+    galRecord = galM->puntos;
+  galPartidas++;
+  Serial.printf("M8AX - Galaxian: Partida %lu | Puntos %lu | Oleada %u | Record %lu\n",
+                (unsigned long)galPartidas, (unsigned long)galM->puntos, galM->nivel, (unsigned long)galRecord);
+  galStatus();
+  galTextoFin();
+}
+
+// Aquí decide la CPU: esquivar si hay peligro, y si no, apuntar y disparar
+static void galIA(unsigned long now)
+{
+  int cx = galM->nx + 6;
+  int ventana = 46 - galM->nivel * 3;
+  if (ventana < 22)
+    ventana = 22;
+  int yPeor = -1, dPeor = 0;
+  for (int i = 0; i < GAL_MAXE; i++)
+  {
+    GalBala *b = &galM->be[i];
+    if (b->on && b->y > GAL_SHIPY - ventana && b->y < GAL_SHIPY + 4 && abs(b->x + 1 - cx) < 14 && b->y > yPeor)
+    {
+      yPeor = b->y;
+      dPeor = b->x + 1 - cx;
+    }
+  }
+  for (int i = 0; i < GAL_N; i++)
+  {
+    GalAlien *a = &galM->al[i];
+    if (a->vivo && a->modo == 1 && a->y > GAL_SHIPY - ventana - 8 && abs(a->x + 6 - cx) < 20 && a->y > yPeor)
+    {
+      yPeor = a->y;
+      dPeor = a->x + 6 - cx;
+    }
+  }
+
+  int dir = 0, paso = 3;
+  if (yPeor >= 0)
+  {
+    dir = (dPeor > 0) ? -1 : 1;
+    if (dPeor == 0)
+      dir = (cx > 160) ? -1 : 1;
+    if ((galM->nx <= 3 && dir < 0) || (galM->nx >= 320 - GAL_SW - 3 && dir > 0))
+      dir = -dir;
+    paso = 4;
+  }
+  else
+  {
+    int mejor = -1, mejorD = 9999;
+    for (int i = 0; i < GAL_N; i++)
+    {
+      GalAlien *a = &galM->al[i];
+      if (!a->vivo)
+        continue;
+      int d = abs(a->x + 6 - cx);
+      if (a->modo == 1 && a->y > 50)
+        d -= 400;
+      if (d < mejorD)
+      {
+        mejorD = d;
+        mejor = i;
+      }
+    }
+    if (mejor >= 0)
+    {
+      GalAlien *a = &galM->al[mejor];
+      int lead = 0;
+      if (a->modo == 0)
+        lead = galM->fdir * ((galM->nivel > 3) ? 2 : 1) * ((GAL_SHIPY - a->y) / 6);
+      int d = a->x + 6 + lead - cx;
+      if (abs(d) > 3)
+        dir = (d > 0) ? 1 : -1;
+      if (abs(d) <= 5 && now >= galM->disparoAt)
+        galDisparo();
+    }
+  }
+  galM->nx += dir * paso;
+  if (galM->nx < 2)
+    galM->nx = 2;
+  if (galM->nx > 320 - GAL_SW - 2)
+    galM->nx = 320 - GAL_SW - 2;
+}
+
+static void galFrame(unsigned long now)
+{
+  galM->fr++;
+
+  if (galM->estado == 2)
+  {
+    if (now - galM->finAt >= GAL_FIN_MS)
+    {
+      galNueva();
+      galPintaTodo();
+    }
+    return;
+  }
+  if (galM->estado == 1 && now - galM->finAt >= 1200)
+  {
+    if (galM->vidas > 0)
+    {
+      galM->estado = 0;
+      galM->nx = 150;
+      galM->nxPintada = 150;
+      galM->nCol = 0;
+      galM->inmuneHasta = now + 1500;
+    }
+    else
+    {
+      galFin();
+      return;
+    }
+  }
+  if (galM->estado == 3 && now - galM->finAt >= 1200)
+  {
+    galM->nivel++;
+    galOleada();
+    galM->estado = 0;
+    galM->sucio = true;
+    galPintaTodo();
+  }
+
+  bool cambio = false;
+  if (now - galM->animAt >= 350)
+  {
+    galM->anim = !galM->anim;
+    galM->animAt = now;
+    cambio = true;
+  }
+
+  int paso = (galM->nivel > 3) ? 2 : 1;
+  galM->fx += galM->fdir * paso;
+  if (galM->fx >= GAL_FXMAX)
+  {
+    galM->fx = GAL_FXMAX;
+    galM->fdir = -1;
+  }
+  else if (galM->fx <= GAL_FXMIN)
+  {
+    galM->fx = GAL_FXMIN;
+    galM->fdir = 1;
+  }
+
+  int cx = galM->nx + 6;
+  bool vulnerable = (galM->estado == 0 && now >= galM->inmuneHasta);
+
+  for (int i = 0; i < GAL_N; i++)
+  {
+    GalAlien *a = &galM->al[i];
+    if (!a->vivo)
+      continue;
+    int hx = galM->fx + (i % GAL_COLS) * GAL_DX;
+    int hy = GAL_FY + (i / GAL_COLS) * GAL_DY;
+    if (a->modo == 0)
+    {
+      a->x = hx;
+      a->y = hy;
+    }
+    else if (a->modo == 1)
+    {
+      a->y += (galM->nivel > 2) ? 3 : 2;
+      a->ph += 0.11f;
+      if (galM->nivel > 1 && (galM->fr & 1))
+        a->x0 += (cx > a->x0 + 6) ? 1 : -1;
+      int xx = a->x0 + (int)(a->amp * sinf(a->ph));
+      if (xx < 0)
+        xx = 0;
+      if (xx > 308)
+        xx = 308;
+      a->x = xx;
+      if (a->y > 98 && a->y < GAL_SHIPY - 24 && (int)(esp_random() % 1000) < 7 + galM->nivel * 2)
+        galDisparoEnemigo(a);
+      if (a->y >= GAL_SHIPY + 2)
+      {
+        a->modo = 2;
+        a->x = hx;
+        a->y = GAL_TOP;
+      }
+    }
+    else
+    {
+      a->x = hx;
+      a->y += 2;
+      if (a->y >= hy)
+      {
+        a->y = hy;
+        a->modo = 0;
+      }
+    }
+    if (a->modo == 1 && vulnerable && a->x + GAL_AW > galM->nx && a->x < galM->nx + GAL_SW && a->y + GAL_AH > GAL_SHIPY)
+    {
+      galMata(i, false);
+      galNaveMuere();
+      vulnerable = false;
+      continue;
+    }
+    if (cambio || a->x != a->dx || a->y != a->dy)
+    {
+      tft.fillRect(a->dx, a->dy, GAL_AW, GAL_AH, TFT_BLACK);
+      galDibujaAlien(a->x, a->y, GAL_COL[i / GAL_COLS], galM->anim);
+      a->dx = a->x;
+      a->dy = a->y;
+    }
+  }
+
+  if (galM->estado != 3 && now >= galM->picadoAt)
+  {
+    int picando = 0;
+    for (int i = 0; i < GAL_N; i++)
+      if (galM->al[i].vivo && galM->al[i].modo == 1)
+        picando++;
+    int maxPicando = 1 + galM->nivel / 2;
+    if (maxPicando > 4)
+      maxPicando = 4;
+    if (picando < maxPicando)
+    {
+      for (int t = 0; t < 10; t++)
+      {
+        GalAlien *a = &galM->al[esp_random() % GAL_N];
+        if (a->vivo && a->modo == 0)
+        {
+          a->modo = 1;
+          a->x0 = a->x;
+          a->ph = 0.0f;
+          a->amp = 18 + esp_random() % 24;
+          break;
+        }
+      }
+    }
+    int base = 1700 - galM->nivel * 170;
+    if (base < 450)
+      base = 450;
+    galM->picadoAt = now + base + esp_random() % 500;
+  }
+
+  if (galM->estado == 0 || galM->estado == 3)
+  {
+    if (galM->estado == 0)
+      galIA(now);
+    uint16_t col = (now < galM->inmuneHasta) ? TFT_CYAN : TFT_WHITE;
+    if (galM->nx != galM->nxPintada || col != galM->nCol)
+    {
+      tft.fillRect(galM->nxPintada, GAL_SHIPY, GAL_SW, GAL_SH, TFT_BLACK);
+      galDibujaNave(galM->nx, col);
+      galM->nxPintada = galM->nx;
+      galM->nCol = col;
+    }
+  }
+
+  for (int i = 0; i < GAL_MAXB; i++)
+  {
+    GalBala *b = &galM->bp[i];
+    if (!b->on)
+      continue;
+    tft.fillRect(b->x, b->y, 2, 6, TFT_BLACK);
+    b->y -= 6;
+    if (b->y < GAL_TOP)
+    {
+      b->on = false;
+      continue;
+    }
+    for (int j = 0; j < GAL_N; j++)
+    {
+      GalAlien *a = &galM->al[j];
+      if (a->vivo && b->x + 1 >= a->x && b->x <= a->x + GAL_AW - 1 && b->y <= a->y + GAL_AH - 1 && b->y + 5 >= a->y)
+      {
+        galMata(j, true);
+        b->on = false;
+        break;
+      }
+    }
+    if (b->on)
+      tft.fillRect(b->x, b->y, 2, 6, TFT_YELLOW);
+  }
+
+  for (int i = 0; i < GAL_MAXE; i++)
+  {
+    GalBala *b = &galM->be[i];
+    if (!b->on)
+      continue;
+    tft.fillRect(b->x, b->y, 2, 5, TFT_BLACK);
+    b->y += (galM->nivel > 3) ? 4 : 3;
+    if (b->y > GAL_SHIPY + GAL_SH)
+    {
+      b->on = false;
+      continue;
+    }
+    if (vulnerable && b->x + 1 >= galM->nx && b->x <= galM->nx + GAL_SW - 1 && b->y + 4 >= GAL_SHIPY)
+    {
+      b->on = false;
+      galNaveMuere();
+      vulnerable = false;
+      continue;
+    }
+    tft.fillRect(b->x, b->y, 2, 5, TFT_RED);
+  }
+
+  galExplosiones();
+
+  if (galM->vivos == 0 && galM->estado == 0)
+  {
+    galM->estado = 3;
+    galM->finAt = now;
+  }
+  if (galM->sucio)
+  {
+    galStatus();
+    galM->sucio = false;
+  }
+}
+
+// Hora arriba a la izquierda, hashrate arriba a la derecha ( igual que Tetris, Ajedrez y Primos )
+static void galDrawHud(const char *hash, const char *hora)
+{
+  tft.setFreeFont(NULL);
+  tft.setTextFont(1);
+  tft.setTextSize(2);
+  tft.setTextColor(TFT_WHITE, TFT_BLACK);
+  tft.setTextPadding(100);
+  tft.setTextDatum(TL_DATUM);
+  tft.drawString(hora, 4, 9);
+  char b[24];
+  snprintf(b, sizeof(b), "%s KH/s", hash);
+  tft.setTextPadding(150);
+  tft.setTextDatum(TR_DATUM);
+  tft.drawString(b, 316, 9);
+  tft.setTextPadding(0);
+  tft.setTextDatum(TL_DATUM);
+}
+
+void tDisplay_Galaxian(unsigned long mElapsed)
+{
+  mineria = getMiningData(mElapsed);
+  Serial.printf("M8AX - >>> Completados %s Share(s), %s Khashes, Prom. Hashrate %s KH/s %s°\n",
+                mineria.completedShares.c_str(), mineria.totalKHashes.c_str(), mineria.currentHashRate.c_str(), mineria.temp.c_str());
+
+  // Si hace rato que no nos llaman es que se ha visto otra pantalla: borrar antes de pintar
+  bool limpiar = (millis() - galUlt > 2500);
+  if (!galM)
+  {
+    galM = (GalMem *)malloc(sizeof(GalMem));
+    if (!galM)
+    {
+      Serial.printf("M8AX - ### Galaxian: Sin RAM ( Libre %u, Mayor Bloque %u ) ###\n", (unsigned)ESP.getFreeHeap(), (unsigned)ESP.getMaxAllocHeap());
+      delay(1000);
+      return;
+    }
+    galNueva();
+    limpiar = true;
+  }
+  const int galMiPantalla = currentDisplayDriver->current_cyclic_screen;
+  if (limpiar)
+  {
+    tft.fillRect(0, 0, 320, 170, TFT_BLACK);
+    galPintaTodo();
+  }
+
+  char horaStr[9] = "";
+  char lastHora[9] = "";
+  char hashStr[16];
+  char lastHash[16] = "";
+
+  unsigned long start = millis();
+  unsigned long lastMiningUpdate = 0;
+  unsigned long siguiente = start;
+
+  while (millis() - start < GAL_SLICE_MS)
+  {
+    unsigned long now = millis();
+
+    if (now >= siguiente)
+    {
+      galFrame(now);
+      siguiente = millis() + GAL_FRAME_MS;
+    }
+
+    // ---- Hora ( izquierda ) y hashrate ( derecha ), arriba como en las demás ----
+    if (now - lastMiningUpdate >= 1000)
+    {
+      lastMiningUpdate = now;
+      mineria = getMiningData(mElapsed);
+      snprintf(hashStr, sizeof(hashStr), "%s", mineria.currentHashRate.c_str());
+      time_t epoch = (time_t)timeClient.getEpochTime();
+      struct tm *ti = localtime(&epoch);
+      snprintf(horaStr, sizeof(horaStr), "%02d:%02d:%02d", ti->tm_hour, ti->tm_min, ti->tm_sec);
+      if (strcmp(horaStr, lastHora) != 0 || strcmp(hashStr, lastHash) != 0)
+      {
+        galDrawHud(hashStr, horaStr);
+        strcpy(lastHora, horaStr);
+        strcpy(lastHash, hashStr);
+      }
+    }
+    delay(2);
+  }
+
+  tft.setTextPadding(0);
+  tft.setTextDatum(TL_DATUM);
+  galUlt = millis();
+
+  // Si el driver ya ha cambiado de pantalla, se devuelve la RAM
+  if (currentDisplayDriver->current_cyclic_screen != galMiPantalla)
+  {
+    free(galM);
+    galM = NULL;
+  }
+}
+
 /**
  * Analiza y actualiza datos cada segundo.
  *
@@ -9382,6 +10765,18 @@ void analiCadaSegundo(unsigned long frame)
   int horita = t->tm_hour;
   int minutitos = t->tm_min;
   int segundos = t->tm_sec;
+
+  if (nbd && millis() - nbdUlt > 5000)
+  {
+    free(nbd);
+    nbd = NULL;
+  }
+
+  if (galM && millis() - galUlt > 5000)
+  {
+    free(galM);
+    galM = NULL;
+  }
 
   if (startTime > 0 && uncontadormas > 50)
   {
@@ -9573,7 +10968,7 @@ void tDisplay_DoLedStuff(unsigned long frame)
 // - `tDisplay_DoLedStuff`: Función vacía en este momento, reservada para gestionar efectos relacionados con LEDs.
 // Además, contiene detalles de la pantalla, como el tamaño y el número total de pantallas definidas en `tDisplayCyclicScreens` (calculado con `SCREENS_ARRAY_SIZE`). La estructura `tDisplayDriver` centraliza el control de todas las operaciones relacionadas con la pantalla, permitiendo la ejecución secuencial o cíclica de diferentes pantallas en el dispositivo.
 
-CyclicScreenFunction tDisplayCyclicScreens[] = {tDisplay_MinerScreen, tDisplay_GlobalHashScreen, tDisplay_BTCprice, tDisplay_m8axScreen15, tDisplay_m8axScreen2, datoTextPlano, tDisplay_m8axScreen5, tDisplay_m8axScreen16, tDisplay_ClockScreen, tDisplay_m8axScreen1, tDisplay_m8axScreen7, RelojDeNumeros, tDisplay_m8axScreen9, tDisplay_m8axScreen10, tDisplay_m8axScreen11, tDisplay_m8axScreen18, tDisplay_m8axScreen3, tDisplay_m8axScreen13, tDisplay_m8axScreen14, tDisplay_m8axScreen8, tDisplay_m8axScreen4, tDisplay_m8axScreen6, tDisplay_m8axScreen17, monedaYdado, tDisplay_Primos, tDisplay_Tetris, tDisplay_Ajedrez, tDisplay_m8axvida, tDisplay_m8axScreen12};
+CyclicScreenFunction tDisplayCyclicScreens[] = {tDisplay_MinerScreen, tDisplay_GlobalHashScreen, tDisplay_BTCprice, tDisplay_m8axScreen15, tDisplay_m8axScreen2, datoTextPlano, tDisplay_m8axScreen5, tDisplay_m8axScreen16, tDisplay_ClockScreen, tDisplay_m8axScreen1, tDisplay_m8axScreen7, RelojDeNumeros, tDisplay_m8axScreen9, tDisplay_m8axScreen10, tDisplay_m8axScreen11, tDisplay_m8axScreen18, tDisplay_m8axScreen3, tDisplay_m8axScreen13, tDisplay_m8axScreen14, tDisplay_m8axScreen8, tDisplay_m8axScreen4, tDisplay_m8axScreen6, tDisplay_m8axScreen17, monedaYdado, tDisplay_Primos, tDisplay_Tetris, tDisplay_Ajedrez, tDisplay_Galaxian, tDisplay_Galaxias, tDisplay_Fractal, tDisplay_m8axvida, tDisplay_m8axScreen12};
 
 DisplayDriver tDisplayDriver = {
     tDisplay_Init,

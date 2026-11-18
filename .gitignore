@@ -2,6 +2,7 @@
 .pio
 .vscode
 .vs
+.FirmW-FlasH-DatoS
 *.sln
 *.vcxproj*
 NerdMinerLog.txt
