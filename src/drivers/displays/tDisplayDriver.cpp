@@ -6,7 +6,7 @@
  *   ------------
  *
  *   Expansión de las pantallas del NerdMinerV2 con aún más datos y mucho más "nerd"
- *   de lo que ya era xD...
+ *   de lo que ya era xD... Optimizada Para Minar A 255 KH/s Con Pantalla.
  *
  *   Se añaden más funciones y datos para que puedas ver en tiempo real lo que está
  *   ocurriendo en tu minero, además de poder enviar mensajes a tu canal de telegram.
@@ -47,7 +47,7 @@
  *
  *                              PARA MÁS INFORMACIÓN LEER PDF
  *
- *                     Tmp. De Programación 24H - 11010 Líneas De Código
+ *                     Tmp. De Programación 24H - 12175 Líneas De Código
  *                     -------------------------------------------------
  *
  ********************************************************************************************/
@@ -2569,7 +2569,7 @@ String obtenerNombreMes(int mes)
   case 12:
     return "Diciembre";
   default:
-    return "Mes inválido";
+    return "Mes Inválido";
   }
 }
 
@@ -5160,7 +5160,7 @@ void tDisplay_m8axScreen13(unsigned long mElapsed)
     tft.print(Textito);
     Textito = "";
     Textito.reserve(0);
-    for (int iii = 0; iii < 20; iii++)
+    for (int iii = 0; iii < NUM_CRIPTOS; iii++)
     {
       if (precios[iii] == -2)
         continue;
@@ -5993,6 +5993,11 @@ void monedaYdado(unsigned long mElapsed)
 //    estadísticas de minería, en conjunto con las imágenes de fondo aleatorias, creando una experiencia visual
 //    completa e interactiva para el usuario.
 
+#define VIDA_SLICE_MS 1000
+static bool vidaInit = false;
+static unsigned long vidaUlt = 0;
+static uint16_t vidaGen = 0;
+
 void tDisplay_m8axvida(unsigned long mElapsed)
 {
   mining_data data = getMiningData(mElapsed);
@@ -6002,8 +6007,11 @@ void tDisplay_m8axvida(unsigned long mElapsed)
   incrementCounter();
   Serial.printf("M8AX - >>> Completados %s Share(s), %s Khashes, Prom. Hashrate %s KH/s %s°\n",
                 data.completedShares.c_str(), data.totalKHashes.c_str(), data.currentHashRate.c_str(), data.temp.c_str());
-  if (actuanot % 10 == 0 || correccion == 0)
+  bool nueva = !vidaInit || (millis() - vidaUlt > 2500) || vidaGen >= MAX_GEN_COUNT;
+  if (nueva)
   {
+    vidaInit = true;
+    vidaGen = 0;
     int random_number = 1 + (esp_random() % 4);
     if (random_number == 1)
     {
@@ -6036,20 +6044,23 @@ void tDisplay_m8axvida(unsigned long mElapsed)
     initGrid();
     genCount = MAX_GEN_COUNT;
     drawGrid();
-    for (int gen = 0; gen < genCount; gen++)
+  }
+  unsigned long start = millis();
+  while (millis() - start < VIDA_SLICE_MS && vidaGen < MAX_GEN_COUNT)
+  {
+    computeCA();
+    drawGrid();
+    delay(GEN_DELAY);
+    for (int16_t x = 1; x < GRIDX - 1; x++)
     {
-      computeCA();
-      drawGrid();
-      delay(GEN_DELAY);
-      for (int16_t x = 1; x < GRIDX - 1; x++)
+      for (int16_t y = 1; y < GRIDY - 1; y++)
       {
-        for (int16_t y = 1; y < GRIDY - 1; y++)
-        {
-          grid[x][y] = newgrid[x][y];
-        }
+        grid[x][y] = newgrid[x][y];
       }
     }
+    vidaGen++;
   }
+  vidaUlt = millis();
   actualizarcalen = 0;
   actualizarc = 0, actual = 0;
 }
@@ -8909,7 +8920,7 @@ void tDisplay_Tetris(unsigned long mElapsed)
 #define PM_MAXPRIMO 18446744073709551557ULL // el primo mas grande que cabe en un uint64 (2^64 - 59)
 #define PM_UMBRAL 14000000000000000000ULL   // por encima de esto se salta directo al ultimo
 #define PM_N_SEC 30                         // los primeros 30 salen seguidos: 2 3 5 7 11 13...
-#define PM_PASO_SEC_MS 70                   // ms entre primos mientras salen seguidos
+#define PM_PASO_SEC_MS 0                    // ms entre primos mientras salen seguidos
 #define PM_PASO_SALTO_MS 90                 // ms entre primos mientras va subiendo
 #define PM_FIN_MS 5000                      // lo que se queda el mayor primo antes de empezar otra vez
 
@@ -9329,7 +9340,7 @@ void tDisplay_Primos(unsigned long mElapsed)
       }
     }
 
-    delay(5);
+    delay(30);
   }
 
   tft.setTextPadding(0);
@@ -9665,7 +9676,6 @@ void tDisplay_Fractal(unsigned long mElapsed)
   mineria = getMiningData(mElapsed);
   Serial.printf("M8AX - >>> Completados %s Share(s), %s Khashes, Prom. Hashrate %s KH/s %s°\n",
                 mineria.completedShares.c_str(), mineria.totalKHashes.c_str(), mineria.currentHashRate.c_str(), mineria.temp.c_str());
-
   // Si hace rato que no nos llaman es que se ha visto otra pantalla: fractal nuevo y todo en negro
   bool limpiar = !fracInit || (millis() - fracUlt > 2500);
   fracInit = true;
@@ -10728,6 +10738,1152 @@ void tDisplay_Galaxian(unsigned long mElapsed)
   }
 }
 
+/****************************************************************************************************************
+ *
+ *   Escrito por: M8AX
+ *
+ *   Descripción: ASTEROIDES M8AX - Los asteroides de toda la vida, pero jugados por la CPU del ESP32 para NerdminerV2 ( T-Display )
+ *   ---------------------------------------------------------------------------------------------------------------------------------
+ *
+ *   La nave se pilota sola. Cada pocos fotogramas el ESP32 se inventa 144 futuros distintos para los próximos
+ *   segundos ( gira a un lado, gira al otro, acelera, deja de acelerar, durante más o menos tiempo y encadenando
+ *   dos maniobras ), los simula uno por uno con todas las rocas moviéndose, y se queda con el que menos
+ *   choca y mejor deja la puntería. Al disparar no apunta a donde está la roca, sino a donde va a estar cuando
+ *   llegue la bala. Si la cosa se pone fea y tarda mucho en pensar, se toma más fotogramas entre una decisión y
+ *   otra para que la animación no se arrastre.
+ *
+ *   La pantalla se pinta entera cada fotograma en un buffer de 4 bits por píxel ( 16 colores ) y se manda de
+ *   golpe al TFT, así que no parpadea. Antes de pintar, todo lo que había se apaga un escalón en su rampa de
+ *   color, por eso las balas, las llamas y las explosiones dejan estela como en las pantallas vectoriales
+ *   de las recreativas. Hay estrellas en tres capas que se mueven al revés de la nave, partículas, ondas
+ *   de choque y temblor de pantalla cuando revienta algo grande.
+ *
+ *   Arriba a la izquierda la hora y arriba a la derecha el hashrate, como en las demás. Abajo van los puntos,
+ *   la ola y las vidas. Si la nave pierde las tres vidas, empieza otra partida sola. Sin LEDs: esta placa no
+ *   los tiene.
+ *
+ *   Memoria: unos 22 KB en el heap ( casi todo es el buffer de pantalla ), que se piden al entrar en la pantalla
+ *   y se devuelven cuando se detecta que se ha salido a otra. Si no hay RAM, se salta la pantalla sin pintar nada.
+ *
+ *   Para activarla: pegar este bloque justo debajo de tDisplay_Galaxian ( antes del comentario de analiCadaSegundo ),
+ *   meter tDisplay_Asteroides en el array tDisplayCyclicScreens[] y añadir en analiCadaSegundo, debajo del if de galM,
+ *   este otro:
+ *   if (astM && millis() - astUlt > 5000) { free(astM); astM = NULL; }
+ *
+ ****************************************************************************************************************/
+
+// >>> ASTEROIDES MOTOR
+#define AST_W 320
+#define AST_H 120
+#define AST_Y0 28 // el HUD de arriba ocupa hasta la 26 y el de abajo empieza en la 150
+#define AST_FRAME_MS 20
+#define AST_SLICE_MS 1000 // tandas de 1 s: el driver cambia de pantalla entre llamadas
+#define AST_MAXA 20
+#define AST_MAXB 5
+#define AST_MAXP 64
+#define AST_NSTAR 32
+#define AST_NV 9
+#define AST_HORIZ 36 // fotogramas que mira hacia delante al pensar
+#define AST_ROT 0.13f
+#define AST_EMPUJE 0.19f
+#define AST_ROZA 0.992f
+#define AST_VMAX 3.4f
+#define AST_BVEL 6.2f
+#define AST_BVIDA 32
+#define AST_RANGO2 22500.0f
+#define AST_PI 3.14159265f
+#define AST_RGB(r, g, b) ((uint16_t)((((r) & 0xF8) << 8) | (((g) & 0xFC) << 3) | ((b) >> 3)))
+
+// 0 negro | 1-2 estrellas | 3-6 blanco y sus grises | 7-10 fuego | 11-13 cian | 14-15 verde
+static const uint16_t AST_PAL[16] = {
+    AST_RGB(0, 0, 0), AST_RGB(24, 28, 64), AST_RGB(80, 90, 140), AST_RGB(255, 255, 255),
+    AST_RGB(205, 205, 215), AST_RGB(135, 135, 155), AST_RGB(62, 62, 78), AST_RGB(255, 240, 120),
+    AST_RGB(255, 150, 30), AST_RGB(230, 50, 20), AST_RGB(110, 20, 10), AST_RGB(120, 255, 255),
+    AST_RGB(40, 170, 200), AST_RGB(10, 70, 100), AST_RGB(80, 255, 120), AST_RGB(20, 110, 50)};
+// a qué color pasa cada uno en el siguiente fotograma
+static const uint8_t AST_DEC[16] = {0, 0, 1, 4, 5, 6, 0, 8, 9, 10, 0, 12, 13, 0, 15, 0};
+static const float AST_RAD[4] = {0.0f, 5.0f, 9.5f, 16.0f};
+static const uint16_t AST_PTS[4] = {0, 100, 50, 20};
+static const float AST_VAL[4] = {0.0f, 1.4f, 1.1f, 0.9f};
+
+struct AstRoca
+{
+  float x, y, vx, vy, ang, vang;
+  uint8_t tam, seed, flash; // tam: 0 libre, 1 chica, 2 media, 3 grande
+};
+
+struct AstBala
+{
+  float x, y, vx, vy;
+  uint8_t vida;
+};
+
+struct AstPart
+{
+  float x, y, vx, vy;
+  uint8_t vida, tipo; // 0 fuego, 1 blanca, 2 cian
+};
+
+struct AstOnda
+{
+  float x, y;
+  uint8_t r, vida;
+};
+
+struct AstEstr
+{
+  float x, y;
+  uint8_t capa;
+};
+
+struct AstMem
+{
+  uint8_t fb[AST_W * AST_H / 2];
+  uint16_t linea[AST_W];
+  AstRoca ro[AST_MAXA];
+  AstBala ba[AST_MAXB];
+  AstPart pt[AST_MAXP];
+  AstOnda on[3];
+  AstEstr es[AST_NSTAR];
+  float nx, ny, nvx, nvy, nang;
+  int8_t ctlRot, shx, shy, shk;
+  uint8_t ctlEmp, empuje, viva, vidas, cadencia, planCnt, planCada, ipt;
+  uint16_t inmune, reaparece, pausaOla, finTimer, ola;
+  uint32_t puntos, mejor, frame, ledOff;
+  uint8_t ledPrio;
+  char tIzq[16], tCen[12], tDer[12];
+};
+static AstMem *astM = NULL;
+static unsigned long astUlt = 0; // cuándo terminó la última tanda
+
+struct AstCtx
+{
+  int n;
+  float nx, ny, nvx, nvy, hx, hy, cs, sn;
+  float x[AST_MAXA], y[AST_MAXA], vx[AST_MAXA], vy[AST_MAXA];
+  float lim2[AST_MAXA], cer2[AST_MAXA], aim2[AST_MAXA], val[AST_MAXA];
+};
+
+static inline uint32_t astRnd(uint32_t n) { return esp_random() % n; }
+static inline float astRf() { return (esp_random() & 0xFFFF) * (1.0f / 65535.0f); }
+
+static inline float astDel(float d, float L)
+{
+  if (d > L * 0.5f)
+    d -= L;
+  else if (d < -L * 0.5f)
+    d += L;
+  return d;
+}
+
+static inline void astPix(int x, int y, uint8_t c)
+{
+  if ((unsigned)x >= AST_W || (unsigned)y >= AST_H)
+    return;
+  uint8_t *p = &astM->fb[y * (AST_W / 2) + (x >> 1)];
+  if (x & 1)
+    *p = (*p & 0x0F) | (c << 4);
+  else
+    *p = (*p & 0xF0) | c;
+}
+
+static void astLinea(int x0, int y0, int x1, int y1, uint8_t c)
+{
+  int dx = abs(x1 - x0), sx = x0 < x1 ? 1 : -1;
+  int dy = -abs(y1 - y0), sy = y0 < y1 ? 1 : -1;
+  int err = dx + dy;
+  for (;;)
+  {
+    astPix(x0, y0, c);
+    if (x0 == x1 && y0 == y1)
+      break;
+    int e2 = 2 * err;
+    if (e2 >= dy)
+    {
+      err += dy;
+      x0 += sx;
+    }
+    if (e2 <= dx)
+    {
+      err += dx;
+      y0 += sy;
+    }
+  }
+}
+
+static void astCirculo(int cx, int cy, int r, uint8_t c)
+{
+  int x = r, y = 0, d = 1 - r;
+  while (x >= y)
+  {
+    astPix(cx + x, cy + y, c);
+    astPix(cx - x, cy + y, c);
+    astPix(cx + x, cy - y, c);
+    astPix(cx - x, cy - y, c);
+    astPix(cx + y, cy + x, c);
+    astPix(cx - y, cy + x, c);
+    astPix(cx + y, cy - x, c);
+    astPix(cx - y, cy - x, c);
+    y++;
+    if (d < 0)
+      d += 2 * y + 1;
+    else
+    {
+      x--;
+      d += 2 * (y - x) + 1;
+    }
+  }
+}
+
+// copias del dibujo que hacen falta cuando algo se sale por un borde y entra por el contrario
+static int astOffs(float x, float y, float R, float *ox, float *oy)
+{
+  float xs[2] = {0, 0}, ys[2] = {0, 0};
+  int nx = 1, ny = 1, n = 0;
+  if (x - R < 0)
+    xs[nx++] = AST_W;
+  else if (x + R >= AST_W)
+    xs[nx++] = -AST_W;
+  if (y - R < 0)
+    ys[ny++] = AST_H;
+  else if (y + R >= AST_H)
+    ys[ny++] = -AST_H;
+  for (int a = 0; a < nx; a++)
+    for (int b = 0; b < ny; b++)
+    {
+      ox[n] = xs[a];
+      oy[n] = ys[b];
+      n++;
+    }
+  return n;
+}
+
+static inline float astRadioV(uint8_t seed, int i)
+{
+  uint32_t h = (uint32_t)(seed + 7) * 2654435761u;
+  h ^= (uint32_t)(i + 3) * 40503u;
+  h *= 2246822519u;
+  h ^= h >> 15;
+  return 0.68f + ((h >> 4) & 255) * (0.40f / 255.0f);
+}
+
+static void astDibRoca(const AstRoca &r, uint8_t col)
+{
+  float R = AST_RAD[r.tam];
+  float lx[AST_NV], ly[AST_NV], ox[4], oy[4];
+  for (int i = 0; i < AST_NV; i++)
+  {
+    float a = r.ang + i * (2.0f * AST_PI / AST_NV);
+    float rr = R * astRadioV(r.seed, i);
+    lx[i] = cosf(a) * rr;
+    ly[i] = sinf(a) * rr;
+  }
+  int n = astOffs(r.x, r.y, R + 1.0f, ox, oy);
+  for (int k = 0; k < n; k++)
+  {
+    float cx = r.x + ox[k] + astM->shx, cy = r.y + oy[k] + astM->shy;
+    for (int i = 0; i < AST_NV; i++)
+    {
+      int j = (i + 1) % AST_NV;
+      astLinea((int)(cx + lx[i] + 0.5f), (int)(cy + ly[i] + 0.5f), (int)(cx + lx[j] + 0.5f), (int)(cy + ly[j] + 0.5f), col);
+    }
+  }
+}
+
+static void astDibNave(float x, float y, float ang, uint8_t col, bool llama, bool escudo)
+{
+  static const float P[4][2] = {{9.0f, 0.0f}, {-6.0f, -5.5f}, {-3.0f, 0.0f}, {-6.0f, 5.5f}};
+  float ca = cosf(ang), sa = sinf(ang), ox[4], oy[4];
+  int n = astOffs(x, y, 14.0f, ox, oy);
+  for (int k = 0; k < n; k++)
+  {
+    float cx = x + ox[k] + astM->shx, cy = y + oy[k] + astM->shy;
+    int X[4], Y[4];
+    for (int i = 0; i < 4; i++)
+    {
+      X[i] = (int)(cx + P[i][0] * ca - P[i][1] * sa + 0.5f);
+      Y[i] = (int)(cy + P[i][0] * sa + P[i][1] * ca + 0.5f);
+    }
+    for (int i = 0; i < 4; i++)
+    {
+      int j = (i + 1) & 3;
+      astLinea(X[i], Y[i], X[j], Y[j], col);
+    }
+    if (llama)
+    {
+      float L = 5.0f + astRnd(8), s = (astRf() - 0.5f) * 3.0f;
+      float fx = -3.0f - L, fy = s;
+      astLinea((int)(cx - 3.0f * ca + 0.5f), (int)(cy - 3.0f * sa + 0.5f),
+               (int)(cx + fx * ca - fy * sa + 0.5f), (int)(cy + fx * sa + fy * ca + 0.5f), 8);
+      fx = -3.0f - L * 0.55f;
+      fy = s * 0.4f;
+      astLinea((int)(cx - 3.0f * ca + 0.5f), (int)(cy - 3.0f * sa + 0.5f),
+               (int)(cx + fx * ca - fy * sa + 0.5f), (int)(cy + fx * sa + fy * ca + 0.5f), 7);
+    }
+    if (escudo)
+      astCirculo((int)(cx + 0.5f), (int)(cy + 0.5f), 11 + (astM->frame & 3), 14);
+  }
+}
+
+// Esta placa no tiene LEDs: el motor sigue llamando a astLed pero no hace nada
+static void astLed(uint8_t prio, bool r, bool g, bool b, uint16_t ms, uint32_t now)
+{
+  (void)prio;
+  (void)r;
+  (void)g;
+  (void)b;
+  (void)ms;
+  (void)now;
+}
+
+static void astChispas(float x, float y, int n, float vel, uint8_t tipo)
+{
+  AstMem &m = *astM;
+  for (int k = 0; k < n; k++)
+  {
+    int idx = -1;
+    for (int i = 0; i < AST_MAXP; i++)
+    {
+      uint8_t j = (m.ipt + i) % AST_MAXP;
+      if (!m.pt[j].vida)
+      {
+        idx = j;
+        m.ipt = (j + 1) % AST_MAXP;
+        break;
+      }
+    }
+    if (idx < 0)
+      return;
+    float a = astRf() * 2.0f * AST_PI, v = vel * (0.25f + astRf());
+    AstPart &p = m.pt[idx];
+    p.x = x;
+    p.y = y;
+    p.vx = cosf(a) * v;
+    p.vy = sinf(a) * v;
+    p.vida = 14 + astRnd(24);
+    p.tipo = tipo;
+  }
+}
+
+static void astOnda(float x, float y)
+{
+  AstMem &m = *astM;
+  for (int i = 0; i < 3; i++)
+    if (!m.on[i].vida)
+    {
+      m.on[i].x = x;
+      m.on[i].y = y;
+      m.on[i].r = 2;
+      m.on[i].vida = 18;
+      return;
+    }
+}
+
+static void astNave()
+{
+  AstMem &m = *astM;
+  m.nx = AST_W / 2;
+  m.ny = AST_H / 2;
+  m.nvx = m.nvy = 0;
+  m.nang = -AST_PI / 2;
+  m.ctlRot = 0;
+  m.ctlEmp = 0;
+  m.empuje = 0;
+  m.cadencia = 0;
+  m.planCnt = 0;
+  m.viva = 1;
+  m.inmune = 110;
+}
+
+static void astNuevaOla()
+{
+  AstMem &m = *astM;
+  m.ola++;
+  int n = 3 + m.ola;
+  if (n > 10)
+    n = 10;
+  float sf = 1.0f + 0.10f * m.ola;
+  if (sf > 2.2f)
+    sf = 2.2f;
+  for (int k = 0; k < n; k++)
+  {
+    int idx = -1;
+    for (int i = 0; i < AST_MAXA; i++)
+      if (!m.ro[i].tam)
+      {
+        idx = i;
+        break;
+      }
+    if (idx < 0)
+      break;
+    AstRoca &r = m.ro[idx];
+    for (int t = 0; t < 24; t++)
+    {
+      r.x = astRnd(AST_W);
+      r.y = astRnd(AST_H);
+      float dx = astDel(r.x - m.nx, AST_W), dy = astDel(r.y - m.ny, AST_H);
+      if (dx * dx + dy * dy > 3600.0f)
+        break;
+    }
+    float a = astRf() * 2.0f * AST_PI, v = (0.35f + astRf() * 0.4f) * sf;
+    r.vx = cosf(a) * v;
+    r.vy = sinf(a) * v;
+    r.ang = astRf() * 6.28f;
+    r.vang = (astRf() - 0.5f) * 0.08f;
+    r.tam = 3;
+    r.seed = astRnd(256);
+    r.flash = 0;
+  }
+  astOnda(m.nx, m.ny);
+}
+
+static void astNuevaPartida()
+{
+  AstMem &m = *astM;
+  memset(m.ro, 0, sizeof(m.ro));
+  memset(m.ba, 0, sizeof(m.ba));
+  memset(m.pt, 0, sizeof(m.pt));
+  memset(m.on, 0, sizeof(m.on));
+  m.puntos = 0;
+  m.ola = 0;
+  m.vidas = 3;
+  m.pausaOla = 0;
+  m.finTimer = 0;
+  m.reaparece = 0;
+  astNave();
+  astNuevaOla();
+}
+
+static void astInit()
+{
+  AstMem &m = *astM;
+  memset(m.fb, 0, sizeof(m.fb));
+  m.mejor = 0;
+  m.planCada = 4;
+  m.frame = 0;
+  m.ledOff = 0;
+  m.ledPrio = 0;
+  m.shk = m.shx = m.shy = 0;
+  m.tIzq[0] = m.tCen[0] = m.tDer[0] = 0;
+  for (int i = 0; i < AST_NSTAR; i++)
+  {
+    m.es[i].x = astRnd(AST_W);
+    m.es[i].y = astRnd(AST_H);
+    m.es[i].capa = i % 3;
+  }
+  astNuevaPartida();
+}
+
+// rompe la roca i: puntos, chispas y los dos trozos en que se parte
+static void astRomper(int i, uint32_t now)
+{
+  AstMem &m = *astM;
+  AstRoca r = m.ro[i];
+  m.ro[i].tam = 0;
+  m.puntos += AST_PTS[r.tam];
+  if (m.puntos > m.mejor)
+    m.mejor = m.puntos;
+  astChispas(r.x, r.y, 6 + r.tam * 6, 1.0f + r.tam * 0.5f, 0);
+  astChispas(r.x, r.y, 3 + r.tam * 2, 1.6f, 1);
+  if (r.tam == 3)
+  {
+    astOnda(r.x, r.y);
+    if (m.shk < 3)
+      m.shk = 3;
+  }
+  astLed(2, false, true, false, 40, now);
+  if (r.tam > 1)
+  {
+    for (int h = 0; h < 2; h++)
+    {
+      int idx = -1;
+      for (int k = 0; k < AST_MAXA; k++)
+        if (!m.ro[k].tam)
+        {
+          idx = k;
+          break;
+        }
+      if (idx < 0)
+        return;
+      AstRoca &c = m.ro[idx];
+      float a = astRf() * 2.0f * AST_PI, v = 0.5f + astRf() * 0.7f;
+      c.x = r.x;
+      c.y = r.y;
+      c.vx = r.vx * 0.5f + cosf(a) * v;
+      c.vy = r.vy * 0.5f + sinf(a) * v;
+      c.ang = astRf() * 6.28f;
+      c.vang = (astRf() - 0.5f) * 0.14f;
+      c.tam = r.tam - 1;
+      c.seed = astRnd(256);
+      c.flash = 6;
+    }
+  }
+}
+
+static void astMuereNave(uint32_t now)
+{
+  AstMem &m = *astM;
+  m.viva = 0;
+  m.empuje = 0;
+  astChispas(m.nx, m.ny, 22, 2.6f, 2);
+  astChispas(m.nx, m.ny, 26, 2.2f, 0);
+  astChispas(m.nx, m.ny, 14, 3.0f, 1);
+  astOnda(m.nx, m.ny);
+  m.shk = 7;
+  astLed(3, true, true, true, 140, now);
+  if (m.vidas)
+    m.vidas--;
+  if (m.vidas)
+    m.reaparece = 60;
+  else
+    m.finTimer = 110;
+}
+
+// simula un futuro de la nave: dos maniobras seguidas y luego dejarse llevar. Cuanto mayor, mejor
+static float astSimular(const AstCtx &C, int r1, int e1, int h1, int r2, int e2, int h2)
+{
+  float x = C.nx, y = C.ny, vx = C.nvx, vy = C.nvy, hx = C.hx, hy = C.hy;
+  float px[AST_MAXA], py[AST_MAXA], sc = 0.0f;
+  const int n = C.n;
+  for (int i = 0; i < n; i++)
+  {
+    px[i] = C.x[i];
+    py[i] = C.y[i];
+  }
+  for (int t = 1; t <= AST_HORIZ; t++)
+  {
+    int rot, emp;
+    if (t <= h1)
+    {
+      rot = r1;
+      emp = e1;
+    }
+    else if (t <= h1 + h2)
+    {
+      rot = r2;
+      emp = e2;
+    }
+    else
+    {
+      rot = 0;
+      emp = 0;
+    }
+    if (rot)
+    {
+      float nhx = hx * C.cs - rot * C.sn * hy;
+      float nhy = hy * C.cs + rot * C.sn * hx;
+      hx = nhx;
+      hy = nhy;
+    }
+    if (emp)
+    {
+      vx += hx * AST_EMPUJE;
+      vy += hy * AST_EMPUJE;
+    }
+    vx *= AST_ROZA;
+    vy *= AST_ROZA;
+    float v2 = vx * vx + vy * vy;
+    if (v2 > AST_VMAX * AST_VMAX)
+    {
+      float k = AST_VMAX / sqrtf(v2);
+      vx *= k;
+      vy *= k;
+    }
+    x += vx;
+    y += vy;
+    if (x < 0)
+      x += AST_W;
+    else if (x >= AST_W)
+      x -= AST_W;
+    if (y < 0)
+      y += AST_H;
+    else if (y >= AST_H)
+      y -= AST_H;
+    const bool mirar = (t % 3) == 0;
+    for (int i = 0; i < n; i++)
+    {
+      float ax = px[i] + C.vx[i], ay = py[i] + C.vy[i];
+      if (ax < 0)
+        ax += AST_W;
+      else if (ax >= AST_W)
+        ax -= AST_W;
+      if (ay < 0)
+        ay += AST_H;
+      else if (ay >= AST_H)
+        ay -= AST_H;
+      px[i] = ax;
+      py[i] = ay;
+      float dx = ax - x, dy = ay - y;
+      if (dx > AST_W * 0.5f)
+        dx -= AST_W;
+      else if (dx < -AST_W * 0.5f)
+        dx += AST_W;
+      if (dy > AST_H * 0.5f)
+        dy -= AST_H;
+      else if (dy < -AST_H * 0.5f)
+        dy += AST_H;
+      float d2 = dx * dx + dy * dy;
+      if (d2 < C.lim2[i])
+        return sc - 1000.0f - 25.0f * (AST_HORIZ - t);
+      if (d2 < C.cer2[i])
+        sc -= (C.cer2[i] - d2) * 0.01f;
+      if (mirar && d2 < AST_RANGO2)
+      {
+        float tau = (fabsf(dx) + fabsf(dy)) * 0.12f;
+        float lx = dx + (C.vx[i] - vx) * tau, ly = dy + (C.vy[i] - vy) * tau;
+        if (hx * lx + hy * ly > 0)
+        {
+          float cr = hx * ly - hy * lx;
+          if (cr * cr < C.aim2[i])
+            sc += C.val[i] * 3.0f * (1.0f - d2 * (1.0f / AST_RANGO2));
+        }
+      }
+    }
+  }
+  sc -= (vx * vx + vy * vy) * 0.5f;
+  return sc;
+}
+
+static void astPlanear()
+{
+  AstMem &m = *astM;
+  AstCtx C;
+  C.n = 0;
+  for (int i = 0; i < AST_MAXA; i++)
+  {
+    const AstRoca &r = m.ro[i];
+    if (!r.tam)
+      continue;
+    int k = C.n++;
+    float R = AST_RAD[r.tam];
+    C.x[k] = r.x;
+    C.y[k] = r.y;
+    C.vx[k] = r.vx;
+    C.vy[k] = r.vy;
+    float l = R * 0.85f + 5.0f + 0.5f;
+    C.lim2[k] = l * l;
+    l += 10.0f;
+    C.cer2[k] = l * l;
+    l = R * 0.9f + 1.5f;
+    C.aim2[k] = l * l;
+    C.val[k] = AST_VAL[r.tam];
+  }
+  if (!C.n)
+  {
+    m.ctlRot = 0;
+    m.ctlEmp = 0;
+    return;
+  }
+  C.nx = m.nx;
+  C.ny = m.ny;
+  C.nvx = m.nvx;
+  C.nvy = m.nvy;
+  C.hx = cosf(m.nang);
+  C.hy = sinf(m.nang);
+  C.cs = cosf(AST_ROT);
+  C.sn = sinf(AST_ROT);
+  static const int8_t RR[3] = {-1, 0, 1};
+  static const uint8_t HH[2] = {3, 9};
+  float mejor = -1e30f;
+  int mr = 0, me = 0;
+  for (int r1 = 0; r1 < 3; r1++)
+    for (int e1 = 0; e1 < 2; e1++)
+      for (int a = 0; a < 2; a++)
+        for (int r2 = 0; r2 < 3; r2++)
+          for (int e2 = 0; e2 < 2; e2++)
+            for (int b = 0; b < 2; b++)
+            {
+              float s = astSimular(C, RR[r1], e1, HH[a], RR[r2], e2, HH[b]);
+              if (s > mejor)
+              {
+                mejor = s;
+                mr = RR[r1];
+                me = e1;
+              }
+            }
+  m.ctlRot = mr;
+  m.ctlEmp = me;
+}
+
+// dispara si la bala, sumando la velocidad de la nave, va a pillar a alguna roca antes de que se apague
+static bool astQuieroDisparar()
+{
+  AstMem &m = *astM;
+  float hx = cosf(m.nang), hy = sinf(m.nang);
+  const float B2 = AST_BVEL * AST_BVEL;
+  for (int i = 0; i < AST_MAXA; i++)
+  {
+    const AstRoca &r = m.ro[i];
+    if (!r.tam)
+      continue;
+    float dx = astDel(r.x - m.nx, AST_W), dy = astDel(r.y - m.ny, AST_H);
+    float ux = r.vx - m.nvx, uy = r.vy - m.nvy;
+    float A = ux * ux + uy * uy - B2, Bq = dx * ux + dy * uy, Cq = dx * dx + dy * dy;
+    float t;
+    if (fabsf(A) < 1e-4f)
+    {
+      if (fabsf(Bq) < 1e-6f)
+        continue;
+      t = -Cq / (2.0f * Bq);
+    }
+    else
+    {
+      float disc = Bq * Bq - A * Cq;
+      if (disc < 0)
+        continue;
+      float sq = sqrtf(disc);
+      float t1 = (-Bq - sq) / A, t2 = (-Bq + sq) / A;
+      t = (t1 > 0 && (t1 < t2 || t2 <= 0)) ? t1 : t2;
+    }
+    if (t <= 0 || t > AST_BVIDA - 2)
+      continue;
+    float ix = dx + ux * t, iy = dy + uy * t;
+    if (hx * ix + hy * iy <= 0)
+      continue;
+    float cr = hx * iy - hy * ix, R = AST_RAD[r.tam] * 0.8f + 1.0f;
+    if (cr * cr < R * R)
+      return true;
+  }
+  return false;
+}
+
+static void astActualizar(uint32_t now)
+{
+  AstMem &m = *astM;
+
+  // ---- La nave ----
+  if (m.viva)
+  {
+    if (m.planCnt == 0)
+    {
+      uint32_t t0 = micros();
+      astPlanear();
+      uint32_t dt = micros() - t0;
+      uint32_t c = dt / 4000UL;
+      m.planCada = c < 3 ? 3 : (c > 8 ? 8 : c);
+      m.planCnt = m.planCada;
+    }
+    m.planCnt--;
+    m.nang += m.ctlRot * AST_ROT;
+    m.empuje = m.ctlEmp;
+    if (m.empuje)
+    {
+      m.nvx += cosf(m.nang) * AST_EMPUJE;
+      m.nvy += sinf(m.nang) * AST_EMPUJE;
+    }
+    m.nvx *= AST_ROZA;
+    m.nvy *= AST_ROZA;
+    float v2 = m.nvx * m.nvx + m.nvy * m.nvy;
+    if (v2 > AST_VMAX * AST_VMAX)
+    {
+      float k = AST_VMAX / sqrtf(v2);
+      m.nvx *= k;
+      m.nvy *= k;
+    }
+    m.nx += m.nvx;
+    m.ny += m.nvy;
+    if (m.nx < 0)
+      m.nx += AST_W;
+    else if (m.nx >= AST_W)
+      m.nx -= AST_W;
+    if (m.ny < 0)
+      m.ny += AST_H;
+    else if (m.ny >= AST_H)
+      m.ny -= AST_H;
+    if (m.inmune)
+      m.inmune--;
+    if (m.cadencia)
+      m.cadencia--;
+    else if (astQuieroDisparar())
+    {
+      for (int i = 0; i < AST_MAXB; i++)
+        if (!m.ba[i].vida)
+        {
+          float hx = cosf(m.nang), hy = sinf(m.nang);
+          m.ba[i].x = m.nx + hx * 9.0f;
+          m.ba[i].y = m.ny + hy * 9.0f;
+          m.ba[i].vx = m.nvx + hx * AST_BVEL;
+          m.ba[i].vy = m.nvy + hy * AST_BVEL;
+          m.ba[i].vida = AST_BVIDA;
+          m.cadencia = 7;
+          astLed(1, true, false, false, 25, now);
+          break;
+        }
+    }
+  }
+  else
+  {
+    if (m.vidas)
+    {
+      if (m.reaparece)
+        m.reaparece--;
+      if (!m.reaparece)
+      {
+        bool libre = true;
+        for (int i = 0; i < AST_MAXA; i++)
+          if (m.ro[i].tam)
+          {
+            float dx = astDel(m.ro[i].x - AST_W / 2, AST_W), dy = astDel(m.ro[i].y - AST_H / 2, AST_H);
+            float l = AST_RAD[m.ro[i].tam] + 38.0f;
+            if (dx * dx + dy * dy < l * l)
+              libre = false;
+          }
+        if (libre)
+          astNave();
+        else
+          m.reaparece = 4;
+      }
+    }
+    else if (m.finTimer)
+    {
+      if (--m.finTimer == 0)
+        astNuevaPartida();
+    }
+  }
+
+  // ---- Balas ----
+  for (int i = 0; i < AST_MAXB; i++)
+  {
+    AstBala &b = m.ba[i];
+    if (!b.vida)
+      continue;
+    b.vida--;
+    b.x += b.vx;
+    b.y += b.vy;
+    if (b.x < 0)
+      b.x += AST_W;
+    else if (b.x >= AST_W)
+      b.x -= AST_W;
+    if (b.y < 0)
+      b.y += AST_H;
+    else if (b.y >= AST_H)
+      b.y -= AST_H;
+    for (int k = 0; k < AST_MAXA; k++)
+    {
+      if (!m.ro[k].tam)
+        continue;
+      float dx = astDel(m.ro[k].x - b.x, AST_W), dy = astDel(m.ro[k].y - b.y, AST_H);
+      float l = AST_RAD[m.ro[k].tam] * 0.9f + 1.5f;
+      if (dx * dx + dy * dy < l * l)
+      {
+        b.vida = 0;
+        astRomper(k, now);
+        break;
+      }
+    }
+  }
+
+  // ---- Rocas ----
+  int vivas = 0;
+  for (int i = 0; i < AST_MAXA; i++)
+  {
+    AstRoca &r = m.ro[i];
+    if (!r.tam)
+      continue;
+    vivas++;
+    r.x += r.vx;
+    r.y += r.vy;
+    r.ang += r.vang;
+    if (r.flash)
+      r.flash--;
+    if (r.x < 0)
+      r.x += AST_W;
+    else if (r.x >= AST_W)
+      r.x -= AST_W;
+    if (r.y < 0)
+      r.y += AST_H;
+    else if (r.y >= AST_H)
+      r.y -= AST_H;
+    if (m.viva && !m.inmune)
+    {
+      float dx = astDel(r.x - m.nx, AST_W), dy = astDel(r.y - m.ny, AST_H);
+      float l = AST_RAD[r.tam] * 0.82f + 4.0f;
+      if (dx * dx + dy * dy < l * l)
+        astMuereNave(now);
+    }
+  }
+  if (!vivas)
+  {
+    if (!m.pausaOla)
+      m.pausaOla = 45;
+    else if (--m.pausaOla == 0)
+      astNuevaOla();
+  }
+
+  // ---- Partículas, ondas y estrellas ----
+  for (int i = 0; i < AST_MAXP; i++)
+  {
+    AstPart &p = m.pt[i];
+    if (!p.vida)
+      continue;
+    p.vida--;
+    p.x += p.vx;
+    p.y += p.vy;
+    p.vx *= 0.96f;
+    p.vy *= 0.96f;
+  }
+  for (int i = 0; i < 3; i++)
+    if (m.on[i].vida)
+    {
+      m.on[i].vida--;
+      m.on[i].r += 3;
+    }
+  for (int i = 0; i < AST_NSTAR; i++)
+  {
+    static const float F[3] = {0.10f, 0.25f, 0.50f};
+    AstEstr &e = m.es[i];
+    e.x -= m.nvx * F[e.capa];
+    e.y -= m.nvy * F[e.capa];
+    if (e.x < 0)
+      e.x += AST_W;
+    else if (e.x >= AST_W)
+      e.x -= AST_W;
+    if (e.y < 0)
+      e.y += AST_H;
+    else if (e.y >= AST_H)
+      e.y -= AST_H;
+  }
+}
+
+static void astDibujar()
+{
+  AstMem &m = *astM;
+  uint8_t *f = m.fb;
+  for (int i = 0; i < AST_W * AST_H / 2; i++)
+  {
+    uint8_t b = f[i];
+    f[i] = (AST_DEC[b >> 4] << 4) | AST_DEC[b & 15];
+  }
+  for (int i = 0; i < AST_NSTAR; i++)
+  {
+    const AstEstr &e = m.es[i];
+    uint8_t c = e.capa == 0 ? 1 : 2;
+    if (astRnd(60) == 0)
+      c = 3;
+    astPix((int)e.x + m.shx, (int)e.y + m.shy, c);
+  }
+  for (int i = 0; i < AST_MAXA; i++)
+    if (m.ro[i].tam)
+      astDibRoca(m.ro[i], m.ro[i].flash ? 3 : (m.ro[i].tam == 1 ? 3 : 4));
+  for (int i = 0; i < AST_MAXB; i++)
+    if (m.ba[i].vida)
+    {
+      const AstBala &b = m.ba[i];
+      astLinea((int)b.x + m.shx, (int)b.y + m.shy, (int)(b.x - b.vx * 0.7f) + m.shx, (int)(b.y - b.vy * 0.7f) + m.shy, 14);
+    }
+  for (int i = 0; i < AST_MAXP; i++)
+    if (m.pt[i].vida)
+    {
+      const AstPart &p = m.pt[i];
+      uint8_t v = p.vida, c;
+      if (p.tipo == 0)
+        c = v > 24 ? 7 : (v > 14 ? 8 : (v > 6 ? 9 : 10));
+      else if (p.tipo == 1)
+        c = v > 20 ? 3 : (v > 12 ? 4 : (v > 5 ? 5 : 6));
+      else
+        c = v > 18 ? 11 : (v > 8 ? 12 : 13);
+      int px = (int)p.x + m.shx, py = (int)p.y + m.shy;
+      astPix(px, py, c);
+      if (v > 16)
+      {
+        astPix(px + 1, py, c);
+        astPix(px, py + 1, c);
+      }
+    }
+  for (int i = 0; i < 3; i++)
+    if (m.on[i].vida)
+    {
+      uint8_t v = m.on[i].vida;
+      astCirculo((int)m.on[i].x + m.shx, (int)m.on[i].y + m.shy, m.on[i].r, v > 12 ? 3 : (v > 7 ? 4 : (v > 3 ? 5 : 6)));
+    }
+  if (m.viva)
+  {
+    bool visible = !m.inmune || (m.frame & 2);
+    if (visible)
+      astDibNave(m.nx, m.ny, m.nang, m.inmune ? 3 : 11, m.empuje, m.inmune > 0);
+  }
+}
+
+static void astEmpujar()
+{
+  AstMem &m = *astM;
+  tft.startWrite();
+  tft.setAddrWindow(0, AST_Y0, AST_W, AST_H);
+  for (int y = 0; y < AST_H; y++)
+  {
+    const uint8_t *s = &m.fb[y * (AST_W / 2)];
+    uint16_t *d = m.linea;
+    for (int x = 0; x < AST_W / 2; x++)
+    {
+      uint8_t b = s[x];
+      d[0] = AST_PAL[b & 15];
+      d[1] = AST_PAL[b >> 4];
+      d += 2;
+    }
+    tft.pushColors(m.linea, AST_W, true);
+  }
+  tft.endWrite();
+}
+
+static void astFrame(uint32_t now)
+{
+  AstMem &m = *astM;
+  m.frame++;
+  if (m.shk > 0)
+  {
+    m.shx = (int8_t)astRnd(2 * m.shk + 1) - m.shk;
+    m.shy = (int8_t)astRnd(2 * m.shk + 1) - m.shk;
+    if ((m.frame & 1) == 0)
+      m.shk--;
+  }
+  else
+    m.shx = m.shy = 0;
+  astActualizar(now);
+  astDibujar();
+  astEmpujar();
+}
+
+// los tres textos de abajo, solo se repintan si cambian
+static void astTextos(bool forzar)
+{
+  AstMem &m = *astM;
+  char izq[16], cen[12], der[12];
+  snprintf(izq, sizeof(izq), "Pts %lu", (unsigned long)m.puntos);
+  snprintf(cen, sizeof(cen), "Ola %u", (unsigned)m.ola);
+  snprintf(der, sizeof(der), "Vidas %u", (unsigned)m.vidas);
+  bool a = forzar || strcmp(izq, m.tIzq) != 0, b = forzar || strcmp(cen, m.tCen) != 0, c = forzar || strcmp(der, m.tDer) != 0;
+  if (!a && !b && !c)
+    return;
+  tft.setFreeFont(NULL);
+  tft.setTextFont(1);
+  tft.setTextSize(2);
+  if (a)
+  {
+    tft.setTextColor(TFT_YELLOW, TFT_BLACK);
+    tft.setTextPadding(120);
+    tft.setTextDatum(TL_DATUM);
+    tft.drawString(izq, 4, 151);
+    strcpy(m.tIzq, izq);
+  }
+  if (b)
+  {
+    tft.setTextColor(TFT_CYAN, TFT_BLACK);
+    tft.setTextPadding(72);
+    tft.setTextDatum(TC_DATUM);
+    tft.drawString(cen, 160, 151);
+    strcpy(m.tCen, cen);
+  }
+  if (c)
+  {
+    tft.setTextColor(TFT_GREEN, TFT_BLACK);
+    tft.setTextPadding(110);
+    tft.setTextDatum(TR_DATUM);
+    tft.drawString(der, 316, 151);
+    strcpy(m.tDer, der);
+  }
+  tft.setTextPadding(0);
+  tft.setTextDatum(TL_DATUM);
+}
+// <<< ASTEROIDES MOTOR
+
+// Hora arriba a la izquierda, hashrate arriba a la derecha ( igual que Tetris, Ajedrez, Primos y Galaxian )
+static void astDrawHud(const char *hash, const char *hora)
+{
+  tft.setFreeFont(NULL);
+  tft.setTextFont(1);
+  tft.setTextSize(2);
+  tft.setTextColor(TFT_WHITE, TFT_BLACK);
+  tft.setTextPadding(100);
+  tft.setTextDatum(TL_DATUM);
+  tft.drawString(hora, 4, 9);
+  char b[24];
+  snprintf(b, sizeof(b), "%s KH/s", hash);
+  tft.setTextPadding(150);
+  tft.setTextDatum(TR_DATUM);
+  tft.drawString(b, 316, 9);
+  tft.setTextPadding(0);
+  tft.setTextDatum(TL_DATUM);
+}
+
+void tDisplay_Asteroides(unsigned long mElapsed)
+{
+  mineria = getMiningData(mElapsed);
+  Serial.printf("M8AX - >>> Completados %s Share(s), %s Khashes, Prom. Hashrate %s KH/s %s°\n",
+                mineria.completedShares.c_str(), mineria.totalKHashes.c_str(), mineria.currentHashRate.c_str(), mineria.temp.c_str());
+
+  // Si hace rato que no nos llaman es que se ha visto otra pantalla: borrar antes de pintar
+  bool limpiar = (millis() - astUlt > 2500);
+  if (!astM)
+  {
+    astM = (AstMem *)malloc(sizeof(AstMem));
+    if (!astM)
+    {
+      Serial.printf("M8AX - ### Asteroides: Sin RAM ( Libre %u, Mayor Bloque %u ) ###\n", (unsigned)ESP.getFreeHeap(), (unsigned)ESP.getMaxAllocHeap());
+      delay(1000);
+      return;
+    }
+    astInit();
+    limpiar = true;
+  }
+  const int astMiPantalla = currentDisplayDriver->current_cyclic_screen;
+  if (limpiar)
+  {
+    tft.fillRect(0, 0, 320, 170, TFT_BLACK);
+    astEmpujar();
+    astTextos(true);
+  }
+
+  char horaStr[9] = "";
+  char lastHora[9] = "";
+  char hashStr[16];
+  char lastHash[16] = "";
+
+  unsigned long start = millis();
+  unsigned long lastMiningUpdate = 0;
+  unsigned long siguiente = start;
+
+  while (millis() - start < AST_SLICE_MS)
+  {
+    unsigned long now = millis();
+
+    if (now >= siguiente)
+    {
+      astFrame(now);
+      astTextos(false);
+      siguiente = millis() + AST_FRAME_MS;
+    }
+
+    // ---- Hora ( izquierda ) y hashrate ( derecha ), arriba como en las demás ----
+    if (now - lastMiningUpdate >= 1000)
+    {
+      lastMiningUpdate = now;
+      mineria = getMiningData(mElapsed);
+      snprintf(hashStr, sizeof(hashStr), "%s", mineria.currentHashRate.c_str());
+      time_t epoch = (time_t)timeClient.getEpochTime();
+      struct tm *ti = localtime(&epoch);
+      snprintf(horaStr, sizeof(horaStr), "%02d:%02d:%02d", ti->tm_hour, ti->tm_min, ti->tm_sec);
+      if (strcmp(horaStr, lastHora) != 0 || strcmp(hashStr, lastHash) != 0)
+      {
+        astDrawHud(hashStr, horaStr);
+        strcpy(lastHora, horaStr);
+        strcpy(lastHash, hashStr);
+      }
+    }
+    delay(2);
+  }
+
+  tft.setTextPadding(0);
+  tft.setTextDatum(TL_DATUM);
+  astUlt = millis();
+
+  // Si el driver ya ha cambiado de pantalla, se devuelve la RAM
+  if (currentDisplayDriver->current_cyclic_screen != astMiPantalla)
+  {
+    free(astM);
+    astM = NULL;
+  }
+}
+
 /**
  * Analiza y actualiza datos cada segundo.
  *
@@ -10776,6 +11932,12 @@ void analiCadaSegundo(unsigned long frame)
   {
     free(galM);
     galM = NULL;
+  }
+
+  if (astM && millis() - astUlt > 5000)
+  {
+    free(astM);
+    astM = NULL;
   }
 
   if (startTime > 0 && uncontadormas > 50)
@@ -10871,7 +12033,6 @@ void analiCadaSegundo(unsigned long frame)
   {
     anterBTC = monedilla.btcPrice.toFloat();
   }
-
   if (dia != diadecambios)
   {
     diadecambios = dia;
@@ -10885,10 +12046,14 @@ void analiCadaSegundo(unsigned long frame)
 
   if (startTime > 0 && epochTime - startTime >= minStartupTime && epochTime - lastTelegramEpochTime >= interval)
   {
+
     // Ajustar la zona horaria solo en meses de cambio de hora y de madrugada
+
     if ((mes == 3 || mes == 4 || mes == 10 || mes == 11) && horita >= 0 && horita <= 5)
       ajustarZonaHoraria();
+
     // Verificar si los datos de Telegram están configurados
+
     static int fallosSeguidos = 0;
     bool enviado = true;
     if (BOT_TOKEN != "NO CONFIGURADO" && CHAT_ID != "NO CONFIGURADO")
@@ -10968,7 +12133,7 @@ void tDisplay_DoLedStuff(unsigned long frame)
 // - `tDisplay_DoLedStuff`: Función vacía en este momento, reservada para gestionar efectos relacionados con LEDs.
 // Además, contiene detalles de la pantalla, como el tamaño y el número total de pantallas definidas en `tDisplayCyclicScreens` (calculado con `SCREENS_ARRAY_SIZE`). La estructura `tDisplayDriver` centraliza el control de todas las operaciones relacionadas con la pantalla, permitiendo la ejecución secuencial o cíclica de diferentes pantallas en el dispositivo.
 
-CyclicScreenFunction tDisplayCyclicScreens[] = {tDisplay_MinerScreen, tDisplay_GlobalHashScreen, tDisplay_BTCprice, tDisplay_m8axScreen15, tDisplay_m8axScreen2, datoTextPlano, tDisplay_m8axScreen5, tDisplay_m8axScreen16, tDisplay_ClockScreen, tDisplay_m8axScreen1, tDisplay_m8axScreen7, RelojDeNumeros, tDisplay_m8axScreen9, tDisplay_m8axScreen10, tDisplay_m8axScreen11, tDisplay_m8axScreen18, tDisplay_m8axScreen3, tDisplay_m8axScreen13, tDisplay_m8axScreen14, tDisplay_m8axScreen8, tDisplay_m8axScreen4, tDisplay_m8axScreen6, tDisplay_m8axScreen17, monedaYdado, tDisplay_Primos, tDisplay_Tetris, tDisplay_Ajedrez, tDisplay_Galaxian, tDisplay_Galaxias, tDisplay_Fractal, tDisplay_m8axvida, tDisplay_m8axScreen12};
+CyclicScreenFunction tDisplayCyclicScreens[] = {tDisplay_MinerScreen, tDisplay_GlobalHashScreen, tDisplay_BTCprice, tDisplay_m8axScreen15, tDisplay_m8axScreen2, datoTextPlano, tDisplay_m8axScreen5, tDisplay_m8axScreen16, tDisplay_ClockScreen, tDisplay_m8axScreen1, tDisplay_m8axScreen7, RelojDeNumeros, tDisplay_m8axScreen9, tDisplay_m8axScreen10, tDisplay_m8axScreen11, tDisplay_m8axScreen18, tDisplay_m8axScreen3, tDisplay_m8axScreen13, tDisplay_m8axScreen14, tDisplay_m8axScreen8, monedaYdado, tDisplay_Primos, tDisplay_Tetris, tDisplay_Ajedrez, tDisplay_Galaxian, tDisplay_Asteroides, tDisplay_Galaxias, tDisplay_Fractal, tDisplay_m8axvida, tDisplay_m8axScreen4, tDisplay_m8axScreen6, tDisplay_m8axScreen17, tDisplay_m8axScreen12};
 
 DisplayDriver tDisplayDriver = {
     tDisplay_Init,

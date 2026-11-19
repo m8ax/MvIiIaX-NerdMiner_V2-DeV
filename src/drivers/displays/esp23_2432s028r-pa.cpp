@@ -58,7 +58,9 @@
  *           a la cadena. A cambio, reciben bitcoins recién creados como recompensa.
  *
  *
- *                     Tmp. De Programación 11H - 13325 Líneas De Código
+ *                                 HASHRATE - 380 / 390 KH/S
+ *
+ *                     Tmp. De Programación 15H - 15345 Líneas De Código
  *                     -------------------------------------------------
  *
  ****************************************************************************************************************/
@@ -221,7 +223,7 @@ String alturab()
   }
   else
   {
-    Serial.println("M8AX - Conexión HTTPS fallida");
+    Serial.println("M8AX - Conexión HTTPS Fallida");
   }
   return "ERROR"; // Devuelve "error" si algo falla
 }
@@ -873,13 +875,16 @@ void dibujaAnalogKH(float khs)
       int textY = centerY + (radius - 20) * sin(angle);
       tft.setCursor(textX - 5, textY - 5); // Ajustar el texto
       if (i == 0)
-        tft.print("360"); // 12 horas -> 360 KH/s
+        tft.print("400"); // arriba ( 12h, 0° ): 400 KH/s, es la vuelta completa
       else if (i == 90)
-        tft.print("90"); // 15 minutos -> 90 KH/s
+      {
+        tft.setCursor(textX - 11, textY - 5);
+        tft.print("100"); // derecha ( 3h, 90° ): 100 KH/s
+      }
       else if (i == 180)
-        tft.print("180"); // 30 minutos -> 180 KH/s
+        tft.print("200"); // abajo ( 6h, 180° ): 200 KH/s
       else if (i == 270)
-        tft.print("270"); // 45 minutos -> 270 KH/s
+        tft.print("300"); // izquierda ( 9h, 270° ): 300 KH/s
     }
   }
 
@@ -889,8 +894,13 @@ void dibujaAnalogKH(float khs)
     return;
   }
 
-  // Mapear el valor de KH/s a un ángulo de -90 (0 KH/s) a 90 (360 KH/s)
-  float angle = map(khs, 0, 360, -90, 270); // Amplitud del reloj ajustada a 360 grados
+  // Escala: 400 KH/s = 360° ( vuelta completa ), o sea 0.9° por cada KH/s
+  //   0 KH/s =   0° desde las 12 ( arriba )                  -> -90° en pantalla
+  // 100 KH/s =  90° ( las 3, derecha )                       ->   0° en pantalla
+  // 200 KH/s = 180° ( las 6, abajo )                         ->  90° en pantalla
+  // 300 KH/s = 270° ( las 9, izquierda )                     -> 180° en pantalla
+  // 400 KH/s = 360° ( vuelta completa, otra vez arriba )     -> 270° en pantalla
+  float angle = -90.0f + constrain(khs, 0.0f, 400.0f) * 0.9f; // en pantalla 0° es la derecha y se gira en sentido horario
 
   // Convertir el ángulo a radianes
   float radianes = angle * DEG_TO_RAD;
@@ -1503,7 +1513,7 @@ String obtenerNombreMes(int mes)
   case 12:
     return "Diciembre";
   default:
-    return "Mes inválido";
+    return "Mes Inválido";
   }
 }
 
@@ -1987,26 +1997,8 @@ static const char WEB_CSS[] PROGMEM =
     "<title>M8AX-NerdminerV2-PG-M8AX &middot; MicroSD</title>"
     "<link id=ic rel=icon>"
     "<style>"
-
     "body{margin:0;font:15px system-ui,sans-serif;background:#0f1419;color:#d7dde4;position:relative;overflow-x:hidden}"
-
-    /* PARTICULAS ANIMADAS */
-    "body::before{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;"
-    "background-image:"
-    "radial-gradient(2px 2px at 20px 30px,#f7931a 99%,transparent),"
-    "radial-gradient(2px 2px at 90px 80px,#6cb6ff 99%,transparent),"
-    "radial-gradient(1px 1px at 130px 40px,#ffffff 99%,transparent),"
-    "radial-gradient(2px 2px at 170px 120px,#f7931a 99%,transparent),"
-    "radial-gradient(1px 1px at 60px 150px,#6cb6ff 99%,transparent);"
-    "background-size:200px 180px;"
-    "opacity:.35;"
-    "animation:particulas 45s linear infinite}"
-
-    "@keyframes particulas{"
-    "from{background-position:0 0}"
-    "to{background-position:200px 180px}"
-    "}"
-
+    "#network{position:fixed;inset:0;width:100%;height:100%;pointer-events:none;z-index:0}"
     "main{max-width:760px;margin:auto;padding:14px;position:relative;z-index:1}"
     "h1{font-size:18px;margin:0 0 10px;color:#f7931a}"
     "a{color:#6cb6ff;text-decoration:none}"
@@ -2015,24 +2007,85 @@ static const char WEB_CSS[] PROGMEM =
     ".r:hover{background:#1a212b}"
     ".n{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}"
     ".s{color:#8b98a5;font-size:12px;white-space:nowrap}"
-
     "@media(max-width:560px){"
     ".r{flex-wrap:wrap}"
     ".n{flex:1 1 calc(100% - 60px)}"
     ".n+.s{margin-left:28px}"
     "}"
-
     ".f{margin-top:12px;color:#8b98a5;font-size:12px;line-height:1.7}"
     ".h{display:flex;align-items:center;gap:12px;margin-bottom:10px}"
     ".h img{height:42px}.h h1{margin:0}"
-
-    "</style><main><div class=h>"
+    ".h a{display:flex;align-items:center;cursor:pointer}"
+    "</style>"
+    "<canvas id=network></canvas>"
+    "<main><div class=h>"
+    "<a id=ml target=_blank rel=noopener>"
     "<img id=lg onerror=\"this.style.display='none'\">"
+    "</a>"
     "<h1>M8AX-NerdminerV2-PG-M8AX &middot; MicroSD</h1></div>"
-
     "<script>"
+
+    /* LOGOTIPO Y FAVICON */
     "var u='https://m8ax.github.io/MvIiIaX-NerdMiner_V2-DeV/webflash/m8axweb'+(1+Math.floor(Math.random()*2))+'.png';"
     "document.getElementById('lg').src=u;document.getElementById('ic').href=u;"
+
+    /* WEBS ALEATORIAS */
+    "var webs=["
+    "'https://youtube.com/m8ax',"
+    "'https://opensea.io/es/m8ax',"
+    "'https://oncyber.io/m8ax',"
+    "'https://m8ax.github.io/MvIiIaX-NerdMiner_V2-DeV/',"
+    "'https://github.com/m8ax',"
+    "'https://odysee.com/@m8ax'"
+    "];"
+    "document.getElementById('ml').href=webs[Math.floor(Math.random()*webs.length)];"
+
+    /* NODOS ANIMADOS */
+    "(()=>{"
+    "const c=document.getElementById('network');"
+    "const ctx=c.getContext('2d');"
+    "let w=0,h=0,nodes=[];"
+    "const colors=['#f7931a','#6cb6ff','#00e5ff','#a78bfa'];"
+    "const reduced=window.matchMedia('(prefers-reduced-motion: reduce)').matches;"
+    "function resize(){"
+    "const dpr=Math.min(window.devicePixelRatio||1,1.5);"
+    "w=window.innerWidth;h=window.innerHeight;"
+    "c.width=w*dpr;c.height=h*dpr;"
+    "ctx.setTransform(dpr,0,0,dpr,0,0);"
+    "const count=Math.min(40,Math.max(15,Math.floor(w*h/18000)));"
+    "nodes=Array.from({length:count},()=>({"
+    "x:Math.random()*w,y:Math.random()*h,"
+    "vx:(Math.random()-.5)*.35,vy:(Math.random()-.5)*.35,"
+    "r:1.3+Math.random()*1.5,"
+    "color:colors[Math.floor(Math.random()*colors.length)]"
+    "}));"
+    "}"
+    "function draw(){"
+    "ctx.clearRect(0,0,w,h);"
+    "for(let i=0;i<nodes.length;i++){"
+    "let a=nodes[i];"
+    "a.x+=a.vx;a.y+=a.vy;"
+    "if(a.x<0||a.x>w)a.vx*=-1;"
+    "if(a.y<0||a.y>h)a.vy*=-1;"
+    "for(let j=i+1;j<nodes.length;j++){"
+    "let b=nodes[j];"
+    "let dx=a.x-b.x,dy=a.y-b.y;"
+    "let dist=Math.sqrt(dx*dx+dy*dy);"
+    "if(dist<145){"
+    "ctx.beginPath();"
+    "ctx.moveTo(a.x,a.y);ctx.lineTo(b.x,b.y);"
+    "ctx.strokeStyle='rgba(108,182,255,'+(0.20*(1-dist/145))+')';"
+    "ctx.lineWidth=.7;ctx.stroke();"
+    "}"
+    "}"
+    "ctx.beginPath();ctx.arc(a.x,a.y,a.r,0,Math.PI*2);"
+    "ctx.fillStyle=a.color;ctx.globalAlpha=.75;ctx.fill();ctx.globalAlpha=1;"
+    "}"
+    "if(!reduced)requestAnimationFrame(draw);"
+    "}"
+    "resize();draw();"
+    "window.addEventListener('resize',resize,{passive:true});"
+    "})();"
     "</script>";
 
 static bool rutaOk(const char *p) { return p[0] == '/' && !strstr(p, ".."); }
@@ -2570,7 +2623,7 @@ bool bottomScreenBlue = true;
 
 void printheap()
 {
-  Serial.printf("M8AX - $$ Free Heap: %u  Max bloque: %u\n", ESP.getFreeHeap(), ESP.getMaxAllocHeap());
+  Serial.printf("M8AX - $$ Free Heap: %u  Max Bloque: %u\n", ESP.getFreeHeap(), ESP.getMaxAllocHeap());
 }
 
 bool createBackgroundSprite(int16_t wdt, int16_t hgt)
@@ -2597,7 +2650,7 @@ bool createBackgroundSprite(int16_t wdt, int16_t hgt)
   else
   {
     Serial.println("M8AX - #### Sprite Error ####");
-    Serial.printf("M8AX - Size w:%d h:%d \n", wdt, hgt);
+    Serial.printf("M8AX - Size W:%d H:%d \n", wdt, hgt);
     printheap();
   }
   return background.created();
@@ -3064,7 +3117,11 @@ void esp32_2432S028R_MinerScreen(unsigned long mElapsed)
   X_FINAL = 316;
   Y_POS = 137;
   longitud_total = X_FINAL - X_INICIO;
-  longitud_pintada = (longitud_total * mineria.currentHashRate.toInt()) / 360;
+  longitud_pintada = (longitud_total * mineria.currentHashRate.toInt()) / 400;
+  if (longitud_pintada > longitud_total)
+    longitud_pintada = longitud_total;
+  if (longitud_pintada < 0)
+    longitud_pintada = 0;
   colorI = esp_random() % (sizeof(colors) / sizeof(colors[0]));
   tft.fillRect(X_INICIO, Y_POS - 1, longitud_total + 1, 3, TFT_DARKGREY);
   tft.drawLine(X_INICIO, Y_POS, X_INICIO + longitud_pintada, Y_POS, colors[colorI]);
@@ -3393,13 +3450,17 @@ void RelojDeNumeros(unsigned long mElapsed)
   tft.setCursor(192, 50);
   colorI = esp_random() % (sizeof(colors) / sizeof(colors[0]));
   tft.setTextColor(colors[colorI]);
-  tft.print("360 KH/s");
+  tft.print("400 KH/s");
   int grosor = 5;
-  int X_INICIO = 5;                                                                // Columna fija
-  int X_FINAL = 242;                                                               // Base de la barra
-  int Y_POS = 43;                                                                  // Punto más alto
-  int longitud_total = X_FINAL - X_INICIO;                                         // Longitud total de la barra (80 píxeles)
-  int longitud_pintada = (longitud_total * mineria.currentHashRate.toInt()) / 360; // Porcentaje de la barra según los segundos
+  int X_INICIO = 5;                                                                // Inicio de la barra ( izquierda )
+  int X_FINAL = 242;                                                               // Final de la barra ( derecha )
+  int Y_POS = 43;                                                                  // Altura de la barra
+  int longitud_total = X_FINAL - X_INICIO;                                         // Longitud total de la barra (237 píxeles)
+  int longitud_pintada = (longitud_total * mineria.currentHashRate.toInt()) / 400; // Parte de la barra según el hashrate ( 400 KH/s = llena )
+  if (longitud_pintada > longitud_total)
+    longitud_pintada = longitud_total;
+  if (longitud_pintada < 0)
+    longitud_pintada = 0;
   tft.fillRect(X_INICIO, Y_POS - (grosor / 2), longitud_total + 1, grosor, TFT_BLACK);
   tft.fillRect(X_INICIO, Y_POS - (grosor / 2), longitud_pintada, grosor, colors[colorI]);
   tft.setCursor(5, 124);
@@ -3411,10 +3472,10 @@ void RelojDeNumeros(unsigned long mElapsed)
   tft.setTextColor(colors[colorI]);
   tft.print("24 Horas");
   grosor = 5;
-  X_INICIO = 4;                                                 // Columna fija
-  X_FINAL = 242;                                                // Base de la barra
-  Y_POS = 117;                                                  // Punto más alto
-  longitud_total = X_FINAL - X_INICIO;                          // Longitud total de la barra (80 píxeles)
+  X_INICIO = 4;                                                 // Inicio de la barra ( izquierda )
+  X_FINAL = 242;                                                // Final de la barra ( derecha )
+  Y_POS = 117;                                                  // Altura de la barra
+  longitud_total = X_FINAL - X_INICIO;                          // Longitud total de la barra (238 píxeles)
   longitud_pintada = (longitud_total * segundosDelDia) / 86400; // Porcentaje de la barra según los segundos
   tft.fillRect(X_INICIO, Y_POS - (grosor / 2), longitud_total + 1, grosor, TFT_BLACK);
   tft.fillRect(X_INICIO, Y_POS - (grosor / 2), longitud_pintada, grosor, colors[colorI]);
@@ -4305,9 +4366,9 @@ void tDisplay_m8axScreenMegaNerd(unsigned long mElapsed)
   tft.setTextColor(colors[colorI]);
   tft.print(quediase.c_str());
   tft.setTextColor(TFT_WHITE);
-  int X_INICIO = 230;                                      // Columna fija
-  int X_FINAL = 310;                                       // Base de la barra
-  int Y_POS = 147;                                         // Punto más alto
+  int X_INICIO = 230;                                      // Inicio de la barra ( izquierda )
+  int X_FINAL = 310;                                       // Final de la barra ( derecha )
+  int Y_POS = 147;                                         // Altura de la barra
   int longitud_total = X_FINAL - X_INICIO;                 // Longitud total de la barra (80 píxeles)
   int longitud_pintada = (longitud_total * segundos) / 59; // Porcentaje de la barra según los segundos
   tft.fillRect(X_INICIO, Y_POS - 1, longitud_total + 1, 3, TFT_BLACK);
@@ -4497,7 +4558,7 @@ void tDisplay_granHash(unsigned long mElapsed)
   tft.setCursor(255, 149);
   tft.print(variacion1semana);
   tft.setCursor(28, 125);
-  tft.print("          BARRA DE HASH/S 0-360");
+  tft.print("          BARRA DE HASH/S 0-400");
   cuentita++;
   if (cuentita == 15)
   {
@@ -4538,7 +4599,11 @@ void tDisplay_granHash(unsigned long mElapsed)
   X_FINAL = 213;
   Y_POS = 135;
   longitud_total = X_FINAL - X_INICIO;
-  longitud_pintada = (longitud_total * mineria.currentHashRate.toDouble()) / 360.00;
+  longitud_pintada = (longitud_total * mineria.currentHashRate.toDouble()) / 400.00;
+  if (longitud_pintada > longitud_total)
+    longitud_pintada = longitud_total;
+  if (longitud_pintada < 0)
+    longitud_pintada = 0;
   colorI = esp_random() % (sizeof(colors) / sizeof(colors[0]));
   tft.fillRect(X_INICIO, Y_POS - 1, longitud_total + 1, 3, TFT_DARKGREY);
   tft.drawLine(X_INICIO, Y_POS, X_INICIO + longitud_pintada, Y_POS, colors[colorI]);
@@ -4549,11 +4614,27 @@ void tDisplay_granHash(unsigned long mElapsed)
 #endif
 }
 
-const int HASHG_ANCHO_MAX = 308;        // ancho máximo del texto (pantalla = 320)
-const int HASHG_ALTO_MAX = 150;         // alto máximo del texto (zona de arriba = 170)
-const int HASHG_TAM_MAX = 130;          // tamaño de letra máximo a probar
+const int HASHG_S = 18;                 // lado de cada bloque (3 cifras = 17 columnas x 18 = 306 px, cabe en 320)
+const bool HASHG_CEROS = true;          // true = 005 (siempre 3 dígitos), false = 5
 const bool HASHG_MOSTRAR_UNIDAD = true; // false = quita el "KH/s" pequeñito
-String hashgUltimo = "";
+
+// Mismas cifras 5x7 que el banner (el bit 0 es la fila de arriba)
+static const uint8_t HASHG_FONT[10][5] = {
+    {0x3E, 0x51, 0x49, 0x45, 0x3E}, // 0
+    {0x00, 0x42, 0x7F, 0x40, 0x00}, // 1
+    {0x72, 0x49, 0x49, 0x49, 0x46}, // 2
+    {0x21, 0x41, 0x49, 0x4D, 0x33}, // 3
+    {0x18, 0x14, 0x12, 0x7F, 0x10}, // 4
+    {0x27, 0x45, 0x45, 0x45, 0x39}, // 5
+    {0x3C, 0x4A, 0x49, 0x49, 0x31}, // 6
+    {0x41, 0x21, 0x11, 0x09, 0x07}, // 7
+    {0x36, 0x49, 0x49, 0x49, 0x36}, // 8
+    {0x46, 0x49, 0x49, 0x29, 0x1E}  // 9
+};
+static const uint16_t HASHG_COLORES[8] = {TFT_RED, TFT_GREEN, TFT_CYAN, TFT_YELLOW, TFT_MAGENTA, TFT_ORANGE, TFT_WHITE, TFT_SKYBLUE};
+static int hashgUltimo = -1;
+static unsigned long hashgSeg = 0xFFFFFFFF;
+static uint8_t hashgColor = 0;
 
 void tDisplay_hashGigante(unsigned long mElapsed)
 {
@@ -4566,42 +4647,68 @@ void tDisplay_hashGigante(unsigned long mElapsed)
   bool repintar = hasChangedScreen;
   hasChangedScreen = false;
 
-  String hr = mineria.currentHashRate;
+  // Hashrate sin decimales, máximo 3 dígitos
+  int hr = (int)mineria.currentHashRate.toFloat();
+  if (hr < 0)
+    hr = 0;
+  if (hr > 999)
+    hr = 999;
 
-  // Solo repinta si cambió el valor o si acabamos de entrar en la pantalla (evita parpadeo)
-  if (repintar || hr != hashgUltimo)
+  unsigned long seg = millis() / 1000;
+
+  // Repinta si cambió el valor, si cambió el segundo (color nuevo) o si acabamos de entrar
+  if (repintar || hr != hashgUltimo || seg != hashgSeg)
   {
+    if (seg != hashgSeg)
+      hashgColor = (hashgColor + 1) % 8;
+    hashgSeg = seg;
     hashgUltimo = hr;
 
-    tft.fillRect(0, 0, 320, 170, TFT_BLACK);
+    char txt[4];
+    snprintf(txt, sizeof(txt), HASHG_CEROS ? "%03d" : "%d", hr);
+    int n = strlen(txt);
 
-    render.setDrawer(tft); // dibuja directo en la pantalla, sin sprite (ahorra RAM)
-    render.setAlignment(Align::TopCenter);
+    const int S = HASHG_S;
+    int ancho = (n * 6 - 1) * S;
+    int x0 = (320 - ancho) / 2; // centrado en horizontal
+    int y0 = (170 - 7 * S) / 2; // centrado en vertical
 
-    // Busca el tamaño de letra más grande que quepa
-    int tam = HASHG_TAM_MAX;
-    while (tam > 10)
+    if (repintar)
     {
-      render.setFontSize(tam);
-      if (render.getTextWidth("%s", hr.c_str()) <= HASHG_ANCHO_MAX &&
-          render.getTextHeight("%s", hr.c_str()) <= HASHG_ALTO_MAX)
-        break;
-      tam -= 2;
+      tft.fillRect(0, 0, 320, 170, TFT_BLACK);
+      if (HASHG_MOSTRAR_UNIDAD)
+      {
+        tft.setTextFont(1);
+        tft.setTextSize(1);
+        tft.setTextColor(TFT_DARKGREY, TFT_BLACK);
+        tft.setCursor(290, 160);
+        tft.print("KH/s");
+      }
     }
+    else
+      tft.fillRect(0, y0, 320, 7 * S, TFT_BLACK);
 
-    int alto = render.getTextHeight("%s", hr.c_str());
-    int y = (170 - alto) / 2 - 13;
-    if (y < 0)
-      y = 0;
-    render.drawString(hr.c_str(), 160, y, TFT_WHITE);
-
-    if (HASHG_MOSTRAR_UNIDAD)
+    uint16_t color = HASHG_COLORES[hashgColor];
+    for (int d = 0; d < n; d++)
     {
-      tft.setTextFont(1);
-      tft.setTextSize(1);
-      tft.setTextColor(TFT_DARKGREY, TFT_BLACK);
-      tft.setCursor(290, 160);
-      tft.print("KH/s");
+      int g = txt[d] - '0';
+      int xd = x0 + d * 6 * S;
+      for (int f = 0; f < 7; f++)
+      {
+        int k = 0;
+        while (k < 5)
+        {
+          if (!(HASHG_FONT[g][k] & (1 << f)))
+          {
+            k++;
+            continue;
+          }
+          int ini = k;
+          while (k < 5 && (HASHG_FONT[g][k] & (1 << f)))
+            k++;
+          tft.fillRect(xd + ini * S, y0 + f * S, (k - ini) * S, S, color);
+        }
+      }
     }
   }
   cuentita++;
@@ -8577,7 +8684,7 @@ void esp32_2432S028R_TetrisScreen(unsigned long mElapsed)
 #define PM_MAXPRIMO 18446744073709551557ULL // el primo mas grande que cabe en un uint64 (2^64 - 59)
 #define PM_UMBRAL 14000000000000000000ULL   // por encima de esto se salta directo al ultimo
 #define PM_N_SEC 30                         // los primeros 30 salen seguidos: 2 3 5 7 11 13...
-#define PM_PASO_SEC_MS 70                   // ms entre primos mientras salen seguidos
+#define PM_PASO_SEC_MS 0                    // ms entre primos mientras salen seguidos
 #define PM_PASO_SALTO_MS 90                 // ms entre primos mientras va subiendo
 #define PM_FIN_MS 5000                      // lo que se queda el mayor primo antes de empezar otra vez
 
@@ -9561,7 +9668,7 @@ void esp32_2432S028R_CifrasScreen(unsigned long mElapsed)
       // Mostrar operaciones realizadas
       if (cf.nPasos == 0)
       {
-        Serial.printf("M8AX - Sin operaciones: resultado %d\n", cf.valor);
+        Serial.printf("M8AX - Sin Operaciones: Resultado %d\n", cf.valor);
       }
       else
       {
@@ -10169,7 +10276,7 @@ static void snkFin(bool gana)
   snkPartidas++;
   snkTextoFin();
   snkFoot();
-  Serial.printf("M8AX - Snake: partida %lu | longitud %u | record %lu\n",
+  Serial.printf("M8AX - Snake: Partida %lu | Longitud %u | Record %lu\n",
                 (unsigned long)snkPartidas, snkM->largo, (unsigned long)snkRecord);
   ledFlash(!gana, gana, false, 150);
 }
@@ -10231,7 +10338,7 @@ void esp32_2432S028R_SnakeScreen(unsigned long mElapsed)
     snkM = (SnkMem *)malloc(sizeof(SnkMem));
     if (!snkM)
     {
-      Serial.println("M8AX - Snake: no hay RAM libre");
+      Serial.println("M8AX - Snake: No Hay RAM Libre");
       delay(1000);
       return;
     }
@@ -10976,7 +11083,7 @@ void esp32_2432S028R_GalaxianScreen(unsigned long mElapsed)
     galM = (GalMem *)malloc(sizeof(GalMem));
     if (!galM)
     {
-      Serial.println("M8AX - Galaxian: no hay RAM libre");
+      Serial.println("M8AX - Galaxian: No Hay RAM Libre");
       delay(1000);
       return;
     }
@@ -12939,7 +13046,7 @@ void esp32_2432S028R_DoomScreen(unsigned long mElapsed)
   unsigned long lastTouchChk = 0;
   unsigned long ledApagarEn = 0;
   uint32_t frames = 0;
-  int fps = 0;
+  static int fps = 0;
   dmM->ultimo = start;
   pongLeds(false);
 
@@ -13090,6 +13197,1902 @@ void esp32_2432S028R_DoomScreen(unsigned long mElapsed)
   }
 }
 
+/****************************************************************************************************************
+ *
+ *   Escrito por: M8AX
+ *
+ *   Descripción: ASTEROIDES M8AX - Los asteroides de toda la vida, pero jugados por la CPU del ESP32 para ESP32_2432S028R
+ *   --------------------------------------------------------------------------------------------------------------------
+ *
+ *   La nave se pilota sola. Cada pocos fotogramas el ESP32 se inventa 144 futuros distintos para los próximos
+ *   segundos ( gira a un lado, gira al otro, acelera, deja de acelerar, durante más o menos tiempo y encadenando
+ *   dos maniobras ), los simula uno por uno con todas las rocas moviéndose, y se queda con el que menos
+ *   choca y mejor deja la puntería. Al disparar no apunta a donde está la roca, sino a donde va a estar cuando
+ *   llegue la bala. Si la cosa se pone fea y tarda mucho en pensar, se toma más fotogramas entre una decisión y
+ *   otra para que la animación no se arrastre.
+ *
+ *   La pantalla se pinta entera cada fotograma en un buffer de 4 bits por píxel ( 16 colores ) y se manda de
+ *   golpe al TFT, así que no parpadea. Antes de pintar, todo lo que había se apaga un escalón en su rampa de
+ *   color, por eso las balas, las llamas y las explosiones dejan estela como en las pantallas vectoriales
+ *   de las recreativas. Hay estrellas en tres capas que se mueven al revés de la nave, partículas, ondas
+ *   de choque y temblor de pantalla cuando revienta algo grande.
+ *
+ *   LEDs: destello ROJO corto al disparar, VERDE al romper una roca y los TRES a la vez si destruyen la nave.
+ *   Abajo van los puntos, la ola y las vidas. Si la nave pierde las tres vidas, empieza otra partida sola.
+ *
+ *   Memoria: unos 22 KB en el heap ( casi todo es el buffer de pantalla ), que se piden al entrar en la pantalla
+ *   y se liberan al salir a otra, como el ajedrez y el Doom. Si no hay RAM, se salta la pantalla sin pintar nada.
+ *
+ *   Para activarla: pegar este bloque justo antes de analiCadaSegundo, meter esp32_2432S028R_AsteroidesScreen en el
+ *   array esp32_2432S028RCyclicScreens[] y añadir en analiCadaSegundo, debajo del if de galM, este otro:
+ *   if (astM && pantallaActual != esp32_2432S028R_AsteroidesScreen) { free(astM); astM = NULL; }
+ *
+ ****************************************************************************************************************/
+
+// >>> ASTEROIDES MOTOR
+#define AST_W 320
+#define AST_H 120
+#define AST_Y0 28 // el HUD de arriba ocupa hasta la 26 y el de abajo empieza en la 150
+#define AST_FRAME_MS 20
+#define AST_SLICE_MS 5000
+#define AST_MAXA 20
+#define AST_MAXB 5
+#define AST_MAXP 64
+#define AST_NSTAR 32
+#define AST_NV 9
+#define AST_HORIZ 36 // fotogramas que mira hacia delante al pensar
+#define AST_ROT 0.13f
+#define AST_EMPUJE 0.19f
+#define AST_ROZA 0.992f
+#define AST_VMAX 3.4f
+#define AST_BVEL 6.2f
+#define AST_BVIDA 32
+#define AST_RANGO2 22500.0f
+#define AST_PI 3.14159265f
+#define AST_RGB(r, g, b) ((uint16_t)((((r) & 0xF8) << 8) | (((g) & 0xFC) << 3) | ((b) >> 3)))
+
+// 0 negro | 1-2 estrellas | 3-6 blanco y sus grises | 7-10 fuego | 11-13 cian | 14-15 verde
+static const uint16_t AST_PAL[16] = {
+    AST_RGB(0, 0, 0), AST_RGB(24, 28, 64), AST_RGB(80, 90, 140), AST_RGB(255, 255, 255),
+    AST_RGB(205, 205, 215), AST_RGB(135, 135, 155), AST_RGB(62, 62, 78), AST_RGB(255, 240, 120),
+    AST_RGB(255, 150, 30), AST_RGB(230, 50, 20), AST_RGB(110, 20, 10), AST_RGB(120, 255, 255),
+    AST_RGB(40, 170, 200), AST_RGB(10, 70, 100), AST_RGB(80, 255, 120), AST_RGB(20, 110, 50)};
+// a qué color pasa cada uno en el siguiente fotograma
+static const uint8_t AST_DEC[16] = {0, 0, 1, 4, 5, 6, 0, 8, 9, 10, 0, 12, 13, 0, 15, 0};
+static const float AST_RAD[4] = {0.0f, 5.0f, 9.5f, 16.0f};
+static const uint16_t AST_PTS[4] = {0, 100, 50, 20};
+static const float AST_VAL[4] = {0.0f, 1.4f, 1.1f, 0.9f};
+
+struct AstRoca
+{
+  float x, y, vx, vy, ang, vang;
+  uint8_t tam, seed, flash; // tam: 0 libre, 1 chica, 2 media, 3 grande
+};
+
+struct AstBala
+{
+  float x, y, vx, vy;
+  uint8_t vida;
+};
+
+struct AstPart
+{
+  float x, y, vx, vy;
+  uint8_t vida, tipo; // 0 fuego, 1 blanca, 2 cian
+};
+
+struct AstOnda
+{
+  float x, y;
+  uint8_t r, vida;
+};
+
+struct AstEstr
+{
+  float x, y;
+  uint8_t capa;
+};
+
+struct AstMem
+{
+  uint8_t fb[AST_W * AST_H / 2];
+  uint16_t linea[AST_W];
+  AstRoca ro[AST_MAXA];
+  AstBala ba[AST_MAXB];
+  AstPart pt[AST_MAXP];
+  AstOnda on[3];
+  AstEstr es[AST_NSTAR];
+  float nx, ny, nvx, nvy, nang;
+  int8_t ctlRot, shx, shy, shk;
+  uint8_t ctlEmp, empuje, viva, vidas, cadencia, planCnt, planCada, ipt;
+  uint16_t inmune, reaparece, pausaOla, finTimer, ola;
+  uint32_t puntos, mejor, frame, ledOff;
+  uint8_t ledPrio;
+  char tIzq[16], tCen[12], tDer[12];
+};
+static AstMem *astM = NULL;
+
+struct AstCtx
+{
+  int n;
+  float nx, ny, nvx, nvy, hx, hy, cs, sn;
+  float x[AST_MAXA], y[AST_MAXA], vx[AST_MAXA], vy[AST_MAXA];
+  float lim2[AST_MAXA], cer2[AST_MAXA], aim2[AST_MAXA], val[AST_MAXA];
+};
+
+static inline uint32_t astRnd(uint32_t n) { return esp_random() % n; }
+static inline float astRf() { return (esp_random() & 0xFFFF) * (1.0f / 65535.0f); }
+
+static inline float astDel(float d, float L)
+{
+  if (d > L * 0.5f)
+    d -= L;
+  else if (d < -L * 0.5f)
+    d += L;
+  return d;
+}
+
+static inline void astPix(int x, int y, uint8_t c)
+{
+  if ((unsigned)x >= AST_W || (unsigned)y >= AST_H)
+    return;
+  uint8_t *p = &astM->fb[y * (AST_W / 2) + (x >> 1)];
+  if (x & 1)
+    *p = (*p & 0x0F) | (c << 4);
+  else
+    *p = (*p & 0xF0) | c;
+}
+
+static void astLinea(int x0, int y0, int x1, int y1, uint8_t c)
+{
+  int dx = abs(x1 - x0), sx = x0 < x1 ? 1 : -1;
+  int dy = -abs(y1 - y0), sy = y0 < y1 ? 1 : -1;
+  int err = dx + dy;
+  for (;;)
+  {
+    astPix(x0, y0, c);
+    if (x0 == x1 && y0 == y1)
+      break;
+    int e2 = 2 * err;
+    if (e2 >= dy)
+    {
+      err += dy;
+      x0 += sx;
+    }
+    if (e2 <= dx)
+    {
+      err += dx;
+      y0 += sy;
+    }
+  }
+}
+
+static void astCirculo(int cx, int cy, int r, uint8_t c)
+{
+  int x = r, y = 0, d = 1 - r;
+  while (x >= y)
+  {
+    astPix(cx + x, cy + y, c);
+    astPix(cx - x, cy + y, c);
+    astPix(cx + x, cy - y, c);
+    astPix(cx - x, cy - y, c);
+    astPix(cx + y, cy + x, c);
+    astPix(cx - y, cy + x, c);
+    astPix(cx + y, cy - x, c);
+    astPix(cx - y, cy - x, c);
+    y++;
+    if (d < 0)
+      d += 2 * y + 1;
+    else
+    {
+      x--;
+      d += 2 * (y - x) + 1;
+    }
+  }
+}
+
+// copias del dibujo que hacen falta cuando algo se sale por un borde y entra por el contrario
+static int astOffs(float x, float y, float R, float *ox, float *oy)
+{
+  float xs[2] = {0, 0}, ys[2] = {0, 0};
+  int nx = 1, ny = 1, n = 0;
+  if (x - R < 0)
+    xs[nx++] = AST_W;
+  else if (x + R >= AST_W)
+    xs[nx++] = -AST_W;
+  if (y - R < 0)
+    ys[ny++] = AST_H;
+  else if (y + R >= AST_H)
+    ys[ny++] = -AST_H;
+  for (int a = 0; a < nx; a++)
+    for (int b = 0; b < ny; b++)
+    {
+      ox[n] = xs[a];
+      oy[n] = ys[b];
+      n++;
+    }
+  return n;
+}
+
+static inline float astRadioV(uint8_t seed, int i)
+{
+  uint32_t h = (uint32_t)(seed + 7) * 2654435761u;
+  h ^= (uint32_t)(i + 3) * 40503u;
+  h *= 2246822519u;
+  h ^= h >> 15;
+  return 0.68f + ((h >> 4) & 255) * (0.40f / 255.0f);
+}
+
+static void astDibRoca(const AstRoca &r, uint8_t col)
+{
+  float R = AST_RAD[r.tam];
+  float lx[AST_NV], ly[AST_NV], ox[4], oy[4];
+  for (int i = 0; i < AST_NV; i++)
+  {
+    float a = r.ang + i * (2.0f * AST_PI / AST_NV);
+    float rr = R * astRadioV(r.seed, i);
+    lx[i] = cosf(a) * rr;
+    ly[i] = sinf(a) * rr;
+  }
+  int n = astOffs(r.x, r.y, R + 1.0f, ox, oy);
+  for (int k = 0; k < n; k++)
+  {
+    float cx = r.x + ox[k] + astM->shx, cy = r.y + oy[k] + astM->shy;
+    for (int i = 0; i < AST_NV; i++)
+    {
+      int j = (i + 1) % AST_NV;
+      astLinea((int)(cx + lx[i] + 0.5f), (int)(cy + ly[i] + 0.5f), (int)(cx + lx[j] + 0.5f), (int)(cy + ly[j] + 0.5f), col);
+    }
+  }
+}
+
+static void astDibNave(float x, float y, float ang, uint8_t col, bool llama, bool escudo)
+{
+  static const float P[4][2] = {{9.0f, 0.0f}, {-6.0f, -5.5f}, {-3.0f, 0.0f}, {-6.0f, 5.5f}};
+  float ca = cosf(ang), sa = sinf(ang), ox[4], oy[4];
+  int n = astOffs(x, y, 14.0f, ox, oy);
+  for (int k = 0; k < n; k++)
+  {
+    float cx = x + ox[k] + astM->shx, cy = y + oy[k] + astM->shy;
+    int X[4], Y[4];
+    for (int i = 0; i < 4; i++)
+    {
+      X[i] = (int)(cx + P[i][0] * ca - P[i][1] * sa + 0.5f);
+      Y[i] = (int)(cy + P[i][0] * sa + P[i][1] * ca + 0.5f);
+    }
+    for (int i = 0; i < 4; i++)
+    {
+      int j = (i + 1) & 3;
+      astLinea(X[i], Y[i], X[j], Y[j], col);
+    }
+    if (llama)
+    {
+      float L = 5.0f + astRnd(8), s = (astRf() - 0.5f) * 3.0f;
+      float fx = -3.0f - L, fy = s;
+      astLinea((int)(cx - 3.0f * ca + 0.5f), (int)(cy - 3.0f * sa + 0.5f),
+               (int)(cx + fx * ca - fy * sa + 0.5f), (int)(cy + fx * sa + fy * ca + 0.5f), 8);
+      fx = -3.0f - L * 0.55f;
+      fy = s * 0.4f;
+      astLinea((int)(cx - 3.0f * ca + 0.5f), (int)(cy - 3.0f * sa + 0.5f),
+               (int)(cx + fx * ca - fy * sa + 0.5f), (int)(cy + fx * sa + fy * ca + 0.5f), 7);
+    }
+    if (escudo)
+      astCirculo((int)(cx + 0.5f), (int)(cy + 0.5f), 11 + (astM->frame & 3), 14);
+  }
+}
+
+static void astLed(uint8_t prio, bool r, bool g, bool b, uint16_t ms, uint32_t now)
+{
+  if (astM->ledOff && prio < astM->ledPrio)
+    return;
+  digitalWrite(LED_PIN, r ? LOW : HIGH);
+  digitalWrite(LED_PIN_G, g ? LOW : HIGH);
+  digitalWrite(LED_PIN_B, b ? LOW : HIGH);
+  astM->ledOff = now + ms;
+  astM->ledPrio = prio;
+}
+
+static void astChispas(float x, float y, int n, float vel, uint8_t tipo)
+{
+  AstMem &m = *astM;
+  for (int k = 0; k < n; k++)
+  {
+    int idx = -1;
+    for (int i = 0; i < AST_MAXP; i++)
+    {
+      uint8_t j = (m.ipt + i) % AST_MAXP;
+      if (!m.pt[j].vida)
+      {
+        idx = j;
+        m.ipt = (j + 1) % AST_MAXP;
+        break;
+      }
+    }
+    if (idx < 0)
+      return;
+    float a = astRf() * 2.0f * AST_PI, v = vel * (0.25f + astRf());
+    AstPart &p = m.pt[idx];
+    p.x = x;
+    p.y = y;
+    p.vx = cosf(a) * v;
+    p.vy = sinf(a) * v;
+    p.vida = 14 + astRnd(24);
+    p.tipo = tipo;
+  }
+}
+
+static void astOnda(float x, float y)
+{
+  AstMem &m = *astM;
+  for (int i = 0; i < 3; i++)
+    if (!m.on[i].vida)
+    {
+      m.on[i].x = x;
+      m.on[i].y = y;
+      m.on[i].r = 2;
+      m.on[i].vida = 18;
+      return;
+    }
+}
+
+static void astNave()
+{
+  AstMem &m = *astM;
+  m.nx = AST_W / 2;
+  m.ny = AST_H / 2;
+  m.nvx = m.nvy = 0;
+  m.nang = -AST_PI / 2;
+  m.ctlRot = 0;
+  m.ctlEmp = 0;
+  m.empuje = 0;
+  m.cadencia = 0;
+  m.planCnt = 0;
+  m.viva = 1;
+  m.inmune = 110;
+}
+
+static void astNuevaOla()
+{
+  AstMem &m = *astM;
+  m.ola++;
+  int n = 3 + m.ola;
+  if (n > 10)
+    n = 10;
+  float sf = 1.0f + 0.10f * m.ola;
+  if (sf > 2.2f)
+    sf = 2.2f;
+  for (int k = 0; k < n; k++)
+  {
+    int idx = -1;
+    for (int i = 0; i < AST_MAXA; i++)
+      if (!m.ro[i].tam)
+      {
+        idx = i;
+        break;
+      }
+    if (idx < 0)
+      break;
+    AstRoca &r = m.ro[idx];
+    for (int t = 0; t < 24; t++)
+    {
+      r.x = astRnd(AST_W);
+      r.y = astRnd(AST_H);
+      float dx = astDel(r.x - m.nx, AST_W), dy = astDel(r.y - m.ny, AST_H);
+      if (dx * dx + dy * dy > 3600.0f)
+        break;
+    }
+    float a = astRf() * 2.0f * AST_PI, v = (0.35f + astRf() * 0.4f) * sf;
+    r.vx = cosf(a) * v;
+    r.vy = sinf(a) * v;
+    r.ang = astRf() * 6.28f;
+    r.vang = (astRf() - 0.5f) * 0.08f;
+    r.tam = 3;
+    r.seed = astRnd(256);
+    r.flash = 0;
+  }
+  astOnda(m.nx, m.ny);
+}
+
+static void astNuevaPartida()
+{
+  AstMem &m = *astM;
+  memset(m.ro, 0, sizeof(m.ro));
+  memset(m.ba, 0, sizeof(m.ba));
+  memset(m.pt, 0, sizeof(m.pt));
+  memset(m.on, 0, sizeof(m.on));
+  m.puntos = 0;
+  m.ola = 0;
+  m.vidas = 3;
+  m.pausaOla = 0;
+  m.finTimer = 0;
+  m.reaparece = 0;
+  astNave();
+  astNuevaOla();
+}
+
+static void astInit()
+{
+  AstMem &m = *astM;
+  memset(m.fb, 0, sizeof(m.fb));
+  m.mejor = 0;
+  m.planCada = 4;
+  m.frame = 0;
+  m.ledOff = 0;
+  m.ledPrio = 0;
+  m.shk = m.shx = m.shy = 0;
+  m.tIzq[0] = m.tCen[0] = m.tDer[0] = 0;
+  for (int i = 0; i < AST_NSTAR; i++)
+  {
+    m.es[i].x = astRnd(AST_W);
+    m.es[i].y = astRnd(AST_H);
+    m.es[i].capa = i % 3;
+  }
+  astNuevaPartida();
+}
+
+// rompe la roca i: puntos, chispas y los dos trozos en que se parte
+static void astRomper(int i, uint32_t now)
+{
+  AstMem &m = *astM;
+  AstRoca r = m.ro[i];
+  m.ro[i].tam = 0;
+  m.puntos += AST_PTS[r.tam];
+  if (m.puntos > m.mejor)
+    m.mejor = m.puntos;
+  astChispas(r.x, r.y, 6 + r.tam * 6, 1.0f + r.tam * 0.5f, 0);
+  astChispas(r.x, r.y, 3 + r.tam * 2, 1.6f, 1);
+  if (r.tam == 3)
+  {
+    astOnda(r.x, r.y);
+    if (m.shk < 3)
+      m.shk = 3;
+  }
+  astLed(2, false, true, false, 40, now);
+  if (r.tam > 1)
+  {
+    for (int h = 0; h < 2; h++)
+    {
+      int idx = -1;
+      for (int k = 0; k < AST_MAXA; k++)
+        if (!m.ro[k].tam)
+        {
+          idx = k;
+          break;
+        }
+      if (idx < 0)
+        return;
+      AstRoca &c = m.ro[idx];
+      float a = astRf() * 2.0f * AST_PI, v = 0.5f + astRf() * 0.7f;
+      c.x = r.x;
+      c.y = r.y;
+      c.vx = r.vx * 0.5f + cosf(a) * v;
+      c.vy = r.vy * 0.5f + sinf(a) * v;
+      c.ang = astRf() * 6.28f;
+      c.vang = (astRf() - 0.5f) * 0.14f;
+      c.tam = r.tam - 1;
+      c.seed = astRnd(256);
+      c.flash = 6;
+    }
+  }
+}
+
+static void astMuereNave(uint32_t now)
+{
+  AstMem &m = *astM;
+  m.viva = 0;
+  m.empuje = 0;
+  astChispas(m.nx, m.ny, 22, 2.6f, 2);
+  astChispas(m.nx, m.ny, 26, 2.2f, 0);
+  astChispas(m.nx, m.ny, 14, 3.0f, 1);
+  astOnda(m.nx, m.ny);
+  m.shk = 7;
+  astLed(3, true, true, true, 140, now);
+  if (m.vidas)
+    m.vidas--;
+  if (m.vidas)
+    m.reaparece = 60;
+  else
+    m.finTimer = 110;
+}
+
+// simula un futuro de la nave: dos maniobras seguidas y luego dejarse llevar. Cuanto mayor, mejor
+static float astSimular(const AstCtx &C, int r1, int e1, int h1, int r2, int e2, int h2)
+{
+  float x = C.nx, y = C.ny, vx = C.nvx, vy = C.nvy, hx = C.hx, hy = C.hy;
+  float px[AST_MAXA], py[AST_MAXA], sc = 0.0f;
+  const int n = C.n;
+  for (int i = 0; i < n; i++)
+  {
+    px[i] = C.x[i];
+    py[i] = C.y[i];
+  }
+  for (int t = 1; t <= AST_HORIZ; t++)
+  {
+    int rot, emp;
+    if (t <= h1)
+    {
+      rot = r1;
+      emp = e1;
+    }
+    else if (t <= h1 + h2)
+    {
+      rot = r2;
+      emp = e2;
+    }
+    else
+    {
+      rot = 0;
+      emp = 0;
+    }
+    if (rot)
+    {
+      float nhx = hx * C.cs - rot * C.sn * hy;
+      float nhy = hy * C.cs + rot * C.sn * hx;
+      hx = nhx;
+      hy = nhy;
+    }
+    if (emp)
+    {
+      vx += hx * AST_EMPUJE;
+      vy += hy * AST_EMPUJE;
+    }
+    vx *= AST_ROZA;
+    vy *= AST_ROZA;
+    float v2 = vx * vx + vy * vy;
+    if (v2 > AST_VMAX * AST_VMAX)
+    {
+      float k = AST_VMAX / sqrtf(v2);
+      vx *= k;
+      vy *= k;
+    }
+    x += vx;
+    y += vy;
+    if (x < 0)
+      x += AST_W;
+    else if (x >= AST_W)
+      x -= AST_W;
+    if (y < 0)
+      y += AST_H;
+    else if (y >= AST_H)
+      y -= AST_H;
+    const bool mirar = (t % 3) == 0;
+    for (int i = 0; i < n; i++)
+    {
+      float ax = px[i] + C.vx[i], ay = py[i] + C.vy[i];
+      if (ax < 0)
+        ax += AST_W;
+      else if (ax >= AST_W)
+        ax -= AST_W;
+      if (ay < 0)
+        ay += AST_H;
+      else if (ay >= AST_H)
+        ay -= AST_H;
+      px[i] = ax;
+      py[i] = ay;
+      float dx = ax - x, dy = ay - y;
+      if (dx > AST_W * 0.5f)
+        dx -= AST_W;
+      else if (dx < -AST_W * 0.5f)
+        dx += AST_W;
+      if (dy > AST_H * 0.5f)
+        dy -= AST_H;
+      else if (dy < -AST_H * 0.5f)
+        dy += AST_H;
+      float d2 = dx * dx + dy * dy;
+      if (d2 < C.lim2[i])
+        return sc - 1000.0f - 25.0f * (AST_HORIZ - t);
+      if (d2 < C.cer2[i])
+        sc -= (C.cer2[i] - d2) * 0.01f;
+      if (mirar && d2 < AST_RANGO2)
+      {
+        float tau = (fabsf(dx) + fabsf(dy)) * 0.12f;
+        float lx = dx + (C.vx[i] - vx) * tau, ly = dy + (C.vy[i] - vy) * tau;
+        if (hx * lx + hy * ly > 0)
+        {
+          float cr = hx * ly - hy * lx;
+          if (cr * cr < C.aim2[i])
+            sc += C.val[i] * 3.0f * (1.0f - d2 * (1.0f / AST_RANGO2));
+        }
+      }
+    }
+  }
+  sc -= (vx * vx + vy * vy) * 0.5f;
+  return sc;
+}
+
+static void astPlanear()
+{
+  AstMem &m = *astM;
+  AstCtx C;
+  C.n = 0;
+  for (int i = 0; i < AST_MAXA; i++)
+  {
+    const AstRoca &r = m.ro[i];
+    if (!r.tam)
+      continue;
+    int k = C.n++;
+    float R = AST_RAD[r.tam];
+    C.x[k] = r.x;
+    C.y[k] = r.y;
+    C.vx[k] = r.vx;
+    C.vy[k] = r.vy;
+    float l = R * 0.85f + 5.0f + 0.5f;
+    C.lim2[k] = l * l;
+    l += 10.0f;
+    C.cer2[k] = l * l;
+    l = R * 0.9f + 1.5f;
+    C.aim2[k] = l * l;
+    C.val[k] = AST_VAL[r.tam];
+  }
+  if (!C.n)
+  {
+    m.ctlRot = 0;
+    m.ctlEmp = 0;
+    return;
+  }
+  C.nx = m.nx;
+  C.ny = m.ny;
+  C.nvx = m.nvx;
+  C.nvy = m.nvy;
+  C.hx = cosf(m.nang);
+  C.hy = sinf(m.nang);
+  C.cs = cosf(AST_ROT);
+  C.sn = sinf(AST_ROT);
+  static const int8_t RR[3] = {-1, 0, 1};
+  static const uint8_t HH[2] = {3, 9};
+  float mejor = -1e30f;
+  int mr = 0, me = 0;
+  for (int r1 = 0; r1 < 3; r1++)
+    for (int e1 = 0; e1 < 2; e1++)
+      for (int a = 0; a < 2; a++)
+        for (int r2 = 0; r2 < 3; r2++)
+          for (int e2 = 0; e2 < 2; e2++)
+            for (int b = 0; b < 2; b++)
+            {
+              float s = astSimular(C, RR[r1], e1, HH[a], RR[r2], e2, HH[b]);
+              if (s > mejor)
+              {
+                mejor = s;
+                mr = RR[r1];
+                me = e1;
+              }
+            }
+  m.ctlRot = mr;
+  m.ctlEmp = me;
+}
+
+// dispara si la bala, sumando la velocidad de la nave, va a pillar a alguna roca antes de que se apague
+static bool astQuieroDisparar()
+{
+  AstMem &m = *astM;
+  float hx = cosf(m.nang), hy = sinf(m.nang);
+  const float B2 = AST_BVEL * AST_BVEL;
+  for (int i = 0; i < AST_MAXA; i++)
+  {
+    const AstRoca &r = m.ro[i];
+    if (!r.tam)
+      continue;
+    float dx = astDel(r.x - m.nx, AST_W), dy = astDel(r.y - m.ny, AST_H);
+    float ux = r.vx - m.nvx, uy = r.vy - m.nvy;
+    float A = ux * ux + uy * uy - B2, Bq = dx * ux + dy * uy, Cq = dx * dx + dy * dy;
+    float t;
+    if (fabsf(A) < 1e-4f)
+    {
+      if (fabsf(Bq) < 1e-6f)
+        continue;
+      t = -Cq / (2.0f * Bq);
+    }
+    else
+    {
+      float disc = Bq * Bq - A * Cq;
+      if (disc < 0)
+        continue;
+      float sq = sqrtf(disc);
+      float t1 = (-Bq - sq) / A, t2 = (-Bq + sq) / A;
+      t = (t1 > 0 && (t1 < t2 || t2 <= 0)) ? t1 : t2;
+    }
+    if (t <= 0 || t > AST_BVIDA - 2)
+      continue;
+    float ix = dx + ux * t, iy = dy + uy * t;
+    if (hx * ix + hy * iy <= 0)
+      continue;
+    float cr = hx * iy - hy * ix, R = AST_RAD[r.tam] * 0.8f + 1.0f;
+    if (cr * cr < R * R)
+      return true;
+  }
+  return false;
+}
+
+static void astActualizar(uint32_t now)
+{
+  AstMem &m = *astM;
+
+  // ---- La nave ----
+  if (m.viva)
+  {
+    if (m.planCnt == 0)
+    {
+      uint32_t t0 = micros();
+      astPlanear();
+      uint32_t dt = micros() - t0;
+      uint32_t c = dt / 4000UL;
+      m.planCada = c < 3 ? 3 : (c > 8 ? 8 : c);
+      m.planCnt = m.planCada;
+    }
+    m.planCnt--;
+    m.nang += m.ctlRot * AST_ROT;
+    m.empuje = m.ctlEmp;
+    if (m.empuje)
+    {
+      m.nvx += cosf(m.nang) * AST_EMPUJE;
+      m.nvy += sinf(m.nang) * AST_EMPUJE;
+    }
+    m.nvx *= AST_ROZA;
+    m.nvy *= AST_ROZA;
+    float v2 = m.nvx * m.nvx + m.nvy * m.nvy;
+    if (v2 > AST_VMAX * AST_VMAX)
+    {
+      float k = AST_VMAX / sqrtf(v2);
+      m.nvx *= k;
+      m.nvy *= k;
+    }
+    m.nx += m.nvx;
+    m.ny += m.nvy;
+    if (m.nx < 0)
+      m.nx += AST_W;
+    else if (m.nx >= AST_W)
+      m.nx -= AST_W;
+    if (m.ny < 0)
+      m.ny += AST_H;
+    else if (m.ny >= AST_H)
+      m.ny -= AST_H;
+    if (m.inmune)
+      m.inmune--;
+    if (m.cadencia)
+      m.cadencia--;
+    else if (astQuieroDisparar())
+    {
+      for (int i = 0; i < AST_MAXB; i++)
+        if (!m.ba[i].vida)
+        {
+          float hx = cosf(m.nang), hy = sinf(m.nang);
+          m.ba[i].x = m.nx + hx * 9.0f;
+          m.ba[i].y = m.ny + hy * 9.0f;
+          m.ba[i].vx = m.nvx + hx * AST_BVEL;
+          m.ba[i].vy = m.nvy + hy * AST_BVEL;
+          m.ba[i].vida = AST_BVIDA;
+          m.cadencia = 7;
+          astLed(1, true, false, false, 25, now);
+          break;
+        }
+    }
+  }
+  else
+  {
+    if (m.vidas)
+    {
+      if (m.reaparece)
+        m.reaparece--;
+      if (!m.reaparece)
+      {
+        bool libre = true;
+        for (int i = 0; i < AST_MAXA; i++)
+          if (m.ro[i].tam)
+          {
+            float dx = astDel(m.ro[i].x - AST_W / 2, AST_W), dy = astDel(m.ro[i].y - AST_H / 2, AST_H);
+            float l = AST_RAD[m.ro[i].tam] + 38.0f;
+            if (dx * dx + dy * dy < l * l)
+              libre = false;
+          }
+        if (libre)
+          astNave();
+        else
+          m.reaparece = 4;
+      }
+    }
+    else if (m.finTimer)
+    {
+      if (--m.finTimer == 0)
+        astNuevaPartida();
+    }
+  }
+
+  // ---- Balas ----
+  for (int i = 0; i < AST_MAXB; i++)
+  {
+    AstBala &b = m.ba[i];
+    if (!b.vida)
+      continue;
+    b.vida--;
+    b.x += b.vx;
+    b.y += b.vy;
+    if (b.x < 0)
+      b.x += AST_W;
+    else if (b.x >= AST_W)
+      b.x -= AST_W;
+    if (b.y < 0)
+      b.y += AST_H;
+    else if (b.y >= AST_H)
+      b.y -= AST_H;
+    for (int k = 0; k < AST_MAXA; k++)
+    {
+      if (!m.ro[k].tam)
+        continue;
+      float dx = astDel(m.ro[k].x - b.x, AST_W), dy = astDel(m.ro[k].y - b.y, AST_H);
+      float l = AST_RAD[m.ro[k].tam] * 0.9f + 1.5f;
+      if (dx * dx + dy * dy < l * l)
+      {
+        b.vida = 0;
+        astRomper(k, now);
+        break;
+      }
+    }
+  }
+
+  // ---- Rocas ----
+  int vivas = 0;
+  for (int i = 0; i < AST_MAXA; i++)
+  {
+    AstRoca &r = m.ro[i];
+    if (!r.tam)
+      continue;
+    vivas++;
+    r.x += r.vx;
+    r.y += r.vy;
+    r.ang += r.vang;
+    if (r.flash)
+      r.flash--;
+    if (r.x < 0)
+      r.x += AST_W;
+    else if (r.x >= AST_W)
+      r.x -= AST_W;
+    if (r.y < 0)
+      r.y += AST_H;
+    else if (r.y >= AST_H)
+      r.y -= AST_H;
+    if (m.viva && !m.inmune)
+    {
+      float dx = astDel(r.x - m.nx, AST_W), dy = astDel(r.y - m.ny, AST_H);
+      float l = AST_RAD[r.tam] * 0.82f + 4.0f;
+      if (dx * dx + dy * dy < l * l)
+        astMuereNave(now);
+    }
+  }
+  if (!vivas)
+  {
+    if (!m.pausaOla)
+      m.pausaOla = 45;
+    else if (--m.pausaOla == 0)
+      astNuevaOla();
+  }
+
+  // ---- Partículas, ondas y estrellas ----
+  for (int i = 0; i < AST_MAXP; i++)
+  {
+    AstPart &p = m.pt[i];
+    if (!p.vida)
+      continue;
+    p.vida--;
+    p.x += p.vx;
+    p.y += p.vy;
+    p.vx *= 0.96f;
+    p.vy *= 0.96f;
+  }
+  for (int i = 0; i < 3; i++)
+    if (m.on[i].vida)
+    {
+      m.on[i].vida--;
+      m.on[i].r += 3;
+    }
+  for (int i = 0; i < AST_NSTAR; i++)
+  {
+    static const float F[3] = {0.10f, 0.25f, 0.50f};
+    AstEstr &e = m.es[i];
+    e.x -= m.nvx * F[e.capa];
+    e.y -= m.nvy * F[e.capa];
+    if (e.x < 0)
+      e.x += AST_W;
+    else if (e.x >= AST_W)
+      e.x -= AST_W;
+    if (e.y < 0)
+      e.y += AST_H;
+    else if (e.y >= AST_H)
+      e.y -= AST_H;
+  }
+}
+
+static void astDibujar()
+{
+  AstMem &m = *astM;
+  uint8_t *f = m.fb;
+  for (int i = 0; i < AST_W * AST_H / 2; i++)
+  {
+    uint8_t b = f[i];
+    f[i] = (AST_DEC[b >> 4] << 4) | AST_DEC[b & 15];
+  }
+  for (int i = 0; i < AST_NSTAR; i++)
+  {
+    const AstEstr &e = m.es[i];
+    uint8_t c = e.capa == 0 ? 1 : 2;
+    if (astRnd(60) == 0)
+      c = 3;
+    astPix((int)e.x + m.shx, (int)e.y + m.shy, c);
+  }
+  for (int i = 0; i < AST_MAXA; i++)
+    if (m.ro[i].tam)
+      astDibRoca(m.ro[i], m.ro[i].flash ? 3 : (m.ro[i].tam == 1 ? 3 : 4));
+  for (int i = 0; i < AST_MAXB; i++)
+    if (m.ba[i].vida)
+    {
+      const AstBala &b = m.ba[i];
+      astLinea((int)b.x + m.shx, (int)b.y + m.shy, (int)(b.x - b.vx * 0.7f) + m.shx, (int)(b.y - b.vy * 0.7f) + m.shy, 14);
+    }
+  for (int i = 0; i < AST_MAXP; i++)
+    if (m.pt[i].vida)
+    {
+      const AstPart &p = m.pt[i];
+      uint8_t v = p.vida, c;
+      if (p.tipo == 0)
+        c = v > 24 ? 7 : (v > 14 ? 8 : (v > 6 ? 9 : 10));
+      else if (p.tipo == 1)
+        c = v > 20 ? 3 : (v > 12 ? 4 : (v > 5 ? 5 : 6));
+      else
+        c = v > 18 ? 11 : (v > 8 ? 12 : 13);
+      int px = (int)p.x + m.shx, py = (int)p.y + m.shy;
+      astPix(px, py, c);
+      if (v > 16)
+      {
+        astPix(px + 1, py, c);
+        astPix(px, py + 1, c);
+      }
+    }
+  for (int i = 0; i < 3; i++)
+    if (m.on[i].vida)
+    {
+      uint8_t v = m.on[i].vida;
+      astCirculo((int)m.on[i].x + m.shx, (int)m.on[i].y + m.shy, m.on[i].r, v > 12 ? 3 : (v > 7 ? 4 : (v > 3 ? 5 : 6)));
+    }
+  if (m.viva)
+  {
+    bool visible = !m.inmune || (m.frame & 2);
+    if (visible)
+      astDibNave(m.nx, m.ny, m.nang, m.inmune ? 3 : 11, m.empuje, m.inmune > 0);
+  }
+}
+
+static void astEmpujar()
+{
+  AstMem &m = *astM;
+  tft.startWrite();
+  tft.setAddrWindow(0, AST_Y0, AST_W, AST_H);
+  for (int y = 0; y < AST_H; y++)
+  {
+    const uint8_t *s = &m.fb[y * (AST_W / 2)];
+    uint16_t *d = m.linea;
+    for (int x = 0; x < AST_W / 2; x++)
+    {
+      uint8_t b = s[x];
+      d[0] = AST_PAL[b & 15];
+      d[1] = AST_PAL[b >> 4];
+      d += 2;
+    }
+    tft.pushColors(m.linea, AST_W, true);
+  }
+  tft.endWrite();
+}
+
+static void astFrame(uint32_t now)
+{
+  AstMem &m = *astM;
+  m.frame++;
+  if (m.shk > 0)
+  {
+    m.shx = (int8_t)astRnd(2 * m.shk + 1) - m.shk;
+    m.shy = (int8_t)astRnd(2 * m.shk + 1) - m.shk;
+    if ((m.frame & 1) == 0)
+      m.shk--;
+  }
+  else
+    m.shx = m.shy = 0;
+  astActualizar(now);
+  astDibujar();
+  astEmpujar();
+}
+
+// los tres textos de abajo, solo se repintan si cambian
+static void astTextos(bool forzar)
+{
+  AstMem &m = *astM;
+  char izq[16], cen[12], der[12];
+  snprintf(izq, sizeof(izq), "Pts %lu", (unsigned long)m.puntos);
+  snprintf(cen, sizeof(cen), "Ola %u", (unsigned)m.ola);
+  snprintf(der, sizeof(der), "Vidas %u", (unsigned)m.vidas);
+  bool a = forzar || strcmp(izq, m.tIzq) != 0, b = forzar || strcmp(cen, m.tCen) != 0, c = forzar || strcmp(der, m.tDer) != 0;
+  if (!a && !b && !c)
+    return;
+  tft.setFreeFont(NULL);
+  tft.setTextFont(1);
+  tft.setTextSize(2);
+  if (a)
+  {
+    tft.setTextColor(TFT_YELLOW, TFT_BLACK);
+    tft.setTextPadding(120);
+    tft.setTextDatum(TL_DATUM);
+    tft.drawString(izq, 4, 151);
+    strcpy(m.tIzq, izq);
+  }
+  if (b)
+  {
+    tft.setTextColor(TFT_CYAN, TFT_BLACK);
+    tft.setTextPadding(72);
+    tft.setTextDatum(TC_DATUM);
+    tft.drawString(cen, 160, 151);
+    strcpy(m.tCen, cen);
+  }
+  if (c)
+  {
+    tft.setTextColor(TFT_GREEN, TFT_BLACK);
+    tft.setTextPadding(110);
+    tft.setTextDatum(TR_DATUM);
+    tft.drawString(der, 316, 151);
+    strcpy(m.tDer, der);
+  }
+  tft.setTextPadding(0);
+  tft.setTextDatum(TL_DATUM);
+}
+// <<< ASTEROIDES MOTOR
+
+void esp32_2432S028R_AsteroidesScreen(unsigned long mElapsed)
+{
+  mineria = getMiningData(mElapsed);
+  Serial.printf("M8AX - %s >>> Completados %s Share(s), %s Khashes, Prom. Hashrate %s KH/s %s°\n",
+                mineria.currentTime.c_str(), mineria.completedShares.c_str(), mineria.totalKHashes.c_str(), mineria.currentHashRate.c_str(), mineria.temp.c_str());
+
+  bool redraw = hasChangedScreen;
+  if (!astM)
+  {
+    astM = (AstMem *)malloc(sizeof(AstMem));
+    if (!astM)
+    {
+      Serial.println("M8AX - Asteroides: No Hay RAM Libre");
+      delay(1000);
+      return;
+    }
+    astInit();
+    redraw = true;
+  }
+  const int astMiPantalla = currentDisplayDriver->current_cyclic_screen;
+  if (redraw)
+  {
+    tft.fillRect(0, 0, 320, 170, TFT_BLACK);
+    astEmpujar();
+    astTextos(true);
+  }
+  printPoolData(); // barra de abajo, solo se repinta cuando toca
+  hasChangedScreen = false;
+
+  char horaStr[9] = "";
+  char lastHora[9] = "";
+  char hashStr[16];
+  char lastHash[16] = "";
+
+  unsigned long start = millis();
+  unsigned long lastMiningUpdate = 0;
+  unsigned long lastTouchChk = 0;
+  unsigned long siguiente = start;
+  pongLeds(false);
+  astM->ledOff = 0;
+
+  while (millis() - start < AST_SLICE_MS)
+  {
+    unsigned long now = millis();
+
+    // ---- Táctil (misma lógica que el Pong) ----
+    if (now - lastTouchChk >= 40 && now - previousTouchMillis >= 500)
+    {
+      lastTouchChk = now;
+      int16_t t_x, t_y;
+      if (touch.getXY(t_x, t_y))
+      {
+        previousTouchMillis = now;
+        autoPantallas = false;
+        if (((t_x > 109) && (t_x < 211)) && ((t_y > 185) && (t_y < 241)))
+        {
+          bottomScreenBlue ^= true;
+          hasChangedScreen = true;
+        }
+        else if ((t_x > 235) && ((t_y > 0) && (t_y < 16)))
+        {
+          esp32_2432S028R_AlternateScreenState();
+        }
+        else if (t_x > 160)
+        {
+          currentDisplayDriver->current_cyclic_screen = (currentDisplayDriver->current_cyclic_screen + 1) % currentDisplayDriver->num_cyclic_screens;
+        }
+        else
+        {
+          currentDisplayDriver->current_cyclic_screen = currentDisplayDriver->current_cyclic_screen - 1;
+          if (currentDisplayDriver->current_cyclic_screen < 0)
+            currentDisplayDriver->current_cyclic_screen = currentDisplayDriver->num_cyclic_screens - 1;
+        }
+        break;
+      }
+    }
+
+    // Cambio automático cada 1 minuto
+    if (autoPantallas && millis() - lastAutoChange >= 60000UL)
+    {
+      currentDisplayDriver->current_cyclic_screen =
+          (currentDisplayDriver->current_cyclic_screen + 1) % currentDisplayDriver->num_cyclic_screens;
+      lastAutoChange = millis();
+      break;
+    }
+    if (astM->ledOff && now >= astM->ledOff)
+    {
+      pongLeds(false);
+      astM->ledOff = 0;
+      astM->ledPrio = 0;
+    }
+
+    if (now >= siguiente)
+    {
+      astFrame(now);
+      astTextos(false);
+      siguiente = millis() + AST_FRAME_MS;
+    }
+
+    // ---- Hora (izquierda) y hashrate (derecha), arriba como en las demás ----
+    if (now - lastMiningUpdate >= 1000)
+    {
+      lastMiningUpdate = now;
+      mineria = getMiningData(mElapsed);
+      snprintf(hashStr, sizeof(hashStr), "%s", mineria.currentHashRate.c_str());
+      time_t epoch = (time_t)timeClient.getEpochTime();
+      struct tm *ti = localtime(&epoch);
+      snprintf(horaStr, sizeof(horaStr), "%02d:%02d:%02d", ti->tm_hour, ti->tm_min, ti->tm_sec);
+      if (strcmp(horaStr, lastHora) != 0 || strcmp(hashStr, lastHash) != 0)
+      {
+        pongDrawHud(hashStr, horaStr);
+        strcpy(lastHora, horaStr);
+        strcpy(lastHash, hashStr);
+      }
+    }
+    webAtender();
+    delay(2);
+  }
+
+  pongLeds(false);
+  tft.setTextPadding(0);
+  tft.setTextDatum(TL_DATUM);
+
+  if (currentDisplayDriver->current_cyclic_screen != astMiPantalla)
+  {
+    free(astM);
+    astM = NULL;
+  }
+
+  cuentita++;
+  if (cuentita == 15)
+  {
+    ajustarZonaHoraria();
+    obtenerLocYTemp();
+    obtenerVariacionesBTC(variacion1dia, variacion1semana);
+  }
+}
+
+/****************************************************************************************************************
+ *
+ *   Escrito por: M8AX
+ *
+ *   Descripción: ATRACTORES M8AX - Atractores extraños, matemáticas a lo bruto para ESP32_2432S028R
+ *   --------------------------------------------------------------------------------------------------
+ *
+ *   Se coge un punto, se le aplica una fórmula con senos y cosenos, sale otro punto, se le aplica la misma
+ *   fórmula... y así millones de veces. Cada punto se apunta en un mapa de densidad, y lo que va saliendo, si los
+ *   parámetros tienen suerte, son figuras con una pinta increíble. Hay tres familias: Clifford, De Jong y
+ *   Svensson. Los parámetros se sacan al azar, y como la mayoría no dan nada ( se quedan en un punto o en
+ *   una vuelta que se repite ), cada atractor se comprueba contando cuántas casillas del mapa llena, y si
+ *   sale pobre se tira y se prueba otro. Los buenos duran 24 segundos y se pasa al siguiente.
+ *
+ *   El ESP32 no hace otra cosa que iterar todo el tiempo que puede y repintar unas 6 veces por segundo. Abajo
+ *   se ve el nombre del atractor, cuántos miles de puntos calcula por segundo y los millones que lleva. El
+ *   color depende de cuántas veces ha pasado un punto por cada casilla, con escala logarítmica, y cada
+ *   atractor cambia de tono. Cuando una casilla se llena, todo el mapa se divide a la mitad para no perder detalle.
+ *
+ *   LEDs: los tres destellan un momento cada vez que arranca un atractor nuevo.
+ *
+ *   Memoria: unos 10 KB en el heap ( casi todo es el mapa de densidad ), que se piden al entrar en la pantalla
+ *   y se liberan al salir a otra. Si no hay RAM, se salta la pantalla sin pintar nada.
+ *
+ *   Para activarla: pegar este bloque justo antes de analiCadaSegundo, meter esp32_2432S028R_AtractoresScreen en el
+ *   array esp32_2432S028RCyclicScreens[] y añadir en analiCadaSegundo, debajo del if de astM, este otro:
+ *   if (atrM && pantallaActual != esp32_2432S028R_AtractoresScreen) { free(atrM); atrM = NULL; }
+ *
+ ****************************************************************************************************************/
+
+// >>> ATRACTORES MOTOR
+#define ATR_W 160
+#define ATR_H 60
+#define ATR_Y0 28 // el HUD de arriba ocupa hasta la 26 y el de abajo empieza en la 150
+#define ATR_SLICE_MS 5000
+#define ATR_REFRESCO_MS 160
+#define ATR_CAMBIO_MS 24000
+#define ATR_LOTE 256
+#define ATR_MEDIDA 12000 // puntos que se miran para saber el tamaño del atractor
+#define ATR_PRUEBA 30000 // puntos tras los cuales se decide si merece la pena
+#define ATR_MIN_CASILLAS 450
+#define ATR_ESTIRA 1.6f
+
+struct AtrMem
+{
+  uint8_t d[ATR_W * ATR_H];
+  uint16_t lut[256];
+  uint16_t linea[ATR_W * 2];
+  float x, y, a, b, c, e;
+  float mnx, mxx, mny, mxy, sx, sy;
+  uint8_t tipo, fase, llena, validado, nuevo;
+  uint32_t nMed, nAcu, iter, iterPrev, tCambio, tPush, tSeg, vel, ledOff;
+  char tNom[12], tVel[20], tIt[20];
+};
+static AtrMem *atrM = NULL;
+
+static inline float atrRf() { return (esp_random() & 0xFFFF) * (1.0f / 65535.0f); }
+
+static void atrColores(float tono)
+{
+  AtrMem &m = *atrM;
+  for (int i = 0; i < 256; i++)
+  {
+    float t = logf(1.0f + i) / logf(256.0f);
+    float h = tono + 70.0f * t, s = 1.0f - 0.85f * t * t * t, v = t * 1.5f;
+    if (v > 1.0f)
+      v = 1.0f;
+    h = fmodf(h, 360.0f) / 60.0f;
+    int k = (int)h;
+    float f = h - k, p = v * (1.0f - s), q = v * (1.0f - s * f), u = v * (1.0f - s * (1.0f - f)), r, g, b;
+    switch (k)
+    {
+    case 0:
+      r = v;
+      g = u;
+      b = p;
+      break;
+    case 1:
+      r = q;
+      g = v;
+      b = p;
+      break;
+    case 2:
+      r = p;
+      g = v;
+      b = u;
+      break;
+    case 3:
+      r = p;
+      g = q;
+      b = v;
+      break;
+    case 4:
+      r = u;
+      g = p;
+      b = v;
+      break;
+    default:
+      r = v;
+      g = p;
+      b = q;
+      break;
+    }
+    m.lut[i] = (uint16_t)((((int)(r * 255) & 0xF8) << 8) | (((int)(g * 255) & 0xFC) << 3) | ((int)(b * 255) >> 3));
+  }
+}
+
+// elige tipo y parámetros nuevos y vuelve a empezar desde cero
+static void atrNuevo()
+{
+  AtrMem &m = *atrM;
+  m.tipo = (m.tipo + 1 + esp_random() % 2) % 3;
+  switch (m.tipo)
+  {
+  case 0: // Clifford
+    m.a = (atrRf() - 0.5f) * 4.4f;
+    m.b = (atrRf() - 0.5f) * 4.4f;
+    m.c = (atrRf() - 0.5f) * 4.4f;
+    m.e = (atrRf() - 0.5f) * 4.4f;
+    strcpy(m.tNom, "Clifford");
+    break;
+  case 1: // De Jong
+    m.a = (atrRf() - 0.5f) * 6.0f;
+    m.b = (atrRf() - 0.5f) * 6.0f;
+    m.c = (atrRf() - 0.5f) * 6.0f;
+    m.e = (atrRf() - 0.5f) * 6.0f;
+    strcpy(m.tNom, "De Jong");
+    break;
+  default: // Svensson
+    m.a = (atrRf() - 0.5f) * 6.0f;
+    m.b = (atrRf() - 0.5f) * 6.0f;
+    m.c = 0.5f + atrRf();
+    m.e = 0.5f + atrRf();
+    strcpy(m.tNom, "Svensson");
+    break;
+  }
+  m.x = atrRf() - 0.5f;
+  m.y = atrRf() - 0.5f;
+  m.mnx = m.mny = 1e9f;
+  m.mxx = m.mxy = -1e9f;
+  m.fase = 0;
+  m.llena = 0;
+  m.validado = 0;
+  m.nMed = 0;
+  m.nAcu = 0;
+  m.iter = 0;
+  m.iterPrev = 0;
+  m.nuevo = 1;
+  memset(m.d, 0, sizeof(m.d));
+  atrColores(atrRf() * 360.0f);
+  Serial.printf("M8AX - Atractor: %s A:%.3f B:%.3f C:%.3f D:%.3f\n", m.tNom, m.a, m.b, m.c, m.e);
+}
+
+static void atrInit()
+{
+  AtrMem &m = *atrM;
+  memset(m.d, 0, sizeof(m.d));
+  m.tipo = esp_random() % 3;
+  m.tPush = 0;
+  m.tSeg = 0;
+  m.vel = 0;
+  m.ledOff = 0;
+  m.tNom[0] = m.tVel[0] = m.tIt[0] = 0;
+  atrNuevo();
+  m.tCambio = millis();
+}
+
+// aplica la fórmula del atractor a (x,y) y deja el resultado en (nx,ny)
+#define ATR_PASO(nx, ny)                \
+  if (t == 0)                           \
+  {                                     \
+    nx = sinf(a * y) + c * cosf(a * x); \
+    ny = sinf(b * x) + e * cosf(b * y); \
+  }                                     \
+  else if (t == 1)                      \
+  {                                     \
+    nx = sinf(a * y) - cosf(b * x);     \
+    ny = sinf(c * x) - cosf(e * y);     \
+  }                                     \
+  else                                  \
+  {                                     \
+    nx = e * sinf(a * x) - sinf(b * y); \
+    ny = c * cosf(a * x) + cosf(b * y); \
+  }
+
+static void atrLote(int n)
+{
+  AtrMem &m = *atrM;
+  float x = m.x, y = m.y, nx, ny;
+  const float a = m.a, b = m.b, c = m.c, e = m.e;
+  const int t = m.tipo;
+  if (m.fase == 0)
+  {
+    for (int i = 0; i < n; i++)
+    {
+      ATR_PASO(nx, ny)
+      x = nx;
+      y = ny;
+      if (m.nMed + i < 200) // los primeros puntos todavía no están en el atractor
+        continue;
+      if (x < m.mnx)
+        m.mnx = x;
+      if (x > m.mxx)
+        m.mxx = x;
+      if (y < m.mny)
+        m.mny = y;
+      if (y > m.mxy)
+        m.mxy = y;
+    }
+    m.nMed += n;
+  }
+  else
+  {
+    const float mnx = m.mnx, mny = m.mny, sx = m.sx, sy = m.sy;
+    uint8_t *d = m.d;
+    for (int i = 0; i < n; i++)
+    {
+      ATR_PASO(nx, ny)
+      x = nx;
+      y = ny;
+      int cx = (int)((x - mnx) * sx), cy = (int)((y - mny) * sy);
+      if ((unsigned)cx < ATR_W && (unsigned)cy < ATR_H)
+      {
+        uint8_t *p = &d[cy * ATR_W + cx];
+        if (*p < 255)
+          (*p)++;
+        else
+          m.llena = 1;
+      }
+    }
+    m.nAcu += n;
+  }
+  m.x = x;
+  m.y = y;
+  m.iter += n;
+}
+
+static void atrTrabajar(uint32_t us)
+{
+  AtrMem &m = *atrM;
+  uint32_t t0 = micros();
+  while (micros() - t0 < us)
+  {
+    atrLote(ATR_LOTE);
+    if (m.fase == 0)
+    {
+      if (m.nMed >= ATR_MEDIDA)
+      {
+        float dx = m.mxx - m.mnx, dy = m.mxy - m.mny;
+        if (!(dx > 0.3f && dy > 0.3f) || !(dx < 1e6f && dy < 1e6f))
+        {
+          atrNuevo();
+          return;
+        }
+        // un poco de margen, y el eje x se estira para aprovechar que la pantalla es ancha
+        float sy = (ATR_H - 2) / dy, sx = (ATR_W - 2) / dx;
+        if (sx > sy * ATR_ESTIRA)
+          sx = sy * ATR_ESTIRA;
+        m.mnx -= ((ATR_W - 1) / sx - dx) * 0.5f;
+        m.mny -= ((ATR_H - 1) / sy - dy) * 0.5f;
+        m.sx = sx;
+        m.sy = sy;
+        memset(m.d, 0, sizeof(m.d));
+        m.fase = 1;
+      }
+    }
+    else
+    {
+      if (m.llena)
+      {
+        for (int i = 0; i < ATR_W * ATR_H; i++)
+          m.d[i] >>= 1;
+        m.llena = 0;
+      }
+      if (!m.validado && m.nAcu >= ATR_PRUEBA)
+      {
+        int casillas = 0;
+        for (int i = 0; i < ATR_W * ATR_H; i++)
+          if (m.d[i])
+            casillas++;
+        if (casillas < ATR_MIN_CASILLAS)
+        {
+          atrNuevo();
+          return;
+        }
+        m.validado = 1;
+        m.tCambio = millis();
+      }
+    }
+  }
+}
+
+static void atrPintar()
+{
+  AtrMem &m = *atrM;
+  tft.startWrite();
+  tft.setAddrWindow(0, ATR_Y0, ATR_W * 2, ATR_H * 2);
+  for (int y = 0; y < ATR_H; y++)
+  {
+    const uint8_t *s = &m.d[y * ATR_W];
+    uint16_t *l = m.linea;
+    for (int x = 0; x < ATR_W; x++)
+    {
+      uint16_t c = m.lut[s[x]];
+      l[0] = c;
+      l[1] = c;
+      l += 2;
+    }
+    tft.pushColors(m.linea, ATR_W * 2, true);
+    tft.pushColors(m.linea, ATR_W * 2, true);
+  }
+  tft.endWrite();
+}
+
+// los tres textos de abajo, solo se repintan si cambian
+static void atrTextos(bool forzar)
+{
+  AtrMem &m = *atrM;
+  char vel[20], it[20];
+  snprintf(vel, sizeof(vel), "%lu K/s", (unsigned long)m.vel);
+  snprintf(it, sizeof(it), "%lu.%02lu M", (unsigned long)(m.iter / 1000000UL), (unsigned long)((m.iter / 10000UL) % 100UL));
+  bool a = forzar || m.nuevo, b = forzar || strcmp(vel, m.tVel) != 0, c = forzar || strcmp(it, m.tIt) != 0;
+  if (!a && !b && !c)
+    return;
+  tft.setFreeFont(NULL);
+  tft.setTextFont(1);
+  tft.setTextSize(2);
+  if (a)
+  {
+    tft.setTextColor(TFT_YELLOW, TFT_BLACK);
+    tft.setTextPadding(110);
+    tft.setTextDatum(TL_DATUM);
+    tft.drawString(m.tNom, 4, 151);
+    m.nuevo = 0;
+  }
+  if (b)
+  {
+    tft.setTextColor(TFT_CYAN, TFT_BLACK);
+    tft.setTextPadding(84);
+    tft.setTextDatum(TC_DATUM);
+    tft.drawString(vel, 160, 151);
+    strcpy(m.tVel, vel);
+  }
+  if (c)
+  {
+    tft.setTextColor(TFT_GREEN, TFT_BLACK);
+    tft.setTextPadding(110);
+    tft.setTextDatum(TR_DATUM);
+    tft.drawString(it, 316, 151);
+    strcpy(m.tIt, it);
+  }
+  tft.setTextPadding(0);
+  tft.setTextDatum(TL_DATUM);
+}
+// <<< ATRACTORES MOTOR
+
+void esp32_2432S028R_AtractoresScreen(unsigned long mElapsed)
+{
+  mineria = getMiningData(mElapsed);
+  Serial.printf("M8AX - %s >>> Completados %s Share(s), %s Khashes, Prom. Hashrate %s KH/s %s°\n",
+                mineria.currentTime.c_str(), mineria.completedShares.c_str(), mineria.totalKHashes.c_str(), mineria.currentHashRate.c_str(), mineria.temp.c_str());
+
+  bool redraw = hasChangedScreen;
+  if (!atrM)
+  {
+    atrM = (AtrMem *)malloc(sizeof(AtrMem));
+    if (!atrM)
+    {
+      Serial.println("M8AX - Atractores: No Hay RAM Libre");
+      delay(1000);
+      return;
+    }
+    atrInit();
+    redraw = true;
+  }
+  const int atrMiPantalla = currentDisplayDriver->current_cyclic_screen;
+  if (redraw)
+  {
+    tft.fillRect(0, 0, 320, 170, TFT_BLACK);
+    atrPintar();
+    atrTextos(true);
+  }
+  printPoolData(); // barra de abajo, solo se repinta cuando toca
+  hasChangedScreen = false;
+
+  char horaStr[9] = "";
+  char lastHora[9] = "";
+  char hashStr[16];
+  char lastHash[16] = "";
+
+  unsigned long start = millis();
+  unsigned long lastMiningUpdate = 0;
+  unsigned long lastTouchChk = 0;
+  pongLeds(false);
+  atrM->ledOff = 0;
+
+  while (millis() - start < ATR_SLICE_MS)
+  {
+    unsigned long now = millis();
+
+    // ---- Táctil (misma lógica que el Pong) ----
+    if (now - lastTouchChk >= 40 && now - previousTouchMillis >= 500)
+    {
+      lastTouchChk = now;
+      int16_t t_x, t_y;
+      if (touch.getXY(t_x, t_y))
+      {
+        previousTouchMillis = now;
+        autoPantallas = false;
+        if (((t_x > 109) && (t_x < 211)) && ((t_y > 185) && (t_y < 241)))
+        {
+          bottomScreenBlue ^= true;
+          hasChangedScreen = true;
+        }
+        else if ((t_x > 235) && ((t_y > 0) && (t_y < 16)))
+        {
+          esp32_2432S028R_AlternateScreenState();
+        }
+        else if (t_x > 160)
+        {
+          currentDisplayDriver->current_cyclic_screen = (currentDisplayDriver->current_cyclic_screen + 1) % currentDisplayDriver->num_cyclic_screens;
+        }
+        else
+        {
+          currentDisplayDriver->current_cyclic_screen = currentDisplayDriver->current_cyclic_screen - 1;
+          if (currentDisplayDriver->current_cyclic_screen < 0)
+            currentDisplayDriver->current_cyclic_screen = currentDisplayDriver->num_cyclic_screens - 1;
+        }
+        break;
+      }
+    }
+
+    // Cambio automático cada 1 minuto
+    if (autoPantallas && millis() - lastAutoChange >= 60000UL)
+    {
+      currentDisplayDriver->current_cyclic_screen =
+          (currentDisplayDriver->current_cyclic_screen + 1) % currentDisplayDriver->num_cyclic_screens;
+      lastAutoChange = millis();
+      break;
+    }
+    if (atrM->ledOff && now >= atrM->ledOff)
+    {
+      pongLeds(false);
+      atrM->ledOff = 0;
+    }
+
+    // ---- A calcular, que para eso estamos ----
+    atrTrabajar(8000);
+    if (atrM->validado && millis() - atrM->tCambio >= ATR_CAMBIO_MS)
+    {
+      atrNuevo();
+      digitalWrite(LED_PIN, LOW);
+      digitalWrite(LED_PIN_G, LOW);
+      digitalWrite(LED_PIN_B, LOW);
+      atrM->ledOff = now + 120;
+    }
+    if (now - atrM->tSeg >= 1000)
+    {
+      atrM->vel = (atrM->iter - atrM->iterPrev) / 1000UL;
+      atrM->iterPrev = atrM->iter;
+      atrM->tSeg = now;
+    }
+    if (now - atrM->tPush >= ATR_REFRESCO_MS)
+    {
+      atrM->tPush = now;
+      atrPintar();
+      atrTextos(false);
+    }
+
+    // ---- Hora (izquierda) y hashrate (derecha), arriba como en las demás ----
+    if (now - lastMiningUpdate >= 1000)
+    {
+      lastMiningUpdate = now;
+      mineria = getMiningData(mElapsed);
+      snprintf(hashStr, sizeof(hashStr), "%s", mineria.currentHashRate.c_str());
+      time_t epoch = (time_t)timeClient.getEpochTime();
+      struct tm *ti = localtime(&epoch);
+      snprintf(horaStr, sizeof(horaStr), "%02d:%02d:%02d", ti->tm_hour, ti->tm_min, ti->tm_sec);
+      if (strcmp(horaStr, lastHora) != 0 || strcmp(hashStr, lastHash) != 0)
+      {
+        pongDrawHud(hashStr, horaStr);
+        strcpy(lastHora, horaStr);
+        strcpy(lastHash, hashStr);
+      }
+    }
+    webAtender();
+    delay(1);
+  }
+
+  pongLeds(false);
+  tft.setTextPadding(0);
+  tft.setTextDatum(TL_DATUM);
+
+  if (currentDisplayDriver->current_cyclic_screen != atrMiPantalla)
+  {
+    free(atrM);
+    atrM = NULL;
+  }
+
+  cuentita++;
+  if (cuentita == 15)
+  {
+    ajustarZonaHoraria();
+    obtenerLocYTemp();
+    obtenerVariacionesBTC(variacion1dia, variacion1semana);
+  }
+}
+
+/****************************************************************************************************************
+ *
+ *   Escrito por: M8AX
+ *
+ *   Descripción: EL DADO Y LA MONEDA DE LA SUERTE - Pantalla para ESP32_2432S028R
+ *   -------------------------------------------------------------------------------
+ *
+ *   La de siempre del T-Display, adaptada a la 2432S028R: cada vez que se pinta tira un dado ( 1 a 6 ) y una
+ *   moneda ( cara o cruz ) y los dibuja encima de una imagen de fondo que cambia sola cada 30 segundos entre
+ *   cuatro. También muestra el hashrate, la hora, la temperatura y el hashrate escrito con letras.
+ *
+ *   Es una pantalla de las antiguas: no tiene bucle propio. El táctil, el botón de abajo y el cambio automático
+ *   cada minuto los hace esp32_2432S028R_DoLedStuff, así que ES LA MISMA para la versión normal y para la Auto.
+ *
+ *   Para activarla: pegar este bloque justo antes del array esp32_2432S028RCyclicScreens[] y meter
+ *   esp32_2432S028R_monedaYdado en ese array.
+ *
+ ****************************************************************************************************************/
+
+// Dado de 60x60 centrado en ( x, y ) con los puntos según el número
+void dibujarDado(int numero, int x, int y)
+{
+  tft.drawRect(x - 30, y - 30, 60, 60, TFT_WHITE);
+  int r = 5; // radio de los puntos
+  switch (numero)
+  {
+  case 1:
+    tft.fillCircle(x, y, r, TFT_WHITE);
+    break;
+  case 2:
+    tft.fillCircle(x - 15, y - 15, r, TFT_WHITE);
+    tft.fillCircle(x + 15, y + 15, r, TFT_WHITE);
+    break;
+  case 3:
+    tft.fillCircle(x, y, r, TFT_WHITE);
+    tft.fillCircle(x - 15, y - 15, r, TFT_WHITE);
+    tft.fillCircle(x + 15, y + 15, r, TFT_WHITE);
+    break;
+  case 4:
+    tft.fillCircle(x - 15, y - 15, r, TFT_WHITE);
+    tft.fillCircle(x + 15, y - 15, r, TFT_WHITE);
+    tft.fillCircle(x - 15, y + 15, r, TFT_WHITE);
+    tft.fillCircle(x + 15, y + 15, r, TFT_WHITE);
+    break;
+  case 5:
+    tft.fillCircle(x, y, r, TFT_WHITE);
+    tft.fillCircle(x - 15, y - 15, r, TFT_WHITE);
+    tft.fillCircle(x + 15, y - 15, r, TFT_WHITE);
+    tft.fillCircle(x - 15, y + 15, r, TFT_WHITE);
+    tft.fillCircle(x + 15, y + 15, r, TFT_WHITE);
+    break;
+  case 6:
+    tft.fillCircle(x - 15, y - 15, r, TFT_WHITE);
+    tft.fillCircle(x + 15, y - 15, r, TFT_WHITE);
+    tft.fillCircle(x - 15, y, r, TFT_WHITE);
+    tft.fillCircle(x + 15, y, r, TFT_WHITE);
+    tft.fillCircle(x - 15, y + 15, r, TFT_WHITE);
+    tft.fillCircle(x + 15, y + 15, r, TFT_WHITE);
+    break;
+  }
+}
+
+// Moneda de radio 45 centrada en ( x, y ): 0 = cara ( C verde ), 1 = cruz ( X roja )
+void dibujarMoneda(int moneda, int x, int y)
+{
+  int radio = 45;
+  tft.drawCircle(x, y, radio, TFT_WHITE);
+
+  tft.setFreeFont(NULL); // por si otra pantalla dejó una fuente libre puesta
+  tft.setTextFont(1);    // la fuente 1 siempre está cargada
+  tft.setTextSize(7);    // celda 42x56, pero la letra real ocupa 35x49
+
+  // La letra mide 35x49 px, así que la colocamos a mano desde la esquina
+  // superior izquierda para que quede exactamente en el centro del círculo
+  tft.setCursor(x - 17, y - 24);
+
+  if (moneda == 0)
+  {
+    tft.setTextColor(TFT_GREEN);
+    tft.print("C");
+  }
+  else
+  {
+    tft.setTextColor(TFT_RED);
+    tft.print("X");
+  }
+
+  tft.setTextSize(1);
+}
+
+void esp32_2432S028R_monedaYdado(unsigned long mElapsed)
+{
+  mineria = getMiningData(mElapsed);
+  unsigned long epochTime = timeClient.getEpochTime();
+  time_t epoch = (time_t)epochTime;
+  struct tm *timeinfo = localtime(&epoch);
+  char horaStr[9]; // HH:MM:SS
+  snprintf(horaStr, sizeof(horaStr), "%02d:%02d:%02d", timeinfo->tm_hour, timeinfo->tm_min, timeinfo->tm_sec);
+  int segundo = timeinfo->tm_sec;
+
+  // Las pantallas antiguas se avisan entre sí para repetir lo que hacen una sola vez al entrar
+  solounavez = 0;
+  solouna = 0;
+
+  Serial.printf("M8AX - %s >>> Completados %s Share(s), %s Khashes, Prom. Hashrate %s KH/s %s°\n",
+                mineria.currentTime.c_str(), mineria.completedShares.c_str(), mineria.totalKHashes.c_str(), mineria.currentHashRate.c_str(), mineria.temp.c_str());
+
+  // Imagen de fondo: al entrar la primera, y cada 30 segundos una al azar entre las cuatro
+  static uint8_t fondoDado = 0;
+  static int ultCambio = -1;
+  if (hasChangedScreen)
+    fondoDado = 0;
+  if (segundo % 30 == 0)
+  {
+    if (segundo != ultCambio)
+    {
+      fondoDado = esp_random() % 4;
+      ultCambio = segundo;
+    }
+  }
+  else
+    ultCambio = -1;
+
+  switch (fondoDado)
+  {
+  case 0:
+    tft.pushImage(0, 0, initWidth, initHeight, ImagenM8AX);
+    break;
+  case 1:
+    tft.pushImage(0, 0, initWidth, initHeight, M8AXRelojLunar);
+    break;
+  case 2:
+    tft.pushImage(0, 0, initWidth, initHeight, M8AXQuote1);
+    break;
+  default:
+    tft.pushImage(0, 0, initWidth, initHeight, M8AXQuote2);
+    break;
+  }
+  printPoolData(); // barra de abajo, solo se repinta cuando toca
+  hasChangedScreen = false;
+
+  int dado = esp_random() % 6 + 1; // del 1 al 6
+  int moneda = esp_random() % 2;   // 0 cara, 1 cruz
+
+  tft.setFreeFont(NULL);
+  tft.setTextFont(1);
+  tft.setTextColor(TFT_WHITE);
+  tft.setTextSize(1);
+  tft.setCursor(108, 88);
+  tft.print("DADO - ");
+  tft.print(dado);
+  tft.setCursor(108, 99);
+  tft.print("MONEDA - ");
+  tft.print(moneda == 0 ? "CARA" : "CRUZ");
+  tft.setCursor(108, 110);
+  tft.print(horaStr);
+  tft.setCursor(108, 121);
+  tft.print("TEMP - ");
+  tft.print(mineria.temp.c_str());
+  tft.print(" G");
+  tft.setTextSize(2);
+  tft.setCursor(46, 4);
+  tft.print("EL DADO Y LA MONEDA");
+  tft.setCursor(46, 27);
+  tft.print("DE LA SUERTE");
+
+  // Hashrate con un decimal para escribirlo con letras: "350.12" -> parte entera 350 y decimales 12
+  String cadena = mineria.currentHashRate;
+  cadena.replace(',', '.');
+  int punto = cadena.indexOf('.');
+  int parteEntera = (punto < 0) ? cadena.toInt() : cadena.substring(0, punto).toInt();
+  int parteDecimal = (punto < 0) ? 0 : cadena.substring(punto + 1).toInt();
+
+  dibujarDado(dado, 60, 85);
+  dibujarMoneda(moneda, 250, 80);
+
+  // Hashrate en letras: fuente 2 tamaño 1 ( más pequeña ) y 2 px más arriba ( y = 130 ) para no pisar la barra de abajo ( y = 186 )
+  tft.setFreeFont(NULL);
+  tft.setTextFont(2);
+  tft.setTextColor(TFT_WHITE);
+  tft.setTextSize(1);
+  tft.setCursor(0, 130);
+  tft.print(quitarAcentos(numeroAEscrito(parteEntera, false)) + " Con ");
+  tft.print(quitarAcentos(numeroAEscrito(parteDecimal, true)) + " KH/s.");
+
+  // Hashrate numérico ( igual que antes )
+  tft.setTextFont(1);
+  tft.setTextSize(2);
+  tft.setCursor(115, 50);
+  tft.print(cadena);
+  tft.setCursor(114, 69);
+  tft.print(" KH/s");
+  tft.setTextSize(1);
+  tft.setTextDatum(TL_DATUM);
+
+  cuentita++;
+  if (cuentita == 15)
+  {
+    ajustarZonaHoraria();
+    obtenerLocYTemp();
+    obtenerVariacionesBTC(variacion1dia, variacion1semana);
+  }
+  manejandoLeds(mineria.currentHashRate.toFloat());
+}
+
 void analiCadaSegundo(unsigned long frame)
 {
   unsigned long epochTime = timeClient.getEpochTime(); // Obtener segundos desde 1970
@@ -13115,6 +15118,18 @@ void analiCadaSegundo(unsigned long frame)
   {
     free(galM);
     galM = NULL;
+  }
+
+  if (astM && pantallaActual != esp32_2432S028R_AsteroidesScreen)
+  {
+    free(astM);
+    astM = NULL;
+  }
+
+  if (atrM && pantallaActual != esp32_2432S028R_AtractoresScreen)
+  {
+    free(atrM);
+    atrM = NULL;
   }
 
   if (startTime == 0)
@@ -13198,6 +15213,7 @@ void esp32_2432S028R_AnimateCurrentScreen(unsigned long frame)
 }
 
 // Variables para controlar el parpadeo con millis()
+
 unsigned long previousMillis = 0;
 unsigned long previousTouchMillis = 0;
 char currentScreen = 0;
@@ -13205,7 +15221,9 @@ char currentScreen = 0;
 void esp32_2432S028R_DoLedStuff(unsigned long frame)
 {
   unsigned long currentMillis = millis();
+
   // Check the touch coordinates 110x185 210x240
+
   if (currentMillis - previousTouchMillis >= 500)
   {
     int16_t t_x, t_y; // To store the touch coordinates
@@ -13220,15 +15238,17 @@ void esp32_2432S028R_DoLedStuff(unsigned long frame)
       }
       else if ((t_x > 235) && ((t_y > 0) && (t_y < 16)))
       {
+
         // Touching the top right corner of the screen, roughly in the gray status label.
         // Disabling the screen backlight.
+
         esp32_2432S028R_AlternateScreenState();
       }
       else if (t_x > 160)
       {
 
         // next screen
-        // Serial.printf("Next screen touch( x:%d y:%d )\n", t_x, t_y);
+        // Serial.printf("Next Screen Touch( X:%d Y:%d )\n", t_x, t_y);
 
         currentDisplayDriver->current_cyclic_screen = (currentDisplayDriver->current_cyclic_screen + 1) % currentDisplayDriver->num_cyclic_screens;
       }
@@ -13236,7 +15256,7 @@ void esp32_2432S028R_DoLedStuff(unsigned long frame)
       {
 
         // Previus screen
-        // Serial.printf("Previus screen touch( x:%d y:%d )\n", t_x, t_y);
+        // Serial.printf("Previus Screen Touch( X:%d Y:%d )\n", t_x, t_y);
         /* Serial.println(currentDisplayDriver->current_cyclic_screen); */
 
         currentDisplayDriver->current_cyclic_screen = currentDisplayDriver->current_cyclic_screen - 1;
@@ -13283,7 +15303,7 @@ void esp32_2432S028R_DoLedStuff(unsigned long frame)
   }
 }
 
-CyclicScreenFunction esp32_2432S028RCyclicScreens[] = {esp32_2432S028R_MinerScreen, esp32_2432S028R_BTCprice, esp32_2432S028R_ClockScreen, tDisplay_granHash, tDisplay_hashGigante, RelojDeNumeros, tDisplay_m8axScreen7, esp32_2432S028R_m8axScreen1, esp32_2432S028R_m8axScreen2, tDisplay_m8axScreenMegaNerd, tDisplay_m8axScreen5, tDisplay_m8axScreen6, esp32_2432S028R_BannerScreen, tDisplay_Primos, esp32_2432S028R_CifrasScreen, esp32_2432S028R_TetrisScreen, esp32_2432S028R_AjedrezScreen, esp32_2432S028R_GalaxianScreen, esp32_2432S028R_PongScreen, esp32_2432S028R_KrakoutScreen, esp32_2432S028R_SnakeScreen, esp32_2432S028R_DoomScreen, esp32_2432S028R_LifeScreen, esp32_2432S028R_FractalScreen, esp32_2432S028R_GalaxiasScreen, esp32_2432S028R_RainScreen, tDisplay_m8axScreen3, tDisplay_m8axScreen4};
+CyclicScreenFunction esp32_2432S028RCyclicScreens[] = {esp32_2432S028R_MinerScreen, esp32_2432S028R_BTCprice, esp32_2432S028R_ClockScreen, tDisplay_granHash, tDisplay_hashGigante, RelojDeNumeros, tDisplay_m8axScreen7, esp32_2432S028R_m8axScreen1, esp32_2432S028R_m8axScreen2, tDisplay_m8axScreenMegaNerd, tDisplay_m8axScreen5, tDisplay_m8axScreen6, esp32_2432S028R_BannerScreen, tDisplay_Primos, esp32_2432S028R_CifrasScreen, esp32_2432S028R_TetrisScreen, esp32_2432S028R_AjedrezScreen, esp32_2432S028R_GalaxianScreen, esp32_2432S028R_AsteroidesScreen, esp32_2432S028R_PongScreen, esp32_2432S028R_KrakoutScreen, esp32_2432S028R_SnakeScreen, esp32_2432S028R_DoomScreen, esp32_2432S028R_LifeScreen, esp32_2432S028R_FractalScreen, esp32_2432S028R_AtractoresScreen, esp32_2432S028R_GalaxiasScreen, esp32_2432S028R_RainScreen, esp32_2432S028R_monedaYdado, tDisplay_m8axScreen3, tDisplay_m8axScreen4};
 
 DisplayDriver esp32_2432S028RDriver = {
     esp32_2432S028R_Init,

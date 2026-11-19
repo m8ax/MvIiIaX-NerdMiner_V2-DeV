@@ -1692,7 +1692,7 @@ bool recopilaTelegram()
   int destino = 1 + (esp_random() % 1000);
   generate_random_numbers(numeritos, 6, 1, 100);
   calculate_operations(numeritos, destino, result);
-  cadenaEnvio += ("Juego De Cifras Número - " + String(totalci) + "\n");
+  cadenaEnvio += ("Juego De Cifras Número - " + String(totalci) + " - ( 1 Cada 30s )\n");
   cadenaEnvio += ("Aciertos - " + String(aciertos) + " | Fallos - " + String(fallos) + "\n");
   cadenaEnvio += ("Números - ");
   for (int i = 0; i < 6; i++)
@@ -2061,7 +2061,7 @@ void noDisplay_NoScreen(unsigned long mElapsed)
     Serial.print(">>> M8AX - El Número - 3 - " + String(rndnumero) + " -> " + abinyprimo(rndnumero) + "\n");
     Serial.print("--------------------------------------------------------------------------------------------------------------\n");
     calculate_operations(numeritos, destino, result);
-    Serial.print(">>> M8AX - Juego De Cifras Número - " + String(totalci) + "\n");
+    Serial.print(">>> M8AX - Juego De Cifras Número - " + String(totalci) + " - ( 1 Cada 30s )\n");
     Serial.print(">>> M8AX - Aciertos - " + String(aciertos) + " | Fallos - " + String(fallos) + "\n");
     Serial.print(">>> M8AX - Números - ");
     for (int i = 0; i < 6; i++)
