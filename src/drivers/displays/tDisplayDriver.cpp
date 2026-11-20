@@ -47,7 +47,7 @@
  *
  *                              PARA MÁS INFORMACIÓN LEER PDF
  *
- *                     Tmp. De Programación 24H - 12175 Líneas De Código
+ *                     Tmp. De Programación 24H - 12935 Líneas De Código
  *                     -------------------------------------------------
  *
  ********************************************************************************************/
@@ -106,8 +106,8 @@ extern nvMemory nvMem;
 #define MAX_NUMBERS 6
 #define MAX_DEPTH 4
 #define MAX_GEN_COUNT 1000
-#define GRIDX 320
-#define GRIDY 170
+#define GRIDX 160
+#define GRIDY 85
 #define CELLXY 2
 #define GEN_DELAY 1
 
@@ -437,7 +437,10 @@ const char *convertirTiempo(uint32_t segundos)
 
 void ajustarZonaHoraria()
 {
-  zonilla = obtenHoraPorIP(getPublicIP());
+  int nueva = obtenHoraPorIP(getPublicIP());
+  if (nueva == 1000)
+    return;
+  zonilla = nueva;
   int timezoneDifference = abs(Settings.Timezone - zonilla);
   if (timezoneDifference <= 1)
   {
@@ -1452,23 +1455,15 @@ void initGrid(void)
 
 void computeCA()
 {
-  for (int16_t x = 1; x < GRIDX; x++)
+  for (int16_t x = 1; x < GRIDX - 1; x++)
   {
-    for (int16_t y = 1; y < GRIDY; y++)
+    for (int16_t y = 1; y < GRIDY - 1; y++)
     {
       int neighbors = getNumberOfNeighbors(x, y);
-      if (grid[x][y] == 1 && (neighbors == 2 || neighbors == 3))
-      {
-        newgrid[x][y] = 1;
-      }
-      else if (grid[x][y] == 1)
-        newgrid[x][y] = 0;
-      if (grid[x][y] == 0 && (neighbors == 3))
-      {
-        newgrid[x][y] = 1;
-      }
-      else if (grid[x][y] == 0)
-        newgrid[x][y] = 0;
+      if (grid[x][y] == 1)
+        newgrid[x][y] = (neighbors == 2 || neighbors == 3) ? 1 : 0;
+      else
+        newgrid[x][y] = (neighbors == 3) ? 1 : 0;
     }
   }
 }
@@ -2869,16 +2864,15 @@ void mostrarCalendario(int dia, int mes, int anio, int h1, int h2, int m1, int m
   if (mes == 4 || mes == 6 || mes == 9 || mes == 11)
     diasDelMes = 30; // Meses con 30 días
   if (mes == 2)
-  { // Febrero, comprobar si es bisiesto
+  {
+    // Febrero, comprobar si es bisiesto
     if ((anio % 4 == 0 && anio % 100 != 0) || (anio % 400 == 0))
-    {
       diasDelMes = 29; // Año bisiesto
-    }
     else
-    {
       diasDelMes = 28; // Año no bisiesto
-    }
   }
+  // Un solo color al azar por refresco: lo usan los días de la semana, el mes, el año y la hora
+  colorIndex = esp_random() % (sizeof(colors) / sizeof(colors[0]));
   // Mostrar los días de la semana
   for (int i = 0; i < 7; i++)
   {
@@ -2892,7 +2886,7 @@ void mostrarCalendario(int dia, int mes, int anio, int h1, int h2, int m1, int m
   int y = 30;
   for (int i = 1; i <= diasDelMes; i++)
   {
-    // Si es el primer día, comenzamos en la posición correcta según el primer día del mes
+    // Posición del día en la semana, 0 = lunes ... 5 = sábado, 6 = domingo
     int diaDeLaSemana = (primerDia + i - 1) % 7;
     // Imprimir el día
     tft.setCursor(20 + x, y);
@@ -2900,16 +2894,14 @@ void mostrarCalendario(int dia, int mes, int anio, int h1, int h2, int m1, int m
     tft.setTextColor(TFT_WHITE);
     if (i == dia)
     {
+      // Hoy: amarillo y más grande
       tft.setTextColor(TFT_YELLOW);
       tft.setTextSize(2);
     }
     else if (diaDeLaSemana == 5 || diaDeLaSemana == 6)
     {
+      // Sábado y domingo en naranja, el resto se queda en blanco
       tft.setTextColor(TFT_ORANGE);
-    }
-    else
-    { // Días regulares
-      tft.setTextColor(TFT_WHITE);
     }
     tft.print(i);
     // Mover a la siguiente columna
@@ -2920,25 +2912,28 @@ void mostrarCalendario(int dia, int mes, int anio, int h1, int h2, int m1, int m
       x = 0;
       y += 20;
     }
-    String mesecillo = String(obtenerNombreMes(mes));
-    tft.setTextColor(colors[colorIndex]);
-    tft.setTextSize(3);
-    tft.setCursor(5, 145);
-    tft.print(mesecillo + " " + String(anio));
-    tft.setCursor(290, 11);
-    tft.print(String(h1));
-    tft.setCursor(290, 41);
-    tft.print(String(h2));
-    tft.setCursor(290, 71);
-    tft.print("-");
-    tft.setCursor(290, 101);
-    tft.print(String(m1));
-    tft.setCursor(290, 131);
-    tft.print(String(m2));
-    tft.setCursor(280, 158);
-    tft.setTextSize(1);
-    tft.print(mineria.currentHashRate);
   }
+  // Mes y año abajo a la izquierda
+  String mesecillo = String(obtenerNombreMes(mes));
+  tft.setTextColor(colors[colorIndex]);
+  tft.setTextSize(3);
+  tft.setCursor(5, 145);
+  tft.print(mesecillo + " " + String(anio));
+  // Hora en vertical a la derecha: HH - MM, un dígito por renglón
+  tft.setCursor(290, 11);
+  tft.print(String(h1));
+  tft.setCursor(290, 41);
+  tft.print(String(h2));
+  tft.setCursor(290, 71);
+  tft.print("-");
+  tft.setCursor(290, 101);
+  tft.print(String(m1));
+  tft.setCursor(290, 131);
+  tft.print(String(m2));
+  // Hashrate pequeño en la esquina de abajo a la derecha
+  tft.setCursor(280, 158);
+  tft.setTextSize(1);
+  tft.print(mineria.currentHashRate);
 }
 
 /*
@@ -3011,7 +3006,7 @@ bool esPrimo(uint32_t n)
 
 double moonPhase::_fhour(const struct tm &timeinfo)
 {
-  return timeinfo.tm_hour + map((timeinfo.tm_min * 60) + timeinfo.tm_sec, 0, 3600, 0.0, 1.0);
+  return timeinfo.tm_hour + ((timeinfo.tm_min * 60) + timeinfo.tm_sec) / 3600.0;
 }
 
 /*
@@ -5045,7 +5040,7 @@ void tDisplay_m8axScreen12(unsigned long mElapsed)
   tft.setTextSize(2);
   tft.print("https://youtube.com/m8ax");
   tft.setCursor(16, 149);
-  tft.print("https://paypal.me/m8ax/2");
+  tft.print("https://paypal.me/m8ax/5");
   for (int i = 0; i < limite; i++)
   {
     colorI = esp_random() % (sizeof(colors) / sizeof(colors[0]));
@@ -6051,13 +6046,7 @@ void tDisplay_m8axvida(unsigned long mElapsed)
     computeCA();
     drawGrid();
     delay(GEN_DELAY);
-    for (int16_t x = 1; x < GRIDX - 1; x++)
-    {
-      for (int16_t y = 1; y < GRIDY - 1; y++)
-      {
-        grid[x][y] = newgrid[x][y];
-      }
-    }
+    memcpy(grid, newgrid, sizeof(grid));
     vidaGen++;
   }
   vidaUlt = millis();
@@ -11884,6 +11873,771 @@ void tDisplay_Asteroides(unsigned long mElapsed)
   }
 }
 
+/****************************************************************************************************************
+ *
+ *   FLAPPY HASH - El Flappy Bird que juega la CPU sola, y el pajaro ... ES TU HASHRATE
+ *
+ *   El "pajaro" es una moneda dorada con alas que lleva escrito el hashrate REAL del minero ( se actualiza cada
+ *   segundo, asi que si el minero sube o baja lo ves en el bicho ). Los tubos de toda la vida son RACKS de ASICs
+ *   con sus ranuras y sus LEDs parpadeando ( verde, naranja y rojo ), con una abertura por la que hay que pasar.
+ *   Detras hay dos capas de rascacielos con ventanas encendidas que se mueven a distinta velocidad ( parallax ),
+ *   estrellas, y abajo una CADENA DE BLOQUES que avanza con un nonce dorado en cada uno.
+ *
+ *   La CPU juega sola: mira cual es el siguiente rack y aletea para mantenerse en la parte baja de la abertura.
+ *   Cada rack que pasa suma un punto, brilla en verde y suelta chispas. Cada poco la CPU "se despista" unos
+ *   fotogramas, que es cuando se la pega y explota en mil trozos. Con la puntuacion el juego se acelera y las
+ *   aberturas se estrechan. Tras el golpe, empieza otra partida sola. El record se conserva mientras el minero
+ *   siga encendido ( aunque salgas de la pantalla ).
+ *
+ *   Memoria: NO hay buffer de pantalla. Se pinta linea a linea ( cada linea se compone en un array de 640 bytes y
+ *   se manda al TFT ), asi que todo el juego ocupa en torno a 1,5 KB en el heap, frente a los ~22 KB del ajedrez
+ *   o los Asteroides. Se piden al entrar en la pantalla y se devuelven cuando se detecta que se ha salido a otra.
+ *   Si no hay RAM, se salta la pantalla sin pintar nada.
+ *
+ *   Arriba a la izquierda la hora y arriba a la derecha el hashrate ( reutiliza astDrawHud de Asteroides ).
+ *   Abajo: puntos, record y numero de partida.
+ *
+ *   Para activarla: pegar este bloque justo debajo de tDisplay_Asteroides ( antes del comentario de analiCadaSegundo ),
+ *   meter tDisplay_FlappyHash en el array tDisplayCyclicScreens[] y añadir en analiCadaSegundo, debajo del if de astM,
+ *   este otro:
+ *   if (fhM && millis() - fhUlt > 5000) { free(fhM); fhM = NULL; }
+ *
+ ****************************************************************************************************************/
+
+// >>> FLAPPYHASH MOTOR
+#define FH_W 320
+#define FH_H 120
+#define FH_Y0 28 // el HUD de arriba ocupa hasta la 26 y el de abajo empieza en la 150
+#define FH_FRAME_MS 30
+#define FH_SLICE_MS 1000 // tandas de 1 s: el driver cambia de pantalla entre llamadas
+#define FH_NR 4          // racks vivos a la vez
+#define FH_NP 32         // particulas
+#define FH_NS 18         // estrellas
+#define FH_PW 28         // ancho del rack
+#define FH_CAPH 6        // alto de la tapa del rack
+#define FH_ESP 112       // distancia entre racks
+#define FH_SUELO 10      // alto de la cadena de bloques
+#define FH_BX 72         // x fija del pajaro
+#define FH_BH 14         // alto del pajaro
+#define FH_SEGF 18       // ancho de los edificios lejanos
+#define FH_SEGN 30       // ancho de los edificios cercanos
+#define FH_G 0.30f
+#define FH_SALTO (-3.3f)
+#define FH_RGB(r, g, b) ((uint16_t)((((r) & 0xF8) << 8) | (((g) & 0xFC) << 3) | ((b) >> 3)))
+
+// Digitos 3x5 ( 3 bits por fila, de arriba a abajo )
+static const uint16_t FH_DIG[10] = {0x7B6F, 0x2C97, 0x73E7, 0x73CF, 0x5BC9, 0x79CF, 0x79EF, 0x7249, 0x7BEF, 0x7BCF};
+// Cuanto se recorta cada fila del pajaro por los lados para que quede en forma de pastilla
+static const uint8_t FH_PILL[FH_BH] = {4, 3, 2, 1, 0, 0, 0, 0, 0, 0, 1, 2, 3, 4};
+// Colores de las particulas segun lo que les queda de vida ( 4 niveles )
+static const uint16_t FH_PCOL[4][4] = {
+    {FH_RGB(90, 30, 0), FH_RGB(200, 90, 0), FH_RGB(255, 170, 20), FH_RGB(255, 230, 120)},
+    {FH_RGB(60, 60, 80), FH_RGB(120, 120, 150), FH_RGB(190, 190, 210), FH_RGB(255, 255, 255)},
+    {FH_RGB(110, 20, 10), FH_RGB(230, 50, 20), FH_RGB(255, 150, 30), FH_RGB(255, 240, 120)},
+    {FH_RGB(10, 80, 40), FH_RGB(30, 170, 80), FH_RGB(80, 255, 120), FH_RGB(200, 255, 220)}};
+
+struct FhRack
+{
+  float x;
+  int16_t gy; // centro de la abertura
+  uint8_t gap, flash, vivo, pasado;
+  uint16_t id;
+};
+
+struct FhPart
+{
+  float x, y, vx, vy;
+  uint8_t vida, tipo; // 0 dorada, 1 blanca, 2 explosion, 3 verde
+};
+
+struct FhStar
+{
+  float x;
+  uint8_t y, capa;
+};
+
+struct FhMem
+{
+  uint16_t linea[FH_W]; // la primera: alineada a 4 para rellenar de 2 en 2 pixeles
+  FhRack rk[FH_NR];
+  FhPart pt[FH_NP];
+  FhStar es[FH_NS];
+  float y, vy, vel, scF, scN, scS, sigX;
+  int16_t ultGy;
+  uint8_t nd, dg[4], estado, aleteo, flash, ipt, record;
+  uint16_t despiste, finTimer, sigId;
+  uint32_t puntos, frame;
+  char tIzq[16], tCen[14], tDer[16];
+};
+static FhMem *fhM = NULL;
+static unsigned long fhUlt = 0; // cuando termino la ultima tanda
+static uint32_t fhMejor = 0;    // record ( fuera del heap: sobrevive a salir de la pantalla )
+static uint32_t fhPartidas = 0;
+
+static inline uint32_t fhRnd(uint32_t n) { return esp_random() % n; }
+static inline float fhRf() { return (esp_random() & 0xFFFF) * (1.0f / 65535.0f); }
+
+static inline uint32_t fhHash(uint32_t v)
+{
+  v ^= v >> 16;
+  v *= 0x7feb352dU;
+  v ^= v >> 15;
+  v *= 0x846ca68bU;
+  v ^= v >> 16;
+  return v;
+}
+
+static inline void fhSpan(uint16_t *L, int xa, int xb, uint16_t c)
+{
+  if (xa < 0)
+    xa = 0;
+  if (xb > FH_W)
+    xb = FH_W;
+  while (xa < xb)
+    L[xa++] = c;
+}
+
+static inline void fhPx(uint16_t *L, int x, uint16_t c)
+{
+  if ((unsigned)x < FH_W)
+    L[x] = c;
+}
+
+// El hashrate pasa a ser el numero que lleva el pajaro ( de 1 a 4 cifras )
+static void fhPonHash(int v)
+{
+  FhMem &m = *fhM;
+  if (v < 0)
+    v = 0;
+  if (v > 9999)
+    v = 9999;
+  char b[8];
+  int n = snprintf(b, sizeof(b), "%d", v);
+  if (n < 1)
+    n = 1;
+  if (n > 4)
+    n = 4;
+  m.nd = (uint8_t)n;
+  for (int i = 0; i < n; i++)
+    m.dg[i] = (uint8_t)(b[i] - '0');
+}
+
+static inline int fhAncho() { return 8 * fhM->nd + 6; }
+
+static void fhChispa(float x, float y, float vx, float vy, uint8_t vida, uint8_t tipo)
+{
+  FhMem &m = *fhM;
+  for (int k = 0; k < FH_NP; k++)
+  {
+    FhPart &p = m.pt[m.ipt];
+    m.ipt = (m.ipt + 1) % FH_NP;
+    if (!p.vida)
+    {
+      p.x = x;
+      p.y = y;
+      p.vx = vx;
+      p.vy = vy;
+      p.vida = vida;
+      p.tipo = tipo;
+      return;
+    }
+  }
+}
+
+static void fhNuevoRack()
+{
+  FhMem &m = *fhM;
+  for (int i = 0; i < FH_NR; i++)
+  {
+    FhRack &r = m.rk[i];
+    if (r.vivo)
+      continue;
+    int gap = 56 - (int)(m.puntos / 2);
+    if (gap < 44)
+      gap = 44;
+    int lo = gap / 2 + 6, hi = FH_H - FH_SUELO - gap / 2 - 6;
+    int gy = m.ultGy + (int)fhRnd(89) - 44; // cambia como mucho 44 px respecto al anterior
+    if (gy < lo)
+      gy = lo;
+    if (gy > hi)
+      gy = hi;
+    r.x = m.sigX;
+    r.gy = gy;
+    r.gap = (uint8_t)gap;
+    r.flash = 0;
+    r.vivo = 1;
+    r.pasado = 0;
+    r.id = m.sigId++;
+    m.ultGy = gy;
+    return;
+  }
+}
+
+static void fhNuevaPartida()
+{
+  FhMem &m = *fhM;
+  m.y = 52.0f;
+  m.vy = 0;
+  m.vel = 1.9f;
+  m.estado = 0;
+  m.aleteo = 0;
+  m.flash = 0;
+  m.despiste = 0;
+  m.finTimer = 0;
+  m.record = 0;
+  m.puntos = 0;
+  m.ultGy = 58;
+  m.sigX = 250.0f;
+  for (int i = 0; i < FH_NR; i++)
+    m.rk[i].vivo = 0;
+  for (int i = 0; i < FH_NP; i++)
+    m.pt[i].vida = 0;
+  fhPartidas++;
+}
+
+static void fhInit()
+{
+  FhMem &m = *fhM;
+  memset(&m, 0, sizeof(FhMem));
+  m.nd = 3;
+  m.dg[0] = 3;
+  m.dg[1] = 9;
+  m.dg[2] = 0;
+  for (int i = 0; i < FH_NS; i++)
+  {
+    m.es[i].x = (float)fhRnd(FH_W);
+    m.es[i].y = (uint8_t)fhRnd(70);
+    m.es[i].capa = (uint8_t)fhRnd(3);
+  }
+  m.scF = (float)fhRnd(500);
+  m.scN = (float)fhRnd(500);
+  fhNuevaPartida();
+}
+
+// La CPU decide si aletea: se mantiene rebotando en la parte baja de la abertura del siguiente rack
+static bool fhIA()
+{
+  FhMem &m = *fhM;
+  if (m.despiste)
+  {
+    m.despiste--;
+    return false;
+  }
+  int izq = FH_BX - fhAncho() / 2;
+  int tgy = 58;
+  float mx = 1e9f;
+  for (int i = 0; i < FH_NR; i++)
+    if (m.rk[i].vivo && m.rk[i].x + FH_PW + 2 > izq && m.rk[i].x < mx)
+    {
+      mx = m.rk[i].x;
+      tgy = m.rk[i].gy;
+    }
+  return (m.y + m.vy + 0.15f) > (float)(tgy + 9);
+}
+
+static bool fhChoca()
+{
+  FhMem &m = *fhM;
+  int bw = fhAncho();
+  int l = FH_BX - bw / 2 + 3, rr = FH_BX + bw / 2 - 3;
+  int t = (int)m.y - 6, b = (int)m.y + 6;
+  if (b >= FH_H - FH_SUELO)
+    return true;
+  for (int i = 0; i < FH_NR; i++)
+  {
+    const FhRack &r = m.rk[i];
+    if (!r.vivo)
+      continue;
+    int x0 = (int)r.x, gt = r.gy - r.gap / 2, gb = r.gy + r.gap / 2;
+    bool cuerpo = rr > x0 && l < x0 + FH_PW;
+    bool tapa = rr > x0 - 2 && l < x0 + FH_PW + 2;
+    if (t < gt && (cuerpo || (b > gt - FH_CAPH && tapa)))
+      return true;
+    if (b > gb && (cuerpo || (t < gb + FH_CAPH && tapa)))
+      return true;
+  }
+  return false;
+}
+
+static void fhExplota()
+{
+  FhMem &m = *fhM;
+  m.estado = 1;
+  m.finTimer = 75;
+  m.flash = 3;
+  for (int i = 0; i < 36; i++)
+  {
+    float a = fhRf() * 6.2832f, v = 0.4f + fhRf() * 2.8f;
+    fhChispa((float)FH_BX, m.y, cosf(a) * v, sinf(a) * v, 14 + fhRnd(18), 2);
+  }
+  for (int i = 0; i < 8; i++)
+    fhChispa((float)FH_BX, m.y, (fhRf() - 0.5f) * 2.0f, -1.0f - fhRf() * 2.0f, 20 + fhRnd(10), 1);
+  if (m.puntos > fhMejor)
+  {
+    fhMejor = m.puntos;
+    m.record = 1;
+  }
+  Serial.printf("M8AX - FlappyHash: Partida %lu | Racks %lu | Record %lu\n",
+                (unsigned long)fhPartidas, (unsigned long)m.puntos, (unsigned long)fhMejor);
+}
+
+static void fhActualizar()
+{
+  FhMem &m = *fhM;
+  m.frame++;
+  if (m.aleteo)
+    m.aleteo--;
+  if (m.flash)
+    m.flash--;
+
+  // Parallax y estrellas
+  m.scF += m.vel * 0.25f;
+  m.scN += m.vel * 0.5f;
+  m.scS += m.vel;
+  for (int i = 0; i < FH_NS; i++)
+  {
+    FhStar &s = m.es[i];
+    s.x -= (0.1f + 0.1f * s.capa) * (m.vel + 0.3f);
+    if (s.x < 0)
+    {
+      s.x += FH_W;
+      s.y = (uint8_t)fhRnd(70);
+    }
+  }
+
+  if (m.estado == 0)
+  {
+    int pt = m.puntos > 40 ? 40 : (int)m.puntos;
+    m.vel += ((1.9f + pt * 0.03f) - m.vel) * 0.05f;
+
+    // Se despista cada tanto ( mas a menudo cuanto mas lejos llega )
+    if (!m.despiste && fhRnd(100000) < 60 + m.puntos * 4)
+      m.despiste = 10 + fhRnd(18);
+
+    if (fhIA())
+    {
+      m.vy = FH_SALTO;
+      m.aleteo = 6;
+      for (int i = 0; i < 3; i++)
+        fhChispa((float)FH_BX - 4 + fhRnd(9), m.y + 7, -m.vel * 0.6f + (fhRf() - 0.5f), 0.5f + fhRf() * 0.8f, 8 + fhRnd(6), 1);
+    }
+    m.vy += FH_G;
+    m.y += m.vy;
+    if (m.y < 7.0f)
+    {
+      m.y = 7.0f;
+      if (m.vy < 0)
+        m.vy = 0;
+    }
+
+    // Estela dorada
+    fhChispa((float)(FH_BX - fhAncho() / 2), m.y + (fhRf() - 0.5f) * 6.0f, -m.vel - 0.3f, (fhRf() - 0.5f) * 0.3f, 12 + fhRnd(10), 0);
+
+    // Racks
+    m.sigX -= m.vel;
+    if (m.sigX <= FH_W + 2)
+    {
+      fhNuevoRack();
+      m.sigX += FH_ESP;
+    }
+    int izq = FH_BX - fhAncho() / 2;
+    for (int i = 0; i < FH_NR; i++)
+    {
+      FhRack &r = m.rk[i];
+      if (!r.vivo)
+        continue;
+      r.x -= m.vel;
+      if (r.flash)
+        r.flash--;
+      if (r.x + FH_PW + 4 < 0)
+      {
+        r.vivo = 0;
+        continue;
+      }
+      if (!r.pasado && r.x + FH_PW + 2 < izq + 2)
+      {
+        r.pasado = 1;
+        r.flash = 12;
+        m.puntos++;
+        for (int k = 0; k < 10; k++)
+        {
+          float a = k * 0.6283f, v = 0.8f + fhRf() * 1.2f;
+          fhChispa(r.x + FH_PW / 2, (float)r.gy, cosf(a) * v - m.vel * 0.5f, sinf(a) * v, 14 + fhRnd(10), 3);
+        }
+      }
+    }
+
+    if (fhChoca())
+      fhExplota();
+  }
+  else
+  {
+    m.vel *= 0.9f;
+    if (m.finTimer && --m.finTimer == 0)
+      fhNuevaPartida();
+  }
+
+  // Particulas
+  for (int i = 0; i < FH_NP; i++)
+  {
+    FhPart &p = m.pt[i];
+    if (!p.vida)
+      continue;
+    p.x += p.vx;
+    p.y += p.vy;
+    if (p.tipo == 2)
+      p.vy += 0.05f;
+    p.vida--;
+    if (p.x < -2 || p.x > FH_W + 2 || p.y < -2 || p.y > FH_H)
+      p.vida = 0;
+  }
+}
+
+// ---- Pintado: una linea cada vez ----
+
+static void fhRackLinea(uint16_t *L, int y, const FhRack &r, uint32_t frame)
+{
+  int gt = r.gy - r.gap / 2, gb = r.gy + r.gap / 2, x0 = (int)r.x;
+  bool arriba = y < gt, abajo = (y >= gb) && (y < FH_H - FH_SUELO);
+  if (!arriba && !abajo)
+    return;
+  bool tapa = arriba ? (y >= gt - FH_CAPH) : (y < gb + FH_CAPH);
+  bool filoGap = arriba ? (y == gt - 1) : (y == gb);
+  bool filoExt = tapa && (arriba ? (y == gt - FH_CAPH) : (y == gb + FH_CAPH - 1));
+  int xa = tapa ? x0 - 2 : x0, xb = tapa ? x0 + FH_PW + 2 : x0 + FH_PW;
+  if (xb <= 0 || xa >= FH_W)
+    return;
+  uint16_t borde = r.flash ? FH_RGB(110, 255, 150) : (tapa ? FH_RGB(140, 170, 230) : FH_RGB(96, 120, 170));
+  uint16_t cuerpo = r.flash ? FH_RGB(40, 90, 66) : (tapa ? FH_RGB(52, 64, 96) : FH_RGB(34, 42, 64));
+  if (filoGap || filoExt)
+  {
+    fhSpan(L, xa, xb, borde);
+    return;
+  }
+  fhSpan(L, xa, xb, borde);
+  fhSpan(L, xa + 1, xb - 1, cuerpo);
+  if (tapa)
+    return;
+  int f = y & 7;
+  if (f == 0)
+    fhSpan(L, xa + 1, xb - 1, FH_RGB(16, 20, 34)); // ranura entre servidores
+  else if (f == 3 || f == 4)
+  {
+    int row = y >> 3;
+    for (int k = 0; k < 2; k++)
+    {
+      uint32_t s = (r.id * 5 + row * 7 + k * 3 + (frame >> 4) * (k + 2)) & 7;
+      uint16_t c = s < 5 ? FH_RGB(40, 255, 100) : (s < 7 ? FH_RGB(255, 170, 30) : FH_RGB(255, 50, 40));
+      int lx = x0 + 5 + k * 5;
+      fhSpan(L, lx, lx + 2, c);
+    }
+    if (f == 3)
+      for (int vx = x0 + 17; vx < x0 + FH_PW - 4; vx += 2)
+        fhPx(L, vx, FH_RGB(70, 84, 118)); // rejilla de ventilacion
+  }
+}
+
+static void fhPajaroLinea(uint16_t *L, int y)
+{
+  FhMem &m = *fhM;
+  if (m.estado)
+    return;
+  int bw = fhAncho(), izq = FH_BX - bw / 2, top = (int)(m.y + 0.5f) - FH_BH / 2;
+  int r = y - top;
+  if (r >= -4 && r < 0 && m.aleteo)
+  {
+    static const uint8_t wd[4] = {1, 3, 5, 6};
+    fhSpan(L, izq + 4, izq + 4 + wd[r + 4], FH_RGB(215, 240, 255));
+  }
+  if (r >= FH_BH && r < FH_BH + 4 && !m.aleteo)
+  {
+    static const uint8_t wd[4] = {6, 5, 3, 1};
+    fhSpan(L, izq + 4, izq + 4 + wd[r - FH_BH], FH_RGB(215, 240, 255));
+  }
+  if (r < 0 || r >= FH_BH)
+    return;
+  int ins = FH_PILL[r], a = izq + ins, b = izq + bw - ins;
+  uint16_t borde = FH_RGB(140, 60, 0);
+  uint16_t cuerpo = r < 4 ? FH_RGB(255, 225, 90) : (r < 10 ? FH_RGB(255, 190, 25) : FH_RGB(235, 135, 10));
+  if (r == 0 || r == FH_BH - 1)
+    fhSpan(L, a, b, borde);
+  else
+  {
+    fhSpan(L, a, b, cuerpo);
+    fhPx(L, a, borde);
+    fhPx(L, b - 1, borde);
+  }
+  if (r >= 2 && r < 12)
+  {
+    int dr = (r - 2) >> 1, dx = izq + 4;
+    for (int k = 0; k < m.nd; k++)
+    {
+      uint16_t g = FH_DIG[m.dg[k]];
+      for (int c = 0; c < 3; c++)
+        if ((g >> ((4 - dr) * 3 + (2 - c))) & 1)
+          fhSpan(L, dx + k * 8 + c * 2, dx + k * 8 + c * 2 + 2, FH_RGB(70, 25, 0));
+    }
+  }
+}
+
+static void fhLinea(int y, int offF, int offN, int offS, const uint8_t *hF, const uint8_t *hN)
+{
+  FhMem &m = *fhM;
+  uint16_t *L = m.linea;
+  const int suelo = FH_H - FH_SUELO;
+
+  // Cielo nocturno con degradado
+  uint16_t cielo = m.flash ? FH_RGB(200, 200, 225) : FH_RGB(6 + y * 50 / 110, 8 + y * 14 / 110, 30 + y * 50 / 110);
+  uint32_t cc = ((uint32_t)cielo << 16) | cielo;
+  uint32_t *d = (uint32_t *)L;
+  for (int i = 0; i < FH_W / 2; i++)
+    d[i] = cc;
+
+  // Estrellas
+  if (!m.flash)
+    for (int i = 0; i < FH_NS; i++)
+      if (m.es[i].y == y)
+      {
+        uint16_t c = m.es[i].capa == 0 ? FH_RGB(60, 70, 130) : (m.es[i].capa == 1 ? FH_RGB(130, 140, 190) : FH_RGB(255, 255, 255));
+        if (m.es[i].capa == 2 && ((m.frame + i * 7) & 31) < 3)
+          c = FH_RGB(120, 120, 160);
+        fhPx(L, (int)m.es[i].x, c);
+      }
+
+  // Rascacielos lejanos
+  {
+    int base = -(offF % FH_SEGF);
+    for (int s = 0; s < 24 && base + s * FH_SEGF < FH_W; s++)
+      if (y >= suelo - hF[s] && y < suelo)
+        fhSpan(L, base + s * FH_SEGF, base + (s + 1) * FH_SEGF - 1, FH_RGB(28, 22, 62));
+  }
+
+  // Rascacielos cercanos con ventanas
+  {
+    int base = -(offN % FH_SEGN), s0 = offN / FH_SEGN;
+    for (int s = 0; s < 24 && base + s * FH_SEGN < FH_W; s++)
+    {
+      int t = suelo - hN[s];
+      if (y < t || y >= suelo)
+        continue;
+      int x0 = base + s * FH_SEGN;
+      fhSpan(L, x0, x0 + FH_SEGN - 2, FH_RGB(13, 11, 34));
+      int ry = y - t;
+      if (ry >= 4 && (ry % 7) < 2)
+        for (int k = 0; k < 3; k++)
+          if ((fhHash((s0 + s) * 5 + k + (ry / 7) * 131) & 3) == 0)
+            fhSpan(L, x0 + 4 + k * 8, x0 + 8 + k * 8, FH_RGB(255, 210, 110));
+    }
+  }
+
+  // Cadena de bloques
+  if (y >= suelo)
+  {
+    int gr = y - suelo, u = offS % 28;
+    for (int x = 0; x < FH_W; x++)
+    {
+      uint16_t c;
+      if (u < 24)
+      {
+        if (gr == 0)
+          c = FH_RGB(110, 140, 220);
+        else if (gr == 1)
+          c = FH_RGB(70, 95, 170);
+        else if (gr == FH_SUELO - 1)
+          c = FH_RGB(20, 26, 60);
+        else if ((gr == 4 || gr == 5) && u >= 5 && u < 10)
+          c = FH_RGB(255, 190, 20); // el nonce
+        else
+          c = FH_RGB(36, 48, 96);
+      }
+      else
+        c = (gr == 4 || gr == 5) ? FH_RGB(90, 120, 200) : FH_RGB(8, 8, 20);
+      L[x] = c;
+      if (++u == 28)
+        u = 0;
+    }
+  }
+
+  // Racks
+  for (int i = 0; i < FH_NR; i++)
+    if (m.rk[i].vivo)
+      fhRackLinea(L, y, m.rk[i], m.frame);
+
+  // Particulas
+  for (int i = 0; i < FH_NP; i++)
+  {
+    const FhPart &p = m.pt[i];
+    if (!p.vida)
+      continue;
+    int py = (int)p.y;
+    bool grande = p.tipo == 2 && p.vida > 16;
+    if (py == y || (grande && py + 1 == y))
+    {
+      uint16_t c = FH_PCOL[p.tipo][p.vida >> 3];
+      fhPx(L, (int)p.x, c);
+      if (grande)
+        fhPx(L, (int)p.x + 1, c);
+    }
+  }
+
+  fhPajaroLinea(L, y);
+}
+
+static void fhPintar()
+{
+  FhMem &m = *fhM;
+  int offF = (int)m.scF, offN = (int)m.scN, offS = (int)m.scS;
+  uint8_t hF[24], hN[24];
+  int sF = offF / FH_SEGF, sN = offN / FH_SEGN;
+  for (int s = 0; s < 24; s++)
+  {
+    hF[s] = (uint8_t)(14 + fhHash(sF + s) % 34);
+    hN[s] = (uint8_t)(10 + fhHash((sN + s) * 3 + 1) % 30);
+  }
+  tft.startWrite();
+  tft.setAddrWindow(0, FH_Y0, FH_W, FH_H);
+  for (int y = 0; y < FH_H; y++)
+  {
+    fhLinea(y, offF, offN, offS, hF, hN);
+    tft.pushColors(m.linea, FH_W, true);
+  }
+  tft.endWrite();
+}
+
+static void fhFrame()
+{
+  fhActualizar();
+  fhPintar();
+}
+
+// los tres textos de abajo, solo se repintan si cambian
+static void fhTextos(bool forzar)
+{
+  FhMem &m = *fhM;
+  char izq[16], cen[14], der[16];
+  snprintf(izq, sizeof(izq), "Pts %lu", (unsigned long)m.puntos);
+  if (m.estado && m.record)
+    snprintf(cen, sizeof(cen), "RECORD!");
+  else if (m.estado)
+    snprintf(cen, sizeof(cen), "CRASH!");
+  else
+    snprintf(cen, sizeof(cen), "Rec %lu", (unsigned long)fhMejor);
+  snprintf(der, sizeof(der), "Part %lu", (unsigned long)fhPartidas);
+  bool a = forzar || strcmp(izq, m.tIzq) != 0, b = forzar || strcmp(cen, m.tCen) != 0, c = forzar || strcmp(der, m.tDer) != 0;
+  if (!a && !b && !c)
+    return;
+  tft.setFreeFont(NULL);
+  tft.setTextFont(1);
+  tft.setTextSize(2);
+  if (a)
+  {
+    tft.setTextColor(TFT_YELLOW, TFT_BLACK);
+    tft.setTextPadding(100);
+    tft.setTextDatum(TL_DATUM);
+    tft.drawString(izq, 4, 151);
+    strcpy(m.tIzq, izq);
+  }
+  if (b)
+  {
+    tft.setTextColor(m.estado ? TFT_ORANGE : TFT_CYAN, TFT_BLACK);
+    tft.setTextPadding(90);
+    tft.setTextDatum(TC_DATUM);
+    tft.drawString(cen, 160, 151);
+    strcpy(m.tCen, cen);
+  }
+  if (c)
+  {
+    tft.setTextColor(TFT_GREEN, TFT_BLACK);
+    tft.setTextPadding(96);
+    tft.setTextDatum(TR_DATUM);
+    tft.drawString(der, 316, 151);
+    strcpy(m.tDer, der);
+  }
+  tft.setTextPadding(0);
+  tft.setTextDatum(TL_DATUM);
+}
+// <<< FLAPPYHASH MOTOR
+
+void tDisplay_FlappyHash(unsigned long mElapsed)
+{
+  mineria = getMiningData(mElapsed);
+  Serial.printf("M8AX - >>> Completados %s Share(s), %s Khashes, Prom. Hashrate %s KH/s %s°\n",
+                mineria.completedShares.c_str(), mineria.totalKHashes.c_str(), mineria.currentHashRate.c_str(), mineria.temp.c_str());
+
+  // Si hace rato que no nos llaman es que se ha visto otra pantalla: borrar antes de pintar
+  bool limpiar = (millis() - fhUlt > 2500);
+  if (!fhM)
+  {
+    fhM = (FhMem *)malloc(sizeof(FhMem));
+    if (!fhM)
+    {
+      Serial.printf("M8AX - ### FlappyHash: Sin RAM ( Libre %u, Mayor Bloque %u ) ###\n", (unsigned)ESP.getFreeHeap(), (unsigned)ESP.getMaxAllocHeap());
+      delay(1000);
+      return;
+    }
+    fhInit();
+    limpiar = true;
+  }
+  const int fhMiPantalla = currentDisplayDriver->current_cyclic_screen;
+  fhPonHash((int)(mineria.currentHashRate.toFloat() + 0.5f));
+  if (limpiar)
+  {
+    tft.fillRect(0, 0, 320, 170, TFT_BLACK);
+    fhTextos(true);
+  }
+
+  char horaStr[9] = "";
+  char lastHora[9] = "";
+  char hashStr[16];
+  char lastHash[16] = "";
+
+  unsigned long start = millis();
+  unsigned long lastMiningUpdate = 0;
+  unsigned long siguiente = start;
+
+  while (millis() - start < FH_SLICE_MS)
+  {
+    unsigned long now = millis();
+
+    if (now >= siguiente)
+    {
+      fhFrame();
+      fhTextos(false);
+      siguiente = millis() + FH_FRAME_MS;
+    }
+
+    // ---- Hora ( izquierda ) y hashrate ( derecha ), arriba como en las demás ----
+    if (now - lastMiningUpdate >= 1000)
+    {
+      lastMiningUpdate = now;
+      mineria = getMiningData(mElapsed);
+      snprintf(hashStr, sizeof(hashStr), "%s", mineria.currentHashRate.c_str());
+      fhPonHash((int)(mineria.currentHashRate.toFloat() + 0.5f)); // el pajaro ES el hashrate
+      time_t epoch = (time_t)timeClient.getEpochTime();
+      struct tm *ti = localtime(&epoch);
+      snprintf(horaStr, sizeof(horaStr), "%02d:%02d:%02d", ti->tm_hour, ti->tm_min, ti->tm_sec);
+      if (strcmp(horaStr, lastHora) != 0 || strcmp(hashStr, lastHash) != 0)
+      {
+        astDrawHud(hashStr, horaStr);
+        strcpy(lastHora, horaStr);
+        strcpy(lastHash, hashStr);
+      }
+    }
+    delay(2);
+  }
+
+  tft.setTextPadding(0);
+  tft.setTextDatum(TL_DATUM);
+  fhUlt = millis();
+
+  // Si el driver ya ha cambiado de pantalla, se devuelve la RAM
+  if (currentDisplayDriver->current_cyclic_screen != fhMiPantalla)
+  {
+    free(fhM);
+    fhM = NULL;
+  }
+}
+
 /**
  * Analiza y actualiza datos cada segundo.
  *
@@ -11938,6 +12692,12 @@ void analiCadaSegundo(unsigned long frame)
   {
     free(astM);
     astM = NULL;
+  }
+
+  if (fhM && millis() - fhUlt > 5000)
+  {
+    free(fhM);
+    fhM = NULL;
   }
 
   if (startTime > 0 && uncontadormas > 50)
@@ -12093,8 +12853,8 @@ void analiCadaSegundo(unsigned long frame)
     tft.println(mensaje1);
     tft.setTextSize(1);
     tft.println("");
-    tft.setTextSize(2);
-    tft.setTextColor(TFT_WHITE), tft.println("     ... By M8AX ..."), delay(3000);
+    tft.setTextSize(2), tft.setTextColor(TFT_WHITE);
+    tft.println("     ... By M8AX ..."), delay(3000);
   }
 }
 
@@ -12133,7 +12893,7 @@ void tDisplay_DoLedStuff(unsigned long frame)
 // - `tDisplay_DoLedStuff`: Función vacía en este momento, reservada para gestionar efectos relacionados con LEDs.
 // Además, contiene detalles de la pantalla, como el tamaño y el número total de pantallas definidas en `tDisplayCyclicScreens` (calculado con `SCREENS_ARRAY_SIZE`). La estructura `tDisplayDriver` centraliza el control de todas las operaciones relacionadas con la pantalla, permitiendo la ejecución secuencial o cíclica de diferentes pantallas en el dispositivo.
 
-CyclicScreenFunction tDisplayCyclicScreens[] = {tDisplay_MinerScreen, tDisplay_GlobalHashScreen, tDisplay_BTCprice, tDisplay_m8axScreen15, tDisplay_m8axScreen2, datoTextPlano, tDisplay_m8axScreen5, tDisplay_m8axScreen16, tDisplay_ClockScreen, tDisplay_m8axScreen1, tDisplay_m8axScreen7, RelojDeNumeros, tDisplay_m8axScreen9, tDisplay_m8axScreen10, tDisplay_m8axScreen11, tDisplay_m8axScreen18, tDisplay_m8axScreen3, tDisplay_m8axScreen13, tDisplay_m8axScreen14, tDisplay_m8axScreen8, monedaYdado, tDisplay_Primos, tDisplay_Tetris, tDisplay_Ajedrez, tDisplay_Galaxian, tDisplay_Asteroides, tDisplay_Galaxias, tDisplay_Fractal, tDisplay_m8axvida, tDisplay_m8axScreen4, tDisplay_m8axScreen6, tDisplay_m8axScreen17, tDisplay_m8axScreen12};
+CyclicScreenFunction tDisplayCyclicScreens[] = {tDisplay_MinerScreen, tDisplay_GlobalHashScreen, tDisplay_BTCprice, tDisplay_m8axScreen15, tDisplay_m8axScreen2, datoTextPlano, tDisplay_m8axScreen5, tDisplay_m8axScreen16, tDisplay_ClockScreen, tDisplay_m8axScreen1, tDisplay_m8axScreen7, RelojDeNumeros, tDisplay_m8axScreen9, tDisplay_m8axScreen10, tDisplay_m8axScreen11, tDisplay_m8axScreen18, tDisplay_m8axScreen3, tDisplay_m8axScreen13, tDisplay_m8axScreen14, tDisplay_m8axScreen8, monedaYdado, tDisplay_Primos, tDisplay_Tetris, tDisplay_Ajedrez, tDisplay_Galaxian, tDisplay_Asteroides, tDisplay_FlappyHash, tDisplay_Galaxias, tDisplay_Fractal, tDisplay_m8axvida, tDisplay_m8axScreen4, tDisplay_m8axScreen6, tDisplay_m8axScreen17, tDisplay_m8axScreen12};
 
 DisplayDriver tDisplayDriver = {
     tDisplay_Init,

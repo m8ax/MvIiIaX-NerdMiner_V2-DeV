@@ -38,8 +38,14 @@
  *   Asi que si llega el día de cambio de hora que es de madrugada y no cambia al instante no te preocupes
  *   que el sistema lo hará automáticamente en la siguiente sincronización.
  *
+ *   ------------------------------------------------------------------------------------------------------
+ *                                  LEDS RGB DEL MINERO - COMPORTAMIENTO
+ *   ------------------------------------------------------------------------------------------------------
+ *
+ *   MODO NORMAL ( según el hash rate ):
+ *
  *   1. **Cuando el hash rate es mayor de 300 kH/s**:
- *      - Los LEDs **rojo**, **verde** y **azul** parpadean en alternancia.
+ *      - Los LEDs **rojo**, **verde** y **azul** se encienden de uno en uno, en ese orden, y vuelta a empezar.
  *
  *   2. **Cuando el hash rate es mayor de 0 kH/s pero menor o igual a 300 kH/s**:
  *      - El LED **azul** está encendido de forma constante.
@@ -48,6 +54,32 @@
  *   3. **Cuando el hash rate es 0**:
  *      - El LED **azul** está encendido de forma constante.
  *      - El LED **rojo** parpadea.
+ *
+ *   AJUSTES SEGÚN HORA Y DÍA ( se aplican a los 3 casos de arriba ):
+ *
+ *   4. **De noche, de 20:00 a 08:00**:
+ *      - Hacen lo mismo, pero con menos brillo ( LED_BRILLO_NOCHE ), para no molestar en la oscuridad.
+ *
+ *   5. **Viernes, sábado y domingo**:
+ *      - Hacen lo mismo, pero más rápido ( LED_MS_FINDE en vez de LED_MS_NORMAL ).
+ *
+ *   6. **Fin de semana + de noche**:
+ *      - Las dos cosas a la vez: más rápido y más tenue.
+ *
+ *   MODOS ESPECIALES ( mandan sobre todo lo anterior, siempre a tope de brillo ):
+ *
+ *   7. **¡ BLOQUE MINADO !**:
+ *      - Cuando el contador de bloques válidos SUBE con el minero encendido, fiesta de LEDs durante 12 horas:
+ *        combinaciones de colores al azar sin parar, sea de día, de noche o fin de semana.
+ *      - Si se reinicia el minero, la fiesta se corta ( no se graba nada aparte ).
+ *
+ *   8. **10 de marzo ( el cumple de M8AX )**:
+ *      - Todo el día, de 00:00 a 23:59, los 3 LEDs parpadean a la vez y cambian de color al azar.
+ *      - Sin noche, sin fin de semana, sin tenue. Siempre a tope. ¡ Felicidades ! xD...
+ *
+ *   NOTA: este comportamiento solo se ve en las pantallas normales ( minero, precio, reloj, banners...).
+ *   Los juegos y animaciones ( Pong, Tetris, Doom, Asteroides, Cifras, etc. ) hacen sus propios destellos
+ *   a tope de brillo, sea la hora y el día que sea.
  *
  *
  *           Un minero de Bitcoin es un dispositivo o software que realiza cálculos
@@ -58,7 +90,7 @@
  *
  *                                 HASHRATE - 380 / 390 KH/S
  *
- *                     Tmp. De Programación 12H - 15180 Líneas De Código
+ *                     Tmp. De Programación 15H - 18480 Líneas De Código
  *                     -------------------------------------------------
  *
  ****************************************************************************************************************/
@@ -252,31 +284,185 @@ String preciob(void)
   return String((int)bitcoin_price.toFloat()) + "$";
 }
 
+/**************************************************************************
+ *
+ *   LEDs DEL MINERO - Noche tenue, finde rápido, fiesta de bloque y cumple
+ *   ----------------------------------------------------------------------
+ *
+ *   Las pantallas normales solo avisan del hashrate ( manejandoLeds ), y
+ *   el parpadeo lo hace actualizaLeds() desde DoLedStuff.
+ *
+ *   Prioridad: 10 de marzo > bloque minado > noche / fin de semana.
+ *
+ *   Ajustes: LED_BRILLO_NOCHE ( 0-255 ), LED_MS_NORMAL, LED_MS_FINDE y
+ *   LED_MS_FIESTA ( ms entre cambios ). DoLedStuff se llama cada 100 ms,
+ *   así que por debajo de eso no se nota diferencia.
+ *
+ **************************************************************************/
+
+#define LED_BRILLO_DIA 255
+#define LED_BRILLO_NOCHE 15             // 0-255, más bajo = más tenue (20:00 a 08:00)
+#define LED_MS_NORMAL 1000              // ms entre cambios entre semana
+#define LED_MS_FINDE 500                // ms entre cambios vie, sáb y dom
+#define LED_MS_FIESTA 80                // ms entre cambios en la fiesta
+#define LED_FIESTA_BLOQUE_MS 43200000UL // 12 horas
+
+static float ledHashRate = 0;
+static unsigned long ledUltimoManejo = 0;
+static unsigned long fiestaBloqueHasta = 0;
+static bool fiestaBloqueActiva = false;
+static int validosPrev = -1;
+
+/***********************************************************************
+ *
+ *   PWM de los LEDs: se configura UNA sola vez y los 3 canales quedan
+ *   enganchados mientras estés en pantallas normales. ledsLibres() los
+ *   suelta al cambiar de pantalla para que los juegos usen digitalWrite.
+ *   brillo 0 = apagado, 255 = a tope ( LEDs activos en LOW ).
+ *
+ ***********************************************************************/
+
+static bool ledPwmListo = false;
+
+static void ledSet(uint8_t pin, uint8_t canal, uint8_t brillo)
+{
+  if (!ledPwmListo)
+  {
+    for (uint8_t c = 1; c <= 3; c++)
+      ledcSetup(c, 5000, 8);
+    ledcAttachPin(LED_PIN, 1);
+    ledcAttachPin(LED_PIN_G, 2);
+    ledcAttachPin(LED_PIN_B, 3);
+    for (uint8_t c = 1; c <= 3; c++)
+      ledcWrite(c, 255); // los 3 apagados antes de nada
+    ledPwmListo = true;
+  }
+  ledcWrite(canal, 255 - brillo);
+}
+
+static void ledsLibres()
+{
+  ledcDetachPin(LED_PIN);
+  ledcDetachPin(LED_PIN_G);
+  ledcDetachPin(LED_PIN_B);
+  ledPwmListo = false;
+  pinMode(LED_PIN, OUTPUT);
+  pinMode(LED_PIN_G, OUTPUT);
+  pinMode(LED_PIN_B, OUTPUT);
+  digitalWrite(LED_PIN, HIGH);
+  digitalWrite(LED_PIN_G, HIGH);
+  digitalWrite(LED_PIN_B, HIGH);
+}
+
+// Las pantallas normales solo avisan del hashrate; el parpadeo lo hace actualizaLeds()
 void manejandoLeds(float currentHashRate)
 {
-  // Si el hash rate es mayor que 300
-  if (currentHashRate > 300)
+  ledHashRate = currentHashRate;
+  ledUltimoManejo = millis();
+}
+
+// mascara: bit0 rojo, bit1 verde, bit2 azul
+static void ledMascara(uint8_t m)
+{
+  ledSet(LED_PIN, 1, (m & 1) ? 255 : 0);
+  ledSet(LED_PIN_G, 2, (m & 2) ? 255 : 0);
+  ledSet(LED_PIN_B, 3, (m & 4) ? 255 : 0);
+}
+
+static void actualizaLeds()
+{
+  unsigned long ahora = millis();
+
+  // Detectar bloque minado: solo si el contador SUBE con el minero encendido
+  int v = mineria.valids.toInt();
+  if (validosPrev >= 0 && v > validosPrev)
   {
-    digitalWrite(LED_PIN, !digitalRead(LED_PIN));     // Toggle el LED
-    digitalWrite(LED_PIN_B, !digitalRead(LED_PIN_B)); // Toggle otro LED
-    digitalWrite(LED_PIN_G, !digitalRead(LED_PIN_G)); // Toggle otro LED
+    fiestaBloqueActiva = true;
+    fiestaBloqueHasta = ahora + LED_FIESTA_BLOQUE_MS;
+    Serial.println("M8AX - BLOQUE MINADO! Fiesta De LEDs 12 Horas");
   }
-  // Si el hash rate es mayor que 0 y menor o igual a 300
-  else if (currentHashRate > 0 && currentHashRate <= 300)
+  validosPrev = v;
+  if (fiestaBloqueActiva && (long)(fiestaBloqueHasta - ahora) <= 0)
+    fiestaBloqueActiva = false;
+
+  // Si ninguna pantalla normal ha avisado hace poco (estamos en un juego), no tocar nada
+  if (ledUltimoManejo == 0 || ahora - ledUltimoManejo > 2500)
+    return;
+
+  bool noche = false, finde = false, cumple = false;
+  time_t epoch = (time_t)timeClient.getEpochTime();
+  if (epoch > 1700000000)
   {
-    digitalWrite(LED_PIN, LOW);
-    digitalWrite(LED_PIN_G, LOW);
-    vTaskDelay(pdMS_TO_TICKS((cuentita % 2 == 0) ? 25 : 50)); // Delay según si cuentita es par o impar
-    digitalWrite(LED_PIN, HIGH);                              // Enciende el LED
-    digitalWrite(LED_PIN_G, HIGH);                            // Enciende el otro LED
+    struct tm ti;
+    localtime_r(&epoch, &ti);
+    noche = (ti.tm_hour >= 20 || ti.tm_hour < 8);
+    finde = (ti.tm_wday == 0 || ti.tm_wday == 5 || ti.tm_wday == 6); // dom, vie, sáb
+    cumple = (ti.tm_mon == 2 && ti.tm_mday == 10);                   // 10 de marzo
   }
-  // Si el hash rate es 0 o menor
+
+  static unsigned long ultimo = 0;
+  static uint8_t paso = 0;
+  static uint8_t color = 7;
+
+  // 10 de marzo: los 3 LEDs a la vez, a tope, cambiando de color
+  if (cumple)
+  {
+    if (ahora - ultimo < LED_MS_FIESTA)
+      return;
+    ultimo = ahora;
+    paso++;
+    if (paso % 8 == 0)
+      color = 1 + esp_random() % 7;
+    ledMascara((paso % 2 == 0) ? color : 0);
+    return;
+  }
+
+  // Bloque minado: locura total durante 12 horas
+  if (fiestaBloqueActiva)
+  {
+    if (ahora - ultimo < LED_MS_FIESTA)
+      return;
+    ultimo = ahora;
+    ledMascara(esp_random() % 8);
+    return;
+  }
+
+  // Modo normal: noche más tenue, fin de semana más rápido
+  uint8_t br = noche ? LED_BRILLO_NOCHE : LED_BRILLO_DIA;
+  unsigned long ms = finde ? LED_MS_FINDE : LED_MS_NORMAL;
+  static unsigned long dbg = 0;
+  if (ahora - dbg > 10000)
+  {
+    dbg = ahora;
+    Serial.printf("M8AX - LEDs Noche=%d Finde=%d Br=%d Hash=%.1f\n", noche, finde, br, ledHashRate);
+  }
+  if (ahora - ultimo < ms)
+    return;
+  ultimo = ahora;
+  paso++;
+
+  if (ledHashRate > 300)
+  {
+    // Rojo, verde, azul, uno cada vez
+    uint8_t p = paso % 3;
+    ledSet(LED_PIN, 1, p == 0 ? br : 0);
+    ledSet(LED_PIN_G, 2, p == 1 ? br : 0);
+    ledSet(LED_PIN_B, 3, p == 2 ? br : 0);
+  }
+  else if (ledHashRate > 0)
+  {
+    // Azul fijo, rojo y verde parpadean a la vez
+    bool on = (paso % 2 == 0);
+    ledSet(LED_PIN_B, 3, br);
+    ledSet(LED_PIN, 1, on ? br : 0);
+    ledSet(LED_PIN_G, 2, on ? br : 0);
+  }
   else
   {
-    digitalWrite(LED_PIN, HIGH);   // Enciende el LED
-    digitalWrite(LED_PIN_G, HIGH); // Enciende el otro LED
-    digitalWrite(LED_PIN_B, HIGH); // Enciende otro LED
-    digitalWrite(LED_PIN, LOW);    // Apaga el LED
+    // Azul fijo, rojo parpadea
+    ledSet(LED_PIN_B, 3, br);
+    ledSet(LED_PIN_G, 2, 0);
+    ledSet(LED_PIN, 1, (paso % 2 == 0) ? br : 0);
   }
 }
 
@@ -507,7 +693,7 @@ void dibujarPorcentajeLunar(int centroX, int centroY, int radio, float porcentaj
 
 double moonPhase::_fhour(const struct tm &timeinfo)
 {
-  return timeinfo.tm_hour + map((timeinfo.tm_min * 60) + timeinfo.tm_sec, 0, 3600, 0.0, 1.0);
+  return timeinfo.tm_hour + ((timeinfo.tm_min * 60) + timeinfo.tm_sec) / 3600.0;
 }
 
 static double _Julian(int32_t year, int32_t month, const double &day)
@@ -1582,26 +1768,26 @@ void mostrarCalendario(int dia, int mes, int anio, int h1, int h2, int m1, int m
       x = 0;
       y += 20;
     }
-    colorIndex = esp_random() % (sizeof(colors) / sizeof(colors[0]));
-    String mesecillo = String(obtenerNombreMes(mes));
-    tft.setTextColor(colors[colorIndex]);
-    tft.setTextSize(3);
-    tft.setCursor(5, 145);
-    tft.print(mesecillo + " " + String(anio));
-    tft.setCursor(290, 11);
-    tft.print(String(h1));
-    tft.setCursor(290, 41);
-    tft.print(String(h2));
-    tft.setCursor(290, 71);
-    tft.print("-");
-    tft.setCursor(290, 101);
-    tft.print(String(m1));
-    tft.setCursor(290, 131);
-    tft.print(String(m2));
-    tft.setCursor(280, 158);
-    tft.setTextSize(1);
-    tft.print(mineria.currentHashRate);
   }
+  colorIndex = esp_random() % (sizeof(colors) / sizeof(colors[0]));
+  String mesecillo = String(obtenerNombreMes(mes));
+  tft.setTextColor(colors[colorIndex]);
+  tft.setTextSize(3);
+  tft.setCursor(5, 145);
+  tft.print(mesecillo + " " + String(anio));
+  tft.setCursor(290, 11);
+  tft.print(String(h1));
+  tft.setCursor(290, 41);
+  tft.print(String(h2));
+  tft.setCursor(290, 71);
+  tft.print("-");
+  tft.setCursor(290, 101);
+  tft.print(String(m1));
+  tft.setCursor(290, 131);
+  tft.print(String(m2));
+  tft.setCursor(280, 158);
+  tft.setTextSize(1);
+  tft.print(mineria.currentHashRate);
 }
 
 const char *factorize(uint32_t number)
@@ -1900,7 +2086,7 @@ static bool sdMonta()
   for (int i = 0; i < 3 && !sdOk; i++)
   {
     sdSPI.begin(SD_SCK, SD_MISO, SD_MOSI, SD_CS);
-    sdOk = SD.begin(SD_CS, sdSPI, 10000000);
+    sdOk = SD.begin(SD_CS, sdSPI, 20000000);
     if (!sdOk)
     {
       SD.end();
@@ -3600,7 +3786,7 @@ void esp32_2432S028R_m8axScreen1(unsigned long mElapsed)
   tft.setCursor(215, 5);
   tft.print("youtube.com/m8ax");
   tft.setCursor(215, 15);
-  tft.print("paypal.me/m8ax/2");
+  tft.print("paypal.me/m8ax/5");
   cuentita++;
   dibujarPorcentajeLunar(61, 57, 16, porcentajeIluminado);
   if (cuentita == 15)
@@ -3663,7 +3849,7 @@ void tDisplay_m8axScreen4(unsigned long mElapsed)
   tft.print("https://youtube.com/m8ax");
   tft.setCursor(16, 145);
   tft.setTextSize(2);
-  tft.print("https://paypal.me/m8ax/2");
+  tft.print("https://paypal.me/m8ax/5");
   for (int i = 0; i < limite; i++)
   {
     colorI = esp_random() % (sizeof(colors) / sizeof(colors[0]));
@@ -6637,7 +6823,6 @@ void esp32_2432S028R_CifrasScreen(unsigned long mElapsed)
       struct tm *ti = localtime(&ep);
       snprintf(horaStr, sizeof(horaStr), "%02d:%02d:%02d", ti->tm_hour, ti->tm_min, ti->tm_sec);
       cifDrawTop(horaStr, hashStr);
-      manejandoLeds(mineria.currentHashRate.toFloat());
       unsigned long dtW = now - cifWinT;
       cifRate = cifWinN * 1000.0f / (float)dtW;
       Serial.printf("M8AX - Cifras: %.1f Obj/s Reales | %.1f Obj/s Solo Busqueda\n",
@@ -11213,6 +11398,7 @@ static const uint8_t BAN_FONT[][6] = {
     {'U', 0x3F, 0x40, 0x40, 0x40, 0x3F},
     {'V', 0x1F, 0x20, 0x40, 0x20, 0x1F},
     {'P', 0x7F, 0x09, 0x09, 0x09, 0x06},
+    {'Y', 0x07, 0x08, 0x70, 0x08, 0x07},
     {'s', 0x48, 0x54, 0x54, 0x54, 0x24}};
 
 static void banLed(uint8_t k)
@@ -14942,6 +15128,3107 @@ void esp32_2432S028R_monedaYdado(unsigned long mElapsed)
   manejandoLeds(mineria.currentHashRate.toFloat());
 }
 
+/****************************************************************************************************************
+ *
+ *   Escrito por: M8AX
+ *
+ *   Descripción: DEMOSCENE M8AX - Siete efectos a lo bruto calculados pixel a pixel por la CPU del ESP32
+ *   ----------------------------------------------------------------------------------------------------
+ *
+ *   Como las demos de los 90, pero en un chip que además está minando Bitcoin. Cada 15 segundos cambia el
+ *   efecto, y todos se calculan de verdad, nada de imágenes ni vídeos guardados:
+ *
+ *     1. PLASMA      - cuatro ondas de seno sumadas pixel a pixel y pintadas con una paleta que gira.
+ *     2. TUNEL       - para cada pixel se calcula su distancia y su ángulo al centro, y de ahí sale la
+ *                      profundidad y la textura: un túnel infinito que avanza y gira.
+ *     3. ROTOZOOM    - una textura XOR que rota y hace zoom, con matriz de rotación por cada pixel.
+ *     4. FUEGO       - autómata de calor: cada celda es la media de las de abajo menos un poco de enfriamiento.
+ *     5. METABOLAS   - cinco gotas que se atraen como lava: se suma el campo 1/d2 de todas en cada pixel.
+ *     6. TESERACTO   - un hipercubo de 4 dimensiones girando en 4 planos a la vez, con doble proyección
+ *                      ( 4D a 3D y 3D a 2D ), 16 vértices y 32 aristas, borrando y pintando solo lo que cambia.
+ *     7. WARP        - un campo de 90 estrellas en 3D que se viene encima con estela y un giro de cámara.
+ *
+ *   Encima de los cinco primeros va un scroller con las letras ondulando, dibujado a mano con la misma
+ *   fuente 5x7 del banner, con sombra para que se lea sobre cualquier fondo.
+ *
+ *   Los efectos de pixeles se pintan fila a fila directamente al TFT ( sin buffer de pantalla ), así que no
+ *   parpadean. Abajo sale el nombre del efecto con sus fotogramas por segundo, y a la derecha el hashrate.
+ *
+ *   LEDs: destello blanco al cambiar de efecto y latido corto de un color distinto para cada efecto.
+ *
+ *   Memoria: unos 6,5 KB en el heap ( paleta, tabla de senos, fuego, estrellas ), que se piden al entrar en la
+ *   pantalla y se liberan al salir a otra, como el ajedrez y el Doom. Si no hay RAM, se salta la pantalla.
+ *
+ ****************************************************************************************************************/
+
+// >>> DEMOSCENE MOTOR
+#define DEM_NEF 7
+#define DEM_SLICE_MS 5000
+#define DEM_EFECTO_MS 15000
+#define DEM_FW 80
+#define DEM_FH 38
+#define DEM_NSTAR 90
+#define DEM_TY 108 // altura del scroller
+#define DEM_ALTO 152
+
+struct DemMem
+{
+  int16_t sn[256]; // seno * 127
+  uint16_t pal[256];
+  uint16_t lr[160]; // fila logica
+  uint16_t ln[320]; // fila de pantalla
+  uint8_t fire[DEM_FW * (DEM_FH + 2)];
+  uint8_t cols[110];
+  int16_t mbx[5], mby[5];
+  int16_t tpx[16], tpy[16];
+  int16_t ex[DEM_NSTAR], ey[DEM_NSTAR], ez[DEM_NSTAR];
+  int16_t q1x[DEM_NSTAR], q1y[DEM_NSTAR], q2x[DEM_NSTAR], q2y[DEM_NSTAR];
+  int scroll, c0, msgCols;
+  uint8_t efecto;
+  bool tpOk;
+  uint32_t t;
+  unsigned long desde;
+};
+static DemMem *demM = NULL;
+static int demFps = 0;
+
+static const char DEM_MSG[] = "M8AX - YOUTUBE.COM/M8AX - OPENSEA.IO/M8AX - PAYPAL.ME/M8AX/5 - GRACIAS - ";
+static const char *const DEM_NOM[DEM_NEF] = {"PLASMA", "TUNEL", "ROTOZOOM", "FUEGO", "METABOLAS", "TESERACTO", "WARP"};
+static const uint16_t DEM_COLB[4] = {TFT_CYAN, TFT_MAGENTA, TFT_YELLOW, TFT_GREEN};
+static const bool DEM_LEDC[DEM_NEF][3] = {{1, 0, 1}, {0, 1, 1}, {1, 1, 0}, {1, 0, 0}, {0, 1, 0}, {1, 1, 1}, {0, 0, 1}};
+
+static void demPaleta(int tipo)
+{
+  DemMem &d = *demM;
+  for (int i = 0; i < 256; i++)
+  {
+    int r, g, b;
+    if (tipo == 0) // arcoiris
+    {
+      r = 128 + d.sn[i];
+      g = 128 + d.sn[(i + 85) & 255];
+      b = 128 + d.sn[(i + 170) & 255];
+    }
+    else if (tipo == 1) // fuego
+    {
+      if (i < 64)
+      {
+        r = i * 4;
+        g = 0;
+        b = 0;
+      }
+      else if (i < 128)
+      {
+        r = 255;
+        g = (i - 64) * 4;
+        b = 0;
+      }
+      else if (i < 192)
+      {
+        r = 255;
+        g = 255;
+        b = (i - 128) * 4;
+      }
+      else
+        r = g = b = 255;
+    }
+    else // electrico
+    {
+      r = (i * i) >> 8;
+      g = (i >> 1) + ((i * i) >> 9);
+      b = i;
+    }
+    if (r > 255)
+      r = 255;
+    if (g > 255)
+      g = 255;
+    if (b > 255)
+      b = 255;
+    d.pal[i] = (uint16_t)(((r & 0xF8) << 8) | ((g & 0xFC) << 3) | (b >> 3));
+  }
+}
+
+// Angulo aproximado en 0..255 por vuelta ( puede salir negativo, se usa con & 255 )
+static inline int demAng(int y, int x)
+{
+  int ax = abs(x), ay = abs(y);
+  if (!ax && !ay)
+    return 0;
+  float a = (ax >= ay) ? (float)ay / (float)ax : (float)ax / (float)ay;
+  float r = a * (0.7853982f + 0.273f * (1.0f - a));
+  if (ax < ay)
+    r = 1.5707963f - r;
+  if (x < 0)
+    r = 3.1415927f - r;
+  if (y < 0)
+    r = -r;
+  return (int)(r * 40.7437f);
+}
+
+static void demEstrella(int i, bool lejos)
+{
+  DemMem &d = *demM;
+  d.ex[i] = (int16_t)((int)(esp_random() % 2400) - 1200);
+  d.ey[i] = (int16_t)((int)(esp_random() % 1200) - 600);
+  d.ez[i] = (int16_t)(lejos ? 100 + (int)(esp_random() % 924) : 900 + (int)(esp_random() % 124));
+  d.q1x[i] = -1;
+  d.q2x[i] = -1;
+}
+
+static void demEntra(int ef)
+{
+  DemMem &d = *demM;
+  d.efecto = ef;
+  d.desde = millis();
+  d.tpOk = false;
+  if (ef == 3)
+  {
+    demPaleta(1);
+    memset(d.fire, 0, sizeof(d.fire));
+  }
+  else if (ef == 4)
+    demPaleta(2);
+  else if (ef < 3)
+    demPaleta(0);
+  if (ef >= 5)
+  {
+    tft.fillRect(0, 0, 320, DEM_ALTO, TFT_BLACK);
+    for (int i = 0; i < DEM_NSTAR; i++)
+      demEstrella(i, true);
+  }
+}
+
+static void demInit()
+{
+  DemMem &d = *demM;
+  memset(&d, 0, sizeof(DemMem));
+  for (int i = 0; i < 256; i++)
+    d.sn[i] = (int16_t)(sinf(i * 6.2831853f / 256.0f) * 127.0f);
+  d.msgCols = (int)(sizeof(DEM_MSG) - 1) * 6;
+  d.efecto = esp_random() % DEM_NEF;
+}
+
+// ---- Efectos de pixeles: cada uno rellena la fila logica d.lr ( 160 pixeles, o 80 en el fuego ) ----
+static void demPlasma(int ly)
+{
+  DemMem &d = *demM;
+  int t = (int)d.t;
+  int dy = ly - 38, dy2 = dy * dy;
+  int yv = d.sn[(ly * 4 + t * 2) & 255];
+  int ys = ly * 2 + t * 3;
+  for (int x = 0; x < 160; x++)
+  {
+    int dx = x - 80;
+    int v = d.sn[(x * 3 + t) & 255] + yv + d.sn[(x * 2 + ys) & 255] + d.sn[(((dx * dx + dy2) >> 4) + t) & 255];
+    d.lr[x] = d.pal[(((v + 508) >> 2) + t) & 255];
+  }
+}
+
+static void demTunel(int ly)
+{
+  DemMem &d = *demM;
+  int t = (int)d.t;
+  int dy = ly - 38;
+  for (int x = 0; x < 160; x++)
+  {
+    int dx = x - 80;
+    float dist = sqrtf((float)(dx * dx + dy * dy)) + 0.5f;
+    if (dist < 4.0f)
+    {
+      d.lr[x] = 0;
+      continue;
+    }
+    int di = (int)(2600.0f / dist) + t * 3;
+    int ai = demAng(dy, dx) + (t >> 1) + (d.sn[(di >> 1) & 255] >> 4);
+    int chk = ((di >> 3) ^ (ai >> 3)) & 1;
+    int idx = ((di * 3 + ai) & 127) + chk * 128;
+    d.lr[x] = d.pal[(idx + t) & 255];
+  }
+}
+
+static void demRotozoom(int ly)
+{
+  DemMem &d = *demM;
+  int t = (int)d.t;
+  int a = t * 2;
+  int ca = d.sn[(a + 64) & 255], sa = d.sn[a & 255];
+  int z = 160 + d.sn[(t * 2) & 255];
+  int dy = ly - 38;
+  int bu = -dy * sa, bv = dy * ca;
+  for (int x = 0; x < 160; x++)
+  {
+    int dx = x - 80;
+    int u = ((dx * ca + bu) * z) >> 12;
+    int v = ((dx * sa + bv) * z) >> 12;
+    d.lr[x] = d.pal[(((u ^ v) << 2) + t) & 255];
+  }
+}
+
+static void demFuegoUpd()
+{
+  DemMem &d = *demM;
+  for (int x = 0; x < DEM_FW; x++)
+  {
+    uint32_t r = esp_random();
+    uint8_t v = (r & 7) ? (uint8_t)(255 - ((r >> 3) & 63)) : 0;
+    d.fire[DEM_FH * DEM_FW + x] = v;
+    d.fire[(DEM_FH + 1) * DEM_FW + x] = v;
+  }
+  for (int y = 0; y < DEM_FH; y++)
+  {
+    const uint8_t *r1 = &d.fire[(y + 1) * DEM_FW];
+    const uint8_t *r2 = &d.fire[(y + 2) * DEM_FW];
+    uint8_t *o = &d.fire[y * DEM_FW];
+    for (int x = 0; x < DEM_FW; x++)
+    {
+      int xl = x > 0 ? x - 1 : x, xr = x < DEM_FW - 1 ? x + 1 : x;
+      int s = r1[xl] + r1[x] + r1[xr] + r2[x];
+      o[x] = (uint8_t)((s * 120) >> 9);
+    }
+  }
+}
+
+static void demFuegoFila(int fy)
+{
+  DemMem &d = *demM;
+  const uint8_t *f = &d.fire[fy * DEM_FW];
+  for (int x = 0; x < DEM_FW; x++)
+    d.lr[x] = d.pal[f[x]];
+}
+
+static void demMetabolas(int ly)
+{
+  DemMem &d = *demM;
+  int t = (int)d.t;
+  int d2y[5];
+  for (int k = 0; k < 5; k++)
+  {
+    int dyy = ly - d.mby[k];
+    d2y[k] = dyy * dyy + 1;
+  }
+  for (int x = 0; x < 160; x++)
+  {
+    int f = 0;
+    for (int k = 0; k < 5; k++)
+    {
+      int dxx = x - d.mbx[k];
+      f += 30000 / (dxx * dxx + d2y[k]);
+    }
+    int v = f > 255 ? 255 : f;
+    d.lr[x] = (v < 40) ? 0 : d.pal[(v * 2 + t) & 255];
+  }
+}
+
+// ---- Scroller con letras ondulantes ----
+static uint8_t demCol(int ca)
+{
+  char ch = DEM_MSG[ca / 6];
+  int k = ca % 6;
+  if (k == 5)
+    return 0;
+  for (unsigned i = 0; i < sizeof(BAN_FONT) / sizeof(BAN_FONT[0]); i++)
+    if (BAN_FONT[i][0] == (uint8_t)ch)
+      return BAN_FONT[i][1 + k];
+  return 0;
+}
+
+static inline int demBit(int x, int y)
+{
+  if (x < 0)
+    return 0;
+  DemMem &d = *demM;
+  int wob = (d.sn[(x + (int)d.t * 3) & 255] * 8) >> 7;
+  int ry = y - DEM_TY - wob;
+  if (ry < 0 || ry >= 21)
+    return 0;
+  int ci = ((x + d.scroll) / 3) - d.c0;
+  return (d.cols[ci] >> (ry / 3)) & 1;
+}
+
+static void demTexto(int y)
+{
+  DemMem &d = *demM;
+  for (int x = 0; x < 320; x++)
+  {
+    if (demBit(x, y))
+      d.ln[x] = 0xFFFF;
+    else if (demBit(x - 2, y - 2))
+      d.ln[x] = 0x0000;
+  }
+}
+
+static void demPixeles(int ef)
+{
+  DemMem &d = *demM;
+  int t = (int)d.t;
+  if (ef == 3)
+    demFuegoUpd();
+  if (ef == 4)
+    for (int k = 0; k < 5; k++)
+    {
+      d.mbx[k] = 80 + ((d.sn[(t * 3 + k * 51) & 255] * 55) >> 7);
+      d.mby[k] = 38 + ((d.sn[(t * 2 + k * 37 + 64) & 255] * 26) >> 7);
+    }
+  d.scroll = (t * 4) % (d.msgCols * 3);
+  d.c0 = d.scroll / 3;
+  for (int ci = 0; ci < 110; ci++)
+    d.cols[ci] = demCol((d.c0 + ci) % d.msgCols);
+
+  const int xs = (ef == 3) ? 2 : 1;
+  const int ys = (ef == 3) ? 4 : 2;
+  const int filas = (ef == 3) ? DEM_FH : 76;
+
+  tft.startWrite();
+  tft.setAddrWindow(0, 0, 320, DEM_ALTO);
+  int y = 0;
+  for (int ly = 0; ly < filas; ly++)
+  {
+    switch (ef)
+    {
+    case 0:
+      demPlasma(ly);
+      break;
+    case 1:
+      demTunel(ly);
+      break;
+    case 2:
+      demRotozoom(ly);
+      break;
+    case 3:
+      demFuegoFila(ly);
+      break;
+    default:
+      demMetabolas(ly);
+      break;
+    }
+    for (int k = 0; k < ys; k++, y++)
+    {
+      for (int x = 0; x < 320; x++)
+        d.ln[x] = d.lr[x >> xs];
+      if (y >= DEM_TY - 8 && y <= DEM_TY + 30)
+        demTexto(y);
+      tft.pushColors(d.ln, 320, true);
+    }
+  }
+  tft.endWrite();
+}
+
+// ---- Teseracto: hipercubo 4D girando en 4 planos ----
+static void demTeseracto()
+{
+  DemMem &d = *demM;
+  float tt = d.t * 0.022f;
+  float c1 = cosf(tt), s1 = sinf(tt);
+  float c2 = cosf(tt * 0.73f), s2 = sinf(tt * 0.73f);
+  float c3 = cosf(tt * 1.31f), s3 = sinf(tt * 1.31f);
+  float c4 = cosf(tt * 0.47f), s4 = sinf(tt * 0.47f);
+  int16_t nx[16], ny[16];
+  for (int i = 0; i < 16; i++)
+  {
+    float x = (i & 1) ? 1.0f : -1.0f, y = (i & 2) ? 1.0f : -1.0f;
+    float z = (i & 4) ? 1.0f : -1.0f, w = (i & 8) ? 1.0f : -1.0f;
+    float a;
+    a = x * c1 - w * s1;
+    w = x * s1 + w * c1;
+    x = a;
+    a = y * c2 - z * s2;
+    z = y * s2 + z * c2;
+    y = a;
+    a = z * c3 - w * s3;
+    w = z * s3 + w * c3;
+    z = a;
+    a = x * c4 - y * s4;
+    y = x * s4 + y * c4;
+    x = a;
+    float k = 1.0f / (2.6f - w);
+    float m = 1.0f / (3.2f - z * k);
+    int sx = 160 + (int)(x * k * m * 150.0f);
+    int sy = 75 + (int)(y * k * m * 150.0f);
+    nx[i] = (int16_t)constrain(sx, 3, 316);
+    ny[i] = (int16_t)constrain(sy, 3, 147);
+  }
+  if (d.tpOk)
+  {
+    for (int i = 0; i < 16; i++)
+      for (int b = 0; b < 4; b++)
+        if (!(i & (1 << b)))
+        {
+          int j = i | (1 << b);
+          tft.drawLine(d.tpx[i], d.tpy[i], d.tpx[j], d.tpy[j], TFT_BLACK);
+        }
+    for (int i = 0; i < 16; i++)
+      tft.fillCircle(d.tpx[i], d.tpy[i], 2, TFT_BLACK);
+  }
+  for (int i = 0; i < 16; i++)
+    for (int b = 0; b < 4; b++)
+      if (!(i & (1 << b)))
+      {
+        int j = i | (1 << b);
+        tft.drawLine(nx[i], ny[i], nx[j], ny[j], DEM_COLB[b]);
+      }
+  for (int i = 0; i < 16; i++)
+  {
+    tft.fillCircle(nx[i], ny[i], 2, TFT_WHITE);
+    d.tpx[i] = nx[i];
+    d.tpy[i] = ny[i];
+  }
+  d.tpOk = true;
+}
+
+// ---- Warp: estrellas en 3D con estela y giro de camara ----
+static void demWarp()
+{
+  DemMem &d = *demM;
+  int t = (int)d.t;
+  int rot = d.sn[(t >> 1) & 255] >> 3;
+  int vel = 10 + ((d.sn[t & 255] + 127) >> 4);
+  for (int i = 0; i < DEM_NSTAR; i++)
+  {
+    if (d.q2x[i] >= 0 && d.q1x[i] >= 0)
+      tft.drawLine(d.q2x[i], d.q2y[i], d.q1x[i], d.q1y[i], TFT_BLACK);
+    int x = d.ex[i], y = d.ey[i], z = d.ez[i] - vel;
+    int nx = x + ((y * rot) >> 10);
+    int ny = y - ((x * rot) >> 10);
+    d.ex[i] = (int16_t)nx;
+    d.ey[i] = (int16_t)ny;
+    d.ez[i] = (int16_t)z;
+    if (z < 24)
+    {
+      demEstrella(i, false);
+      continue;
+    }
+    int sx = 160 + (nx * 128) / z;
+    int sy = 75 + (ny * 128) / z;
+    if (sx < 1 || sx > 318 || sy < 1 || sy > 148)
+    {
+      demEstrella(i, false);
+      continue;
+    }
+    uint16_t col = z > 640 ? 0x7BEF : (z > 320 ? 0x07FF : 0xFFFF);
+    if (d.q1x[i] >= 0)
+      tft.drawLine(d.q1x[i], d.q1y[i], sx, sy, col);
+    else
+      tft.drawPixel(sx, sy, col);
+    if (z < 200)
+      tft.drawPixel(sx + 1, sy, col);
+    d.q2x[i] = d.q1x[i];
+    d.q2y[i] = d.q1y[i];
+    d.q1x[i] = (int16_t)sx;
+    d.q1y[i] = (int16_t)sy;
+  }
+}
+
+static void demFrame()
+{
+  DemMem &d = *demM;
+  d.t++;
+  if (d.efecto == 5)
+    demTeseracto();
+  else if (d.efecto == 6)
+    demWarp();
+  else
+    demPixeles(d.efecto);
+}
+
+static void demHud(const char *izq, const char *der)
+{
+  tft.setFreeFont(NULL);
+  tft.setTextFont(1);
+  tft.setTextSize(2);
+  tft.setTextColor(TFT_WHITE, TFT_BLACK);
+  tft.setTextPadding(160);
+  tft.setTextDatum(TL_DATUM);
+  tft.drawString(izq, 4, 153);
+  tft.setTextPadding(150);
+  tft.setTextDatum(TR_DATUM);
+  tft.drawString(der, 316, 153);
+  tft.setTextPadding(0);
+  tft.setTextDatum(TL_DATUM);
+}
+// <<< DEMOSCENE MOTOR
+
+void esp32_2432S028R_DemoScreen(unsigned long mElapsed)
+{
+  mineria = getMiningData(mElapsed);
+  Serial.printf("M8AX - %s >>> Completados %s Share(s), %s Khashes, Prom. Hashrate %s KH/s %s°\n",
+                mineria.currentTime.c_str(), mineria.completedShares.c_str(), mineria.totalKHashes.c_str(), mineria.currentHashRate.c_str(), mineria.temp.c_str());
+
+  bool redraw = hasChangedScreen;
+  if (!demM)
+  {
+    demM = (DemMem *)malloc(sizeof(DemMem));
+    if (!demM)
+    {
+      Serial.println("M8AX - Demoscene: No Hay RAM Libre");
+      delay(1000);
+      return;
+    }
+    demInit();
+    redraw = true;
+  }
+  const int demMiPantalla = currentDisplayDriver->current_cyclic_screen;
+  if (redraw)
+  {
+    ledsLibres();
+    tft.fillRect(0, 0, 320, 170, TFT_BLACK);
+    demEntra(demM->efecto);
+  }
+  printPoolData(); // barra de abajo, solo se repinta cuando toca
+  hasChangedScreen = false;
+
+  char hashStr[16];
+  snprintf(hashStr, sizeof(hashStr), "%s", mineria.currentHashRate.c_str());
+  char izq[24], der[24];
+  char lastIzq[24] = "", lastDer[24] = "";
+
+  unsigned long start = millis();
+  unsigned long tFps = start;
+  unsigned long lastHud = 0;
+  unsigned long lastMiningUpdate = 0;
+  unsigned long lastTouchChk = 0;
+  unsigned long ledApagarEn = 0;
+  unsigned long ledSigue = 0;
+  uint32_t frames = 0;
+  pongLeds(false);
+
+  while (millis() - start < DEM_SLICE_MS)
+  {
+    unsigned long now = millis();
+
+    // ---- Táctil (misma lógica que el Pong) ----
+    if (now - lastTouchChk >= 40 && now - previousTouchMillis >= 500)
+    {
+      lastTouchChk = now;
+      int16_t t_x, t_y;
+      if (touch.getXY(t_x, t_y))
+      {
+        previousTouchMillis = now;
+
+        if (((t_x > 109) && (t_x < 211)) && ((t_y > 185) && (t_y < 241)))
+        {
+          bottomScreenBlue ^= true;
+          hasChangedScreen = true;
+        }
+        else if ((t_x > 235) && ((t_y > 0) && (t_y < 16)))
+        {
+          esp32_2432S028R_AlternateScreenState();
+        }
+        else if (t_x > 160)
+        {
+          currentDisplayDriver->current_cyclic_screen = (currentDisplayDriver->current_cyclic_screen + 1) % currentDisplayDriver->num_cyclic_screens;
+        }
+        else
+        {
+          currentDisplayDriver->current_cyclic_screen = currentDisplayDriver->current_cyclic_screen - 1;
+          if (currentDisplayDriver->current_cyclic_screen < 0)
+            currentDisplayDriver->current_cyclic_screen = currentDisplayDriver->num_cyclic_screens - 1;
+        }
+        break;
+      }
+    }
+
+    // ---- LEDs: latido del color de cada efecto ----
+    if (ledApagarEn && now >= ledApagarEn)
+    {
+      pongLeds(false);
+      ledApagarEn = 0;
+    }
+    if (!ledApagarEn && now >= ledSigue)
+    {
+      digitalWrite(LED_PIN, DEM_LEDC[demM->efecto][0] ? LOW : HIGH);
+      digitalWrite(LED_PIN_G, DEM_LEDC[demM->efecto][1] ? LOW : HIGH);
+      digitalWrite(LED_PIN_B, DEM_LEDC[demM->efecto][2] ? LOW : HIGH);
+      ledApagarEn = now + 50;
+      ledSigue = now + 150;
+    }
+
+    // ---- Siguiente efecto ----
+    if (now - demM->desde >= DEM_EFECTO_MS)
+    {
+      demEntra((demM->efecto + 1) % DEM_NEF);
+      pongLeds(true); // destello blanco
+      ledApagarEn = now + 120;
+    }
+
+    // ---- Un fotograma ----
+    demFrame();
+    frames++;
+    if (ledApagarEn && millis() >= ledApagarEn) // apagar sin esperar a la siguiente vuelta
+    {
+      pongLeds(false);
+      ledApagarEn = 0;
+    }
+
+    now = millis();
+    if (now - tFps >= 1000)
+    {
+      demFps = (int)(frames * 1000UL / (now - tFps));
+      frames = 0;
+      tFps = now;
+    }
+
+    // ---- Hashrate (cada segundo) ----
+    if (now - lastMiningUpdate >= 1000)
+    {
+      lastMiningUpdate = now;
+      mineria = getMiningData(mElapsed);
+      snprintf(hashStr, sizeof(hashStr), "%s", mineria.currentHashRate.c_str());
+    }
+
+    // ---- Textos de abajo ----
+    if (now - lastHud >= 250)
+    {
+      lastHud = now;
+      snprintf(izq, sizeof(izq), "%s %dF", DEM_NOM[demM->efecto], demFps);
+      snprintf(der, sizeof(der), "%s KH/s", hashStr);
+      if (strcmp(izq, lastIzq) != 0 || strcmp(der, lastDer) != 0)
+      {
+        demHud(izq, der);
+        strcpy(lastIzq, izq);
+        strcpy(lastDer, der);
+      }
+    }
+    webAtender();
+    delay(1);
+  }
+
+  pongLeds(false);
+  tft.setTextPadding(0);
+  tft.setTextDatum(TL_DATUM);
+
+  if (currentDisplayDriver->current_cyclic_screen != demMiPantalla)
+  {
+    free(demM);
+    demM = NULL;
+  }
+
+  cuentita++;
+  if (cuentita == 15)
+  {
+    ajustarZonaHoraria();
+    obtenerLocYTemp();
+    obtenerVariacionesBTC(variacion1dia, variacion1semana);
+  }
+}
+
+/****************************************************************************************************************
+ *
+ *   Escrito por: M8AX
+ *
+ *   Descripción: CALCULADORA M8AX - Pantalla táctil para ESP32_2432S028R ( versión normal )
+ *   -----------------------------------------------------------------------------------------------------------
+ *
+ *   Calculadora de verdad con teclado táctil de 5x5 teclas a pantalla completa ( 320x240, sin barra de criptos
+ *   para que las teclas sean grandes ). Entiende expresiones enteras, no va tecla a tecla:
+ *
+ *       +  -  *  /  ^ ( potencia )  % ( porcentaje, 50% = 0.5 )  paréntesis  sqrt( )  y ANS ( último resultado )
+ *
+ *   Mientras escribes sale en gris el resultado provisional, y al pulsar = sale en verde. Si falta cerrar
+ *   paréntesis, se cierran solos. Si pulsas un operador justo después de un resultado, sigue la cuenta con él.
+ *   División por cero, raíz de negativo o expresión rara = ERROR en rojo.
+ *
+ *   LEDs: cada tecla = destello ROJO corto. Resultado correcto con = destello VERDE largo. ERROR = rojo largo.
+ *
+ *   Arriba: [<] pantalla anterior, [>] pantalla siguiente, el hashrate en el centro y [LUZ] apaga/enciende la
+ *   luz de la pantalla. Todo lo demás son teclas.
+ *
+ *   Memoria: no pide nada al heap. El estado ( unos 100 bytes ) es estático y la cuenta se conserva al salir y
+ *   volver a la pantalla.
+ *
+ *   Para activarla: pegar este bloque justo antes de analiCadaSegundo y meter esp32_2432S028R_CalcScreen en el
+ *   array esp32_2432S028RCyclicScreens[].
+ *
+ ****************************************************************************************************************/
+
+#define CAL_SLICE_MS 5000
+#define CAL_MAXLEN 60
+#define CAL_HH 20 // alto de la cabecera
+#define CAL_KY 78 // y donde empiezan las teclas
+#define CAL_KW 64
+#define CAL_KH 32
+
+#define CAL_C_NUM 0x2965
+#define CAL_C_OP 0xFD20
+#define CAL_C_FN 0x0416
+#define CAL_C_CLR 0xF800
+#define CAL_C_EQ 0x07E0
+
+struct CalEstado
+{
+  bool init, done, err;
+  int len;
+  char expr[CAL_MAXLEN + 1];
+  char ans[24];
+};
+static CalEstado calS = {false};
+
+struct CalTecla
+{
+  const char *lab;
+  const char *ins;
+  uint16_t bg, fg;
+};
+
+static const CalTecla CAL_T[5][5] = {
+    {{"C", "C", CAL_C_CLR, TFT_WHITE}, {"DEL", "DEL", CAL_C_FN, TFT_WHITE}, {"(", "(", CAL_C_FN, TFT_WHITE}, {")", ")", CAL_C_FN, TFT_WHITE}, {"/", "/", CAL_C_OP, TFT_BLACK}},
+    {{"7", "7", CAL_C_NUM, TFT_WHITE}, {"8", "8", CAL_C_NUM, TFT_WHITE}, {"9", "9", CAL_C_NUM, TFT_WHITE}, {"x^2", "^2", CAL_C_FN, TFT_WHITE}, {"x", "*", CAL_C_OP, TFT_BLACK}},
+    {{"4", "4", CAL_C_NUM, TFT_WHITE}, {"5", "5", CAL_C_NUM, TFT_WHITE}, {"6", "6", CAL_C_NUM, TFT_WHITE}, {"sqrt", "sqrt(", CAL_C_FN, TFT_WHITE}, {"-", "-", CAL_C_OP, TFT_BLACK}},
+    {{"1", "1", CAL_C_NUM, TFT_WHITE}, {"2", "2", CAL_C_NUM, TFT_WHITE}, {"3", "3", CAL_C_NUM, TFT_WHITE}, {"%", "%", CAL_C_FN, TFT_WHITE}, {"+", "+", CAL_C_OP, TFT_BLACK}},
+    {{"^", "^", CAL_C_FN, TFT_WHITE}, {"0", "0", CAL_C_NUM, TFT_WHITE}, {".", ".", CAL_C_NUM, TFT_WHITE}, {"ANS", "ANS", CAL_C_FN, TFT_WHITE}, {"=", "=", CAL_C_EQ, TFT_BLACK}}};
+
+// ---- Intérprete: + - * / ^ % ( ) sqrt( ) y menos unario ----
+static const char *calP;
+static bool calErr;
+static double calExpr();
+
+static double calPri()
+{
+  if (*calP == '(')
+  {
+    calP++;
+    double v = calExpr();
+    if (*calP == ')')
+      calP++;
+    else if (*calP)
+      calErr = true; // si se acaba la cuenta, el paréntesis se cierra solo
+    return v;
+  }
+  if (!strncmp(calP, "sqrt(", 5))
+  {
+    calP += 5;
+    double v = calExpr();
+    if (*calP == ')')
+      calP++;
+    else if (*calP)
+      calErr = true;
+    if (v < 0)
+      calErr = true;
+    return calErr ? 0 : sqrt(v);
+  }
+  if ((*calP >= '0' && *calP <= '9') || *calP == '.')
+  {
+    char *e;
+    double v = strtod(calP, &e);
+    if (e == calP)
+    {
+      calErr = true;
+      return 0;
+    }
+    calP = e;
+    return v;
+  }
+  calErr = true;
+  return 0;
+}
+
+static double calPost()
+{
+  double v = calPri();
+  while (*calP == '%')
+  {
+    calP++;
+    v /= 100.0;
+  }
+  return v;
+}
+
+static double calUna();
+
+static double calPot()
+{
+  double b = calPost();
+  if (*calP == '^')
+  {
+    calP++;
+    return pow(b, calUna());
+  }
+  return b;
+}
+
+static double calUna()
+{
+  if (*calP == '-')
+  {
+    calP++;
+    return -calUna();
+  }
+  if (*calP == '+')
+  {
+    calP++;
+    return calUna();
+  }
+  return calPot();
+}
+
+static double calTer()
+{
+  double v = calUna();
+  while (*calP == '*' || *calP == '/')
+  {
+    char o = *calP++;
+    double w = calUna();
+    if (o == '*')
+      v *= w;
+    else
+    {
+      if (w == 0)
+      {
+        calErr = true;
+        return 0;
+      }
+      v /= w;
+    }
+  }
+  return v;
+}
+
+static double calExpr()
+{
+  double v = calTer();
+  while (*calP == '+' || *calP == '-')
+  {
+    char o = *calP++;
+    double w = calTer();
+    v = (o == '+') ? v + w : v - w;
+  }
+  return v;
+}
+
+static bool calEval(const char *s, double &out)
+{
+  if (!*s)
+    return false;
+  calP = s;
+  calErr = false;
+  double v = calExpr();
+  if (calErr || *calP || isnan(v) || isinf(v))
+    return false;
+  out = v;
+  return true;
+}
+
+static void calFmt(double v, char *o, size_t n)
+{
+  if (fabs(v) < 1e-12)
+    v = 0;
+  snprintf(o, n, "%.10g", v);
+}
+
+static bool calEsOp(char c)
+{
+  return c == '+' || c == '-' || c == '*' || c == '/' || c == '^' || c == '%';
+}
+
+static void calBorra()
+{
+  calS.len = 0;
+  calS.expr[0] = 0;
+  calS.done = false;
+  calS.err = false;
+}
+
+// Devuelve 0 = tecla normal, 1 = resultado correcto, 2 = error
+static int calPulsa(const char *ins)
+{
+  CalEstado &s = calS;
+  if (!strcmp(ins, "C"))
+  {
+    calBorra();
+    return 0;
+  }
+  if (!strcmp(ins, "DEL"))
+  {
+    if (s.done || s.err)
+      calBorra();
+    else if (s.len >= 5 && !strcmp(s.expr + s.len - 5, "sqrt("))
+    {
+      s.len -= 5;
+      s.expr[s.len] = 0;
+    }
+    else if (s.len > 0)
+      s.expr[--s.len] = 0;
+    return 0;
+  }
+  if (!strcmp(ins, "="))
+  {
+    double v;
+    if (s.len == 0)
+      return 0;
+    if (calEval(s.expr, v))
+    {
+      calFmt(v, s.ans, sizeof(s.ans));
+      s.done = true;
+      s.err = false;
+      return 1;
+    }
+    s.err = true;
+    s.done = false;
+    return 2;
+  }
+  bool esAns = !strcmp(ins, "ANS");
+  if (esAns)
+  {
+    if (!s.ans[0])
+      return 0;
+    ins = s.ans;
+  }
+  if (s.err)
+    calBorra();
+  if (s.done)
+  {
+    if (!esAns && calEsOp(ins[0]))
+    {
+      strcpy(s.expr, s.ans);
+      s.len = strlen(s.expr);
+    }
+    else
+    {
+      s.len = 0;
+      s.expr[0] = 0;
+    }
+    s.done = false;
+  }
+  if (!strcmp(ins, "."))
+  {
+    int i = s.len - 1;
+    bool hay = false;
+    while (i >= 0 && ((s.expr[i] >= '0' && s.expr[i] <= '9') || s.expr[i] == '.'))
+    {
+      if (s.expr[i] == '.')
+        hay = true;
+      i--;
+    }
+    if (hay)
+      return 0;
+    if (s.len == 0 || !(s.expr[s.len - 1] >= '0' && s.expr[s.len - 1] <= '9'))
+      ins = "0.";
+  }
+  int l = strlen(ins);
+  if (s.len + l > CAL_MAXLEN)
+    return 0;
+  memcpy(s.expr + s.len, ins, l + 1);
+  s.len += l;
+  return 0;
+}
+
+// ---- Dibujo ----
+static void calPintaTecla(int r, int c, bool pulsada)
+{
+  const CalTecla &k = CAL_T[r][c];
+  int x = c * CAL_KW, y = CAL_KY + r * CAL_KH;
+  uint16_t bg = pulsada ? TFT_WHITE : k.bg, fg = pulsada ? TFT_BLACK : k.fg;
+  tft.fillRect(x, y, CAL_KW, CAL_KH, TFT_BLACK);
+  tft.fillRoundRect(x + 2, y + 2, CAL_KW - 4, CAL_KH - 4, 6, bg);
+  tft.setFreeFont(NULL);
+  tft.setTextFont(1);
+  tft.setTextPadding(0);
+  tft.setTextDatum(MC_DATUM);
+  tft.setTextSize(strlen(k.lab) == 1 ? 3 : 2);
+  tft.setTextColor(fg, bg);
+  tft.drawString(k.lab, x + CAL_KW / 2, y + CAL_KH / 2);
+  tft.setTextDatum(TL_DATUM);
+}
+
+static void calPintaPantalla()
+{
+  CalEstado &s = calS;
+  char vis[28], res[28];
+  uint16_t colRes = TFT_WHITE;
+  tft.fillRect(1, 23, 318, 50, TFT_BLACK);
+
+  int n = s.len;
+  const char *p = s.expr;
+  if (n > 25)
+  {
+    p += n - 25;
+    n = 25;
+  }
+  memcpy(vis, p, n);
+  vis[n] = 0;
+  tft.setFreeFont(NULL);
+  tft.setTextFont(1);
+  tft.setTextPadding(0);
+  tft.setTextDatum(TR_DATUM);
+  tft.setTextSize(2);
+  tft.setTextColor(TFT_WHITE, TFT_BLACK);
+  tft.drawString(vis, 314, 26);
+
+  double v;
+  if (s.err)
+  {
+    strcpy(res, "ERROR");
+    colRes = TFT_RED;
+  }
+  else if (s.done)
+  {
+    strcpy(res, s.ans);
+    colRes = TFT_GREEN;
+  }
+  else if (s.len == 0)
+  {
+    strcpy(res, "0");
+    colRes = 0x4208;
+  }
+  else if (calEval(s.expr, v))
+  {
+    calFmt(v, res, sizeof(res));
+    colRes = 0xBDF7;
+  }
+  else
+    res[0] = 0;
+  tft.setTextSize(strlen(res) <= 16 ? 3 : 2);
+  tft.setTextColor(colRes, TFT_BLACK);
+  tft.drawString(res, 314, 46);
+  tft.setTextDatum(TL_DATUM);
+}
+
+static void calHud(const char *hash)
+{
+  char b[24];
+  snprintf(b, sizeof(b), "%s KH/s", hash);
+  tft.setFreeFont(NULL);
+  tft.setTextFont(1);
+  tft.setTextSize(1);
+  tft.setTextColor(TFT_CYAN, TFT_BLACK);
+  tft.setTextPadding(150);
+  tft.setTextDatum(TC_DATUM);
+  tft.drawString(b, 175, 7);
+  tft.setTextPadding(0);
+  tft.setTextDatum(TL_DATUM);
+}
+
+static void calPintaTodo()
+{
+  tft.fillRect(0, 0, 320, 240, TFT_BLACK);
+  tft.setFreeFont(NULL);
+  tft.setTextFont(1);
+  tft.setTextPadding(0);
+  tft.setTextDatum(MC_DATUM);
+  tft.setTextSize(2);
+  tft.fillRoundRect(2, 1, 44, 18, 4, CAL_C_FN);
+  tft.setTextColor(TFT_WHITE, CAL_C_FN);
+  tft.drawString("<", 24, 10);
+  tft.fillRoundRect(50, 1, 44, 18, 4, CAL_C_FN);
+  tft.drawString(">", 72, 10);
+  tft.fillRoundRect(256, 1, 62, 18, 4, 0x4208);
+  tft.setTextColor(TFT_WHITE, 0x4208);
+  tft.drawString("LUZ", 287, 10);
+  tft.setTextDatum(TL_DATUM);
+  tft.drawRect(0, 22, 320, 52, TFT_DARKCYAN);
+  for (int r = 0; r < 5; r++)
+    for (int c = 0; c < 5; c++)
+      calPintaTecla(r, c, false);
+  calPintaPantalla();
+}
+
+void esp32_2432S028R_CalcScreen(unsigned long mElapsed)
+{
+  mineria = getMiningData(mElapsed);
+  Serial.printf("M8AX - %s >>> Completados %s Share(s), %s Khashes, Prom. Hashrate %s KH/s %s°\n",
+                mineria.currentTime.c_str(), mineria.completedShares.c_str(), mineria.totalKHashes.c_str(), mineria.currentHashRate.c_str(), mineria.temp.c_str());
+
+  bool redraw = hasChangedScreen;
+  if (!calS.init)
+  {
+    memset(&calS, 0, sizeof(calS));
+    calS.init = true;
+    redraw = true;
+  }
+  hasChangedScreen = false;
+  if (redraw)
+    calPintaTodo();
+
+  char hashStr[16];
+  char lastHash[16] = "";
+  snprintf(hashStr, sizeof(hashStr), "%s", mineria.currentHashRate.c_str());
+  calHud(hashStr);
+  strcpy(lastHash, hashStr);
+
+  int16_t t_x, t_y;
+  bool wasDown = touch.getXY(t_x, t_y); // si venimos de un toque, no cuenta como tecla
+  bool salir = false;
+  unsigned long start = millis();
+  unsigned long lastTouchChk = 0;
+  unsigned long lastMiningUpdate = 0;
+  pongLeds(false);
+
+  while (!salir && millis() - start < CAL_SLICE_MS)
+  {
+    unsigned long now = millis();
+
+    // ---- Táctil: solo cuenta al pulsar ( flanco ), no mientras se mantiene ----
+    if (now - lastTouchChk >= 15)
+    {
+      lastTouchChk = now;
+      bool down = touch.getXY(t_x, t_y);
+      if (down && !wasDown)
+      {
+        previousTouchMillis = now;
+        if (t_y < CAL_HH)
+        {
+          if (t_x < 48)
+          {
+            currentDisplayDriver->current_cyclic_screen = currentDisplayDriver->current_cyclic_screen - 1;
+            if (currentDisplayDriver->current_cyclic_screen < 0)
+              currentDisplayDriver->current_cyclic_screen = currentDisplayDriver->num_cyclic_screens - 1;
+            salir = true;
+          }
+          else if (t_x < 96)
+          {
+            currentDisplayDriver->current_cyclic_screen = (currentDisplayDriver->current_cyclic_screen + 1) % currentDisplayDriver->num_cyclic_screens;
+            salir = true;
+          }
+          else if (t_x >= 250)
+          {
+            esp32_2432S028R_AlternateScreenState();
+          }
+        }
+        else if (t_x >= 0 && t_y >= CAL_KY && t_y < CAL_KY + 5 * CAL_KH)
+        {
+          int c = t_x / CAL_KW;
+          int r = (t_y - CAL_KY) / CAL_KH;
+          if (c > 4)
+            c = 4;
+          calPintaTecla(r, c, true);
+          int res = calPulsa(CAL_T[r][c].ins);
+          calPintaPantalla();
+          if (res == 1)
+            ledFlash(false, true, false, 180); // resultado: verde
+          else if (res == 2)
+            ledFlash(true, false, false, 180); // error: rojo largo
+          else
+            ledFlash(true, false, false, 35); // tecla: rojo corto
+          calPintaTecla(r, c, false);
+        }
+      }
+      wasDown = down;
+    }
+
+    // ---- Hashrate arriba, cada segundo ----
+    if (now - lastMiningUpdate >= 1000)
+    {
+      lastMiningUpdate = now;
+      mineria = getMiningData(mElapsed);
+      snprintf(hashStr, sizeof(hashStr), "%s", mineria.currentHashRate.c_str());
+      if (strcmp(hashStr, lastHash) != 0)
+      {
+        calHud(hashStr);
+        strcpy(lastHash, hashStr);
+      }
+    }
+    webAtender();
+    delay(8);
+  }
+
+  pongLeds(false);
+  tft.setTextPadding(0);
+  tft.setTextDatum(TL_DATUM);
+  previousTouchMillis = millis(); // que DoLedStuff no se coma un toque justo entre tandas
+
+  cuentita++;
+  if (cuentita == 15)
+  {
+    ajustarZonaHoraria();
+    obtenerLocYTemp();
+    obtenerVariacionesBTC(variacion1dia, variacion1semana);
+  }
+}
+
+/****************************************************************************************************************
+ *
+ *   FLAPPY HASH - El Flappy Bird que juega la CPU sola, y el pajaro ... ES TU HASHRATE ( ESP32_2432S028R )
+ *
+ *   El "pajaro" es una moneda dorada con alas que lleva escrito el hashrate REAL del minero ( se actualiza cada
+ *   segundo ). Los tubos son RACKS de ASICs con ranuras y LEDs parpadeando, con una abertura por la que hay que
+ *   pasar. Detras hay dos capas de rascacielos con ventanas ( parallax ), estrellas, y abajo una CADENA DE
+ *   BLOQUES con un nonce dorado en cada uno.
+ *
+ *   La CPU juega sola y cada poco "se despista", se la pega y explota. Con la puntuacion el juego se acelera y
+ *   las aberturas se estrechan. Tras el golpe empieza otra partida sola. El record se conserva mientras el
+ *   minero siga encendido.
+ *
+ *   Memoria: sin buffer de pantalla, unos 1,5 KB en el heap. Se piden al entrar y se devuelven al salir a otra.
+ *   Si no hay RAM, se salta la pantalla sin pintar nada.
+ *
+ *   Arriba la hora y el hashrate ( pongDrawHud ), abajo puntos, record y numero de partida, y la barra de
+ *   cripto de siempre ( printPoolData ).
+ *
+ *   Para activarla: pegar este bloque justo antes de analiCadaSegundo ( detras de la ultima pantalla ) y meter
+ *   esp32_2432S028R_FlappyHashScreen en el array esp32_2432S028RCyclicScreens[]. No hace falta tocar nada mas.
+ *
+ ****************************************************************************************************************/
+
+// >>> FLAPPYHASH MOTOR
+#define FH_W 320
+#define FH_H 120
+#define FH_Y0 28 // el HUD de arriba ocupa hasta la 26 y el de abajo empieza en la 150
+#define FH_FRAME_MS 30
+#define FH_SLICE_MS 5000 // tandas de 5 s, como en las demas
+#define FH_NR 4          // racks vivos a la vez
+#define FH_NP 32         // particulas
+#define FH_NS 18         // estrellas
+#define FH_PW 28         // ancho del rack
+#define FH_CAPH 6        // alto de la tapa del rack
+#define FH_ESP 112       // distancia entre racks
+#define FH_SUELO 10      // alto de la cadena de bloques
+#define FH_BX 72         // x fija del pajaro
+#define FH_BH 14         // alto del pajaro
+#define FH_SEGF 18       // ancho de los edificios lejanos
+#define FH_SEGN 30       // ancho de los edificios cercanos
+#define FH_G 0.30f
+#define FH_SALTO (-3.3f)
+#define FH_RGB(r, g, b) ((uint16_t)((((r) & 0xF8) << 8) | (((g) & 0xFC) << 3) | ((b) >> 3)))
+
+// Digitos 3x5 ( 3 bits por fila, de arriba a abajo )
+static const uint16_t FH_DIG[10] = {0x7B6F, 0x2C97, 0x73E7, 0x73CF, 0x5BC9, 0x79CF, 0x79EF, 0x7249, 0x7BEF, 0x7BCF};
+// Cuanto se recorta cada fila del pajaro por los lados para que quede en forma de pastilla
+static const uint8_t FH_PILL[FH_BH] = {4, 3, 2, 1, 0, 0, 0, 0, 0, 0, 1, 2, 3, 4};
+// Colores de las particulas segun lo que les queda de vida ( 4 niveles )
+static const uint16_t FH_PCOL[4][4] = {
+    {FH_RGB(90, 30, 0), FH_RGB(200, 90, 0), FH_RGB(255, 170, 20), FH_RGB(255, 230, 120)},
+    {FH_RGB(60, 60, 80), FH_RGB(120, 120, 150), FH_RGB(190, 190, 210), FH_RGB(255, 255, 255)},
+    {FH_RGB(110, 20, 10), FH_RGB(230, 50, 20), FH_RGB(255, 150, 30), FH_RGB(255, 240, 120)},
+    {FH_RGB(10, 80, 40), FH_RGB(30, 170, 80), FH_RGB(80, 255, 120), FH_RGB(200, 255, 220)}};
+
+struct FhRack
+{
+  float x;
+  int16_t gy; // centro de la abertura
+  uint8_t gap, flash, vivo, pasado;
+  uint16_t id;
+};
+
+struct FhPart
+{
+  float x, y, vx, vy;
+  uint8_t vida, tipo; // 0 dorada, 1 blanca, 2 explosion, 3 verde
+};
+
+struct FhStar
+{
+  float x;
+  uint8_t y, capa;
+};
+
+struct FhMem
+{
+  uint16_t linea[FH_W]; // la primera: alineada a 4 para rellenar de 2 en 2 pixeles
+  FhRack rk[FH_NR];
+  FhPart pt[FH_NP];
+  FhStar es[FH_NS];
+  float y, vy, vel, scF, scN, scS, sigX;
+  int16_t ultGy;
+  uint8_t nd, dg[4], estado, aleteo, flash, ipt, record;
+  uint16_t despiste, finTimer, sigId;
+  uint32_t puntos, frame;
+  char tIzq[16], tCen[14], tDer[16];
+};
+static FhMem *fhM = NULL;
+static uint32_t fhMejor = 0; // record ( fuera del heap: sobrevive a salir de la pantalla )
+static uint32_t fhPartidas = 0;
+
+static inline uint32_t fhRnd(uint32_t n) { return esp_random() % n; }
+static inline float fhRf() { return (esp_random() & 0xFFFF) * (1.0f / 65535.0f); }
+
+static inline uint32_t fhHash(uint32_t v)
+{
+  v ^= v >> 16;
+  v *= 0x7feb352dU;
+  v ^= v >> 15;
+  v *= 0x846ca68bU;
+  v ^= v >> 16;
+  return v;
+}
+
+static inline void fhSpan(uint16_t *L, int xa, int xb, uint16_t c)
+{
+  if (xa < 0)
+    xa = 0;
+  if (xb > FH_W)
+    xb = FH_W;
+  while (xa < xb)
+    L[xa++] = c;
+}
+
+static inline void fhPx(uint16_t *L, int x, uint16_t c)
+{
+  if ((unsigned)x < FH_W)
+    L[x] = c;
+}
+
+// El hashrate pasa a ser el numero que lleva el pajaro ( de 1 a 4 cifras )
+static void fhPonHash(int v)
+{
+  FhMem &m = *fhM;
+  if (v < 0)
+    v = 0;
+  if (v > 9999)
+    v = 9999;
+  char b[8];
+  int n = snprintf(b, sizeof(b), "%d", v);
+  if (n < 1)
+    n = 1;
+  if (n > 4)
+    n = 4;
+  m.nd = (uint8_t)n;
+  for (int i = 0; i < n; i++)
+    m.dg[i] = (uint8_t)(b[i] - '0');
+}
+
+static inline int fhAncho() { return 8 * fhM->nd + 6; }
+
+static void fhChispa(float x, float y, float vx, float vy, uint8_t vida, uint8_t tipo)
+{
+  FhMem &m = *fhM;
+  for (int k = 0; k < FH_NP; k++)
+  {
+    FhPart &p = m.pt[m.ipt];
+    m.ipt = (m.ipt + 1) % FH_NP;
+    if (!p.vida)
+    {
+      p.x = x;
+      p.y = y;
+      p.vx = vx;
+      p.vy = vy;
+      p.vida = vida;
+      p.tipo = tipo;
+      return;
+    }
+  }
+}
+
+static void fhNuevoRack()
+{
+  FhMem &m = *fhM;
+  for (int i = 0; i < FH_NR; i++)
+  {
+    FhRack &r = m.rk[i];
+    if (r.vivo)
+      continue;
+    int gap = 56 - (int)(m.puntos / 2);
+    if (gap < 44)
+      gap = 44;
+    int lo = gap / 2 + 6, hi = FH_H - FH_SUELO - gap / 2 - 6;
+    int gy = m.ultGy + (int)fhRnd(89) - 44; // cambia como mucho 44 px respecto al anterior
+    if (gy < lo)
+      gy = lo;
+    if (gy > hi)
+      gy = hi;
+    r.x = m.sigX;
+    r.gy = gy;
+    r.gap = (uint8_t)gap;
+    r.flash = 0;
+    r.vivo = 1;
+    r.pasado = 0;
+    r.id = m.sigId++;
+    m.ultGy = gy;
+    return;
+  }
+}
+
+static void fhNuevaPartida()
+{
+  FhMem &m = *fhM;
+  m.y = 52.0f;
+  m.vy = 0;
+  m.vel = 1.9f;
+  m.estado = 0;
+  m.aleteo = 0;
+  m.flash = 0;
+  m.despiste = 0;
+  m.finTimer = 0;
+  m.record = 0;
+  m.puntos = 0;
+  m.ultGy = 58;
+  m.sigX = 250.0f;
+  for (int i = 0; i < FH_NR; i++)
+    m.rk[i].vivo = 0;
+  for (int i = 0; i < FH_NP; i++)
+    m.pt[i].vida = 0;
+  fhPartidas++;
+}
+
+static void fhInit()
+{
+  FhMem &m = *fhM;
+  memset(&m, 0, sizeof(FhMem));
+  m.nd = 3;
+  m.dg[0] = 3;
+  m.dg[1] = 9;
+  m.dg[2] = 0;
+  for (int i = 0; i < FH_NS; i++)
+  {
+    m.es[i].x = (float)fhRnd(FH_W);
+    m.es[i].y = (uint8_t)fhRnd(70);
+    m.es[i].capa = (uint8_t)fhRnd(3);
+  }
+  m.scF = (float)fhRnd(500);
+  m.scN = (float)fhRnd(500);
+  fhNuevaPartida();
+}
+
+// La CPU decide si aletea: se mantiene rebotando en la parte baja de la abertura del siguiente rack
+static bool fhIA()
+{
+  FhMem &m = *fhM;
+  if (m.despiste)
+  {
+    m.despiste--;
+    return false;
+  }
+  int izq = FH_BX - fhAncho() / 2;
+  int tgy = 58;
+  float mx = 1e9f;
+  for (int i = 0; i < FH_NR; i++)
+    if (m.rk[i].vivo && m.rk[i].x + FH_PW + 2 > izq && m.rk[i].x < mx)
+    {
+      mx = m.rk[i].x;
+      tgy = m.rk[i].gy;
+    }
+  return (m.y + m.vy + 0.15f) > (float)(tgy + 9);
+}
+
+static bool fhChoca()
+{
+  FhMem &m = *fhM;
+  int bw = fhAncho();
+  int l = FH_BX - bw / 2 + 3, rr = FH_BX + bw / 2 - 3;
+  int t = (int)m.y - 6, b = (int)m.y + 6;
+  if (b >= FH_H - FH_SUELO)
+    return true;
+  for (int i = 0; i < FH_NR; i++)
+  {
+    const FhRack &r = m.rk[i];
+    if (!r.vivo)
+      continue;
+    int x0 = (int)r.x, gt = r.gy - r.gap / 2, gb = r.gy + r.gap / 2;
+    bool cuerpo = rr > x0 && l < x0 + FH_PW;
+    bool tapa = rr > x0 - 2 && l < x0 + FH_PW + 2;
+    if (t < gt && (cuerpo || (b > gt - FH_CAPH && tapa)))
+      return true;
+    if (b > gb && (cuerpo || (t < gb + FH_CAPH && tapa)))
+      return true;
+  }
+  return false;
+}
+
+static void fhExplota()
+{
+  FhMem &m = *fhM;
+  m.estado = 1;
+  m.finTimer = 75;
+  m.flash = 3;
+  for (int i = 0; i < 36; i++)
+  {
+    float a = fhRf() * 6.2832f, v = 0.4f + fhRf() * 2.8f;
+    fhChispa((float)FH_BX, m.y, cosf(a) * v, sinf(a) * v, 14 + fhRnd(18), 2);
+  }
+  for (int i = 0; i < 8; i++)
+    fhChispa((float)FH_BX, m.y, (fhRf() - 0.5f) * 2.0f, -1.0f - fhRf() * 2.0f, 20 + fhRnd(10), 1);
+  if (m.puntos > fhMejor)
+  {
+    fhMejor = m.puntos;
+    m.record = 1;
+  }
+  Serial.printf("M8AX - FlappyHash: Partida %lu | Racks %lu | Record %lu\n",
+                (unsigned long)fhPartidas, (unsigned long)m.puntos, (unsigned long)fhMejor);
+}
+
+static void fhActualizar()
+{
+  FhMem &m = *fhM;
+  m.frame++;
+  if (m.aleteo)
+    m.aleteo--;
+  if (m.flash)
+    m.flash--;
+
+  // Parallax y estrellas
+  m.scF += m.vel * 0.25f;
+  m.scN += m.vel * 0.5f;
+  m.scS += m.vel;
+  for (int i = 0; i < FH_NS; i++)
+  {
+    FhStar &s = m.es[i];
+    s.x -= (0.1f + 0.1f * s.capa) * (m.vel + 0.3f);
+    if (s.x < 0)
+    {
+      s.x += FH_W;
+      s.y = (uint8_t)fhRnd(70);
+    }
+  }
+
+  if (m.estado == 0)
+  {
+    int pt = m.puntos > 40 ? 40 : (int)m.puntos;
+    m.vel += ((1.9f + pt * 0.03f) - m.vel) * 0.05f;
+
+    // Se despista cada tanto ( mas a menudo cuanto mas lejos llega )
+    if (!m.despiste && fhRnd(100000) < 60 + m.puntos * 4)
+      m.despiste = 10 + fhRnd(18);
+
+    if (fhIA())
+    {
+      m.vy = FH_SALTO;
+      m.aleteo = 6;
+      for (int i = 0; i < 3; i++)
+        fhChispa((float)FH_BX - 4 + fhRnd(9), m.y + 7, -m.vel * 0.6f + (fhRf() - 0.5f), 0.5f + fhRf() * 0.8f, 8 + fhRnd(6), 1);
+    }
+    m.vy += FH_G;
+    m.y += m.vy;
+    if (m.y < 7.0f)
+    {
+      m.y = 7.0f;
+      if (m.vy < 0)
+        m.vy = 0;
+    }
+
+    // Estela dorada
+    fhChispa((float)(FH_BX - fhAncho() / 2), m.y + (fhRf() - 0.5f) * 6.0f, -m.vel - 0.3f, (fhRf() - 0.5f) * 0.3f, 12 + fhRnd(10), 0);
+
+    // Racks
+    m.sigX -= m.vel;
+    if (m.sigX <= FH_W + 2)
+    {
+      fhNuevoRack();
+      m.sigX += FH_ESP;
+    }
+    int izq = FH_BX - fhAncho() / 2;
+    for (int i = 0; i < FH_NR; i++)
+    {
+      FhRack &r = m.rk[i];
+      if (!r.vivo)
+        continue;
+      r.x -= m.vel;
+      if (r.flash)
+        r.flash--;
+      if (r.x + FH_PW + 4 < 0)
+      {
+        r.vivo = 0;
+        continue;
+      }
+      if (!r.pasado && r.x + FH_PW + 2 < izq + 2)
+      {
+        r.pasado = 1;
+        r.flash = 12;
+        m.puntos++;
+        for (int k = 0; k < 10; k++)
+        {
+          float a = k * 0.6283f, v = 0.8f + fhRf() * 1.2f;
+          fhChispa(r.x + FH_PW / 2, (float)r.gy, cosf(a) * v - m.vel * 0.5f, sinf(a) * v, 14 + fhRnd(10), 3);
+        }
+      }
+    }
+
+    if (fhChoca())
+      fhExplota();
+  }
+  else
+  {
+    m.vel *= 0.9f;
+    if (m.finTimer && --m.finTimer == 0)
+      fhNuevaPartida();
+  }
+
+  // Particulas
+  for (int i = 0; i < FH_NP; i++)
+  {
+    FhPart &p = m.pt[i];
+    if (!p.vida)
+      continue;
+    p.x += p.vx;
+    p.y += p.vy;
+    if (p.tipo == 2)
+      p.vy += 0.05f;
+    p.vida--;
+    if (p.x < -2 || p.x > FH_W + 2 || p.y < -2 || p.y > FH_H)
+      p.vida = 0;
+  }
+}
+
+// ---- Pintado: una linea cada vez ----
+
+static void fhRackLinea(uint16_t *L, int y, const FhRack &r, uint32_t frame)
+{
+  int gt = r.gy - r.gap / 2, gb = r.gy + r.gap / 2, x0 = (int)r.x;
+  bool arriba = y < gt, abajo = (y >= gb) && (y < FH_H - FH_SUELO);
+  if (!arriba && !abajo)
+    return;
+  bool tapa = arriba ? (y >= gt - FH_CAPH) : (y < gb + FH_CAPH);
+  bool filoGap = arriba ? (y == gt - 1) : (y == gb);
+  bool filoExt = tapa && (arriba ? (y == gt - FH_CAPH) : (y == gb + FH_CAPH - 1));
+  int xa = tapa ? x0 - 2 : x0, xb = tapa ? x0 + FH_PW + 2 : x0 + FH_PW;
+  if (xb <= 0 || xa >= FH_W)
+    return;
+  uint16_t borde = r.flash ? FH_RGB(110, 255, 150) : (tapa ? FH_RGB(140, 170, 230) : FH_RGB(96, 120, 170));
+  uint16_t cuerpo = r.flash ? FH_RGB(40, 90, 66) : (tapa ? FH_RGB(52, 64, 96) : FH_RGB(34, 42, 64));
+  if (filoGap || filoExt)
+  {
+    fhSpan(L, xa, xb, borde);
+    return;
+  }
+  fhSpan(L, xa, xb, borde);
+  fhSpan(L, xa + 1, xb - 1, cuerpo);
+  if (tapa)
+    return;
+  int f = y & 7;
+  if (f == 0)
+    fhSpan(L, xa + 1, xb - 1, FH_RGB(16, 20, 34)); // ranura entre servidores
+  else if (f == 3 || f == 4)
+  {
+    int row = y >> 3;
+    for (int k = 0; k < 2; k++)
+    {
+      uint32_t s = (r.id * 5 + row * 7 + k * 3 + (frame >> 4) * (k + 2)) & 7;
+      uint16_t c = s < 5 ? FH_RGB(40, 255, 100) : (s < 7 ? FH_RGB(255, 170, 30) : FH_RGB(255, 50, 40));
+      int lx = x0 + 5 + k * 5;
+      fhSpan(L, lx, lx + 2, c);
+    }
+    if (f == 3)
+      for (int vx = x0 + 17; vx < x0 + FH_PW - 4; vx += 2)
+        fhPx(L, vx, FH_RGB(70, 84, 118)); // rejilla de ventilacion
+  }
+}
+
+static void fhPajaroLinea(uint16_t *L, int y)
+{
+  FhMem &m = *fhM;
+  if (m.estado)
+    return;
+  int bw = fhAncho(), izq = FH_BX - bw / 2, top = (int)(m.y + 0.5f) - FH_BH / 2;
+  int r = y - top;
+  if (r >= -4 && r < 0 && m.aleteo)
+  {
+    static const uint8_t wd[4] = {1, 3, 5, 6};
+    fhSpan(L, izq + 4, izq + 4 + wd[r + 4], FH_RGB(215, 240, 255));
+  }
+  if (r >= FH_BH && r < FH_BH + 4 && !m.aleteo)
+  {
+    static const uint8_t wd[4] = {6, 5, 3, 1};
+    fhSpan(L, izq + 4, izq + 4 + wd[r - FH_BH], FH_RGB(215, 240, 255));
+  }
+  if (r < 0 || r >= FH_BH)
+    return;
+  int ins = FH_PILL[r], a = izq + ins, b = izq + bw - ins;
+  uint16_t borde = FH_RGB(140, 60, 0);
+  uint16_t cuerpo = r < 4 ? FH_RGB(255, 225, 90) : (r < 10 ? FH_RGB(255, 190, 25) : FH_RGB(235, 135, 10));
+  if (r == 0 || r == FH_BH - 1)
+    fhSpan(L, a, b, borde);
+  else
+  {
+    fhSpan(L, a, b, cuerpo);
+    fhPx(L, a, borde);
+    fhPx(L, b - 1, borde);
+  }
+  if (r >= 2 && r < 12)
+  {
+    int dr = (r - 2) >> 1, dx = izq + 4;
+    for (int k = 0; k < m.nd; k++)
+    {
+      uint16_t g = FH_DIG[m.dg[k]];
+      for (int c = 0; c < 3; c++)
+        if ((g >> ((4 - dr) * 3 + (2 - c))) & 1)
+          fhSpan(L, dx + k * 8 + c * 2, dx + k * 8 + c * 2 + 2, FH_RGB(70, 25, 0));
+    }
+  }
+}
+
+static void fhLinea(int y, int offF, int offN, int offS, const uint8_t *hF, const uint8_t *hN)
+{
+  FhMem &m = *fhM;
+  uint16_t *L = m.linea;
+  const int suelo = FH_H - FH_SUELO;
+
+  // Cielo nocturno con degradado
+  uint16_t cielo = m.flash ? FH_RGB(200, 200, 225) : FH_RGB(6 + y * 50 / 110, 8 + y * 14 / 110, 30 + y * 50 / 110);
+  uint32_t cc = ((uint32_t)cielo << 16) | cielo;
+  uint32_t *d = (uint32_t *)L;
+  for (int i = 0; i < FH_W / 2; i++)
+    d[i] = cc;
+
+  // Estrellas
+  if (!m.flash)
+    for (int i = 0; i < FH_NS; i++)
+      if (m.es[i].y == y)
+      {
+        uint16_t c = m.es[i].capa == 0 ? FH_RGB(60, 70, 130) : (m.es[i].capa == 1 ? FH_RGB(130, 140, 190) : FH_RGB(255, 255, 255));
+        if (m.es[i].capa == 2 && ((m.frame + i * 7) & 31) < 3)
+          c = FH_RGB(120, 120, 160);
+        fhPx(L, (int)m.es[i].x, c);
+      }
+
+  // Rascacielos lejanos
+  {
+    int base = -(offF % FH_SEGF);
+    for (int s = 0; s < 24 && base + s * FH_SEGF < FH_W; s++)
+      if (y >= suelo - hF[s] && y < suelo)
+        fhSpan(L, base + s * FH_SEGF, base + (s + 1) * FH_SEGF - 1, FH_RGB(28, 22, 62));
+  }
+
+  // Rascacielos cercanos con ventanas
+  {
+    int base = -(offN % FH_SEGN), s0 = offN / FH_SEGN;
+    for (int s = 0; s < 24 && base + s * FH_SEGN < FH_W; s++)
+    {
+      int t = suelo - hN[s];
+      if (y < t || y >= suelo)
+        continue;
+      int x0 = base + s * FH_SEGN;
+      fhSpan(L, x0, x0 + FH_SEGN - 2, FH_RGB(13, 11, 34));
+      int ry = y - t;
+      if (ry >= 4 && (ry % 7) < 2)
+        for (int k = 0; k < 3; k++)
+          if ((fhHash((s0 + s) * 5 + k + (ry / 7) * 131) & 3) == 0)
+            fhSpan(L, x0 + 4 + k * 8, x0 + 8 + k * 8, FH_RGB(255, 210, 110));
+    }
+  }
+
+  // Cadena de bloques
+  if (y >= suelo)
+  {
+    int gr = y - suelo, u = offS % 28;
+    for (int x = 0; x < FH_W; x++)
+    {
+      uint16_t c;
+      if (u < 24)
+      {
+        if (gr == 0)
+          c = FH_RGB(110, 140, 220);
+        else if (gr == 1)
+          c = FH_RGB(70, 95, 170);
+        else if (gr == FH_SUELO - 1)
+          c = FH_RGB(20, 26, 60);
+        else if ((gr == 4 || gr == 5) && u >= 5 && u < 10)
+          c = FH_RGB(255, 190, 20); // el nonce
+        else
+          c = FH_RGB(36, 48, 96);
+      }
+      else
+        c = (gr == 4 || gr == 5) ? FH_RGB(90, 120, 200) : FH_RGB(8, 8, 20);
+      L[x] = c;
+      if (++u == 28)
+        u = 0;
+    }
+  }
+
+  // Racks
+  for (int i = 0; i < FH_NR; i++)
+    if (m.rk[i].vivo)
+      fhRackLinea(L, y, m.rk[i], m.frame);
+
+  // Particulas
+  for (int i = 0; i < FH_NP; i++)
+  {
+    const FhPart &p = m.pt[i];
+    if (!p.vida)
+      continue;
+    int py = (int)p.y;
+    bool grande = p.tipo == 2 && p.vida > 16;
+    if (py == y || (grande && py + 1 == y))
+    {
+      uint16_t c = FH_PCOL[p.tipo][p.vida >> 3];
+      fhPx(L, (int)p.x, c);
+      if (grande)
+        fhPx(L, (int)p.x + 1, c);
+    }
+  }
+
+  fhPajaroLinea(L, y);
+}
+
+static void fhPintar()
+{
+  FhMem &m = *fhM;
+  int offF = (int)m.scF, offN = (int)m.scN, offS = (int)m.scS;
+  uint8_t hF[24], hN[24];
+  int sF = offF / FH_SEGF, sN = offN / FH_SEGN;
+  for (int s = 0; s < 24; s++)
+  {
+    hF[s] = (uint8_t)(14 + fhHash(sF + s) % 34);
+    hN[s] = (uint8_t)(10 + fhHash((sN + s) * 3 + 1) % 30);
+  }
+  tft.startWrite();
+  tft.setAddrWindow(0, FH_Y0, FH_W, FH_H);
+  for (int y = 0; y < FH_H; y++)
+  {
+    fhLinea(y, offF, offN, offS, hF, hN);
+    tft.pushColors(m.linea, FH_W, true);
+  }
+  tft.endWrite();
+}
+
+static void fhFrame()
+{
+  fhActualizar();
+  fhPintar();
+}
+
+// los tres textos de abajo, solo se repintan si cambian
+static void fhTextos(bool forzar)
+{
+  FhMem &m = *fhM;
+  char izq[16], cen[14], der[16];
+  snprintf(izq, sizeof(izq), "Pts %lu", (unsigned long)m.puntos);
+  if (m.estado && m.record)
+    snprintf(cen, sizeof(cen), "RECORD!");
+  else if (m.estado)
+    snprintf(cen, sizeof(cen), "CRASH!");
+  else
+    snprintf(cen, sizeof(cen), "Rec %lu", (unsigned long)fhMejor);
+  snprintf(der, sizeof(der), "Part %lu", (unsigned long)fhPartidas);
+  bool a = forzar || strcmp(izq, m.tIzq) != 0, b = forzar || strcmp(cen, m.tCen) != 0, c = forzar || strcmp(der, m.tDer) != 0;
+  if (!a && !b && !c)
+    return;
+  tft.setFreeFont(NULL);
+  tft.setTextFont(1);
+  tft.setTextSize(2);
+  if (a)
+  {
+    tft.setTextColor(TFT_YELLOW, TFT_BLACK);
+    tft.setTextPadding(100);
+    tft.setTextDatum(TL_DATUM);
+    tft.drawString(izq, 4, 151);
+    strcpy(m.tIzq, izq);
+  }
+  if (b)
+  {
+    tft.setTextColor(m.estado ? TFT_ORANGE : TFT_CYAN, TFT_BLACK);
+    tft.setTextPadding(90);
+    tft.setTextDatum(TC_DATUM);
+    tft.drawString(cen, 160, 151);
+    strcpy(m.tCen, cen);
+  }
+  if (c)
+  {
+    tft.setTextColor(TFT_GREEN, TFT_BLACK);
+    tft.setTextPadding(96);
+    tft.setTextDatum(TR_DATUM);
+    tft.drawString(der, 316, 151);
+    strcpy(m.tDer, der);
+  }
+  tft.setTextPadding(0);
+  tft.setTextDatum(TL_DATUM);
+}
+// <<< FLAPPYHASH MOTOR
+
+void esp32_2432S028R_FlappyHashScreen(unsigned long mElapsed)
+{
+  mineria = getMiningData(mElapsed);
+  Serial.printf("M8AX - %s >>> Completados %s Share(s), %s Khashes, Prom. Hashrate %s KH/s %s°\n",
+                mineria.currentTime.c_str(), mineria.completedShares.c_str(), mineria.totalKHashes.c_str(), mineria.currentHashRate.c_str(), mineria.temp.c_str());
+
+  bool redraw = hasChangedScreen;
+  if (!fhM)
+  {
+    fhM = (FhMem *)malloc(sizeof(FhMem));
+    if (!fhM)
+    {
+      Serial.println("M8AX - FlappyHash: No Hay RAM Libre");
+      delay(1000);
+      return;
+    }
+    fhInit();
+    redraw = true;
+  }
+  const int fhMiPantalla = currentDisplayDriver->current_cyclic_screen;
+  fhPonHash((int)(mineria.currentHashRate.toFloat() + 0.5f));
+  if (redraw)
+  {
+    tft.fillRect(0, 0, 320, 170, TFT_BLACK);
+    fhTextos(true);
+  }
+  printPoolData(); // barra de abajo, solo se repinta cuando toca
+  hasChangedScreen = false;
+
+  char horaStr[9] = "";
+  char lastHora[9] = "";
+  char hashStr[16];
+  char lastHash[16] = "";
+
+  unsigned long start = millis();
+  unsigned long lastMiningUpdate = 0;
+  unsigned long lastTouchChk = 0;
+  unsigned long siguiente = start;
+  pongLeds(false);
+  unsigned long ledApagarEn = 0;
+
+  while (millis() - start < FH_SLICE_MS)
+  {
+    unsigned long now = millis();
+
+    // ---- LEDs: se apagan solos tras el destello ----
+    if (ledApagarEn && now >= ledApagarEn)
+    {
+      pongLeds(false);
+      ledApagarEn = 0;
+    }
+
+    // ---- Táctil (misma lógica que el Pong) ----
+    if (now - lastTouchChk >= 40 && now - previousTouchMillis >= 500)
+    {
+      lastTouchChk = now;
+      int16_t t_x, t_y;
+      if (touch.getXY(t_x, t_y))
+      {
+        previousTouchMillis = now;
+        if (((t_x > 109) && (t_x < 211)) && ((t_y > 185) && (t_y < 241)))
+        {
+          bottomScreenBlue ^= true;
+          hasChangedScreen = true;
+        }
+        else if ((t_x > 235) && ((t_y > 0) && (t_y < 16)))
+        {
+          esp32_2432S028R_AlternateScreenState();
+        }
+        else if (t_x > 160)
+        {
+          currentDisplayDriver->current_cyclic_screen = (currentDisplayDriver->current_cyclic_screen + 1) % currentDisplayDriver->num_cyclic_screens;
+        }
+        else
+        {
+          currentDisplayDriver->current_cyclic_screen = currentDisplayDriver->current_cyclic_screen - 1;
+          if (currentDisplayDriver->current_cyclic_screen < 0)
+            currentDisplayDriver->current_cyclic_screen = currentDisplayDriver->num_cyclic_screens - 1;
+        }
+        break;
+      }
+    }
+
+    if (now >= siguiente)
+    {
+      uint32_t ptsAntes = fhM->puntos;
+      uint8_t estAntes = fhM->estado;
+      fhFrame();
+
+      if (estAntes == 0 && fhM->estado == 1) // muerte: LED rojo
+      {
+        pongLeds(false);
+        digitalWrite(LED_PIN, LOW);
+        ledApagarEn = millis() + 300;
+      }
+      else if (fhM->puntos > ptsAntes) // pasa un edificio: LED verde
+      {
+        pongLeds(false);
+        digitalWrite(LED_PIN_G, LOW);
+        ledApagarEn = millis() + 80;
+      }
+
+      fhTextos(false);
+      siguiente = millis() + FH_FRAME_MS;
+    }
+
+    // ---- Hora (izquierda) y hashrate (derecha), arriba como en las demás ----
+    if (now - lastMiningUpdate >= 1000)
+    {
+      lastMiningUpdate = now;
+      mineria = getMiningData(mElapsed);
+      snprintf(hashStr, sizeof(hashStr), "%s", mineria.currentHashRate.c_str());
+      fhPonHash((int)(mineria.currentHashRate.toFloat() + 0.5f)); // el pajaro ES el hashrate
+      time_t epoch = (time_t)timeClient.getEpochTime();
+      struct tm *ti = localtime(&epoch);
+      snprintf(horaStr, sizeof(horaStr), "%02d:%02d:%02d", ti->tm_hour, ti->tm_min, ti->tm_sec);
+      if (strcmp(horaStr, lastHora) != 0 || strcmp(hashStr, lastHash) != 0)
+      {
+        pongDrawHud(hashStr, horaStr);
+        strcpy(lastHora, horaStr);
+        strcpy(lastHash, hashStr);
+      }
+    }
+    webAtender();
+    delay(2);
+  }
+
+  pongLeds(false);
+  tft.setTextPadding(0);
+  tft.setTextDatum(TL_DATUM);
+
+  if (currentDisplayDriver->current_cyclic_screen != fhMiPantalla)
+  {
+    free(fhM);
+    fhM = NULL;
+  }
+
+  cuentita++;
+  if (cuentita == 15)
+  {
+    ajustarZonaHoraria();
+    obtenerLocYTemp();
+    obtenerVariacionesBTC(variacion1dia, variacion1semana);
+  }
+}
+
+/****************************************************************************************************************
+ *
+ *   Escrito por: M8AX
+ *
+ *   Descripción: ECG HASHRATE - Pantalla para ESP32_2432S028R
+ *   -----------------------------------------------------------------------
+ *
+ *   Un electrocardiograma con los últimos 30 minutos de hashrate. Cada píxel de ancho es una muestra
+ *   ( 294 muestras x 6,122 s = 30 min ) y el trazo entra por la derecha y se va desplazando a la izquierda.
+ *
+ *   - Rejilla de papel de ECG: una línea vertical cada 5 minutos y líneas horizontales con su escala en KH/s
+ *     ( la escala se ajusta sola a lo que haya minado en los últimos 30 minutos ).
+ *   - Línea ámbar discontinua en ECG_UMBRAL ( 350 KH/s ). Por debajo es zona roja.
+ *   - Trazo verde por encima del umbral y rojo por debajo, con relleno degradado debajo.
+ *   - Barrido tipo monitor: un destello blanco con cola recorre el trazo de izquierda a derecha.
+ *   - Punto en la última muestra que late, y un corazón arriba con los BPM ( BPM = KH/s x ECG_BPM_K,
+ *     así que 350 KH/s son 70 BPM ).
+ *   - Diagnóstico abajo: RITMO SINUSAL ( > umbral ), ARRITMIA! ( por debajo ) o ASISTOLIA!! ( 0 KH/s ).
+ *   - Máximo y mínimo de los últimos 30 minutos.
+ *
+ *   LEDs: verde, un parpadeo cada segundo, mientras el hashrate esté por encima de ECG_UMBRAL. Por debajo,
+ *   rojo con doble latido "lub-dub" cada segundo. Con 0 KH/s, rojo fijo ( electro plano, pitido continuo ).
+ *
+ *   El historial se guarda en ecgMuestrea(), que mide solo cada ECG_MS. Si además la llamas desde
+ *   analiCadaSegundo, el historial se sigue llenando aunque estés en otra pantalla.
+ *
+ *   Para activarla hay que pegar este bloque antes de analiCadaSegundo y meter
+ *   esp32_2432S028R_ECGScreen en el array esp32_2432S028RCyclicScreens[].
+ *
+ *   Ajustes: ECG_UMBRAL, ECG_BPM_K, ECG_SWEEP_MS ( velocidad del barrido ) y los colores ECG_C_*.
+ *
+ ****************************************************************************************************************/
+
+#define ECG_N 294         // muestras en pantalla = columnas del trazo ( 294 = 6 bloques de 49 px, 5 min cada uno )
+#define ECG_MS 6122       // ms entre muestras ( 294 x 6,122 s = 30 min )
+#define ECG_UMBRAL 350.0f // KH/s: por encima es "sano" ( verde ), por debajo "arritmia" ( rojo )
+#define ECG_BPM_K 0.2f    // BPM = KH/s x esto ( 350 KH/s -> 70 BPM )
+#define ECG_PX 26         // x donde empieza el trazo ( a la izquierda va la escala )
+#define ECG_PY 20         // y donde empieza el trazo ( encima va la cabecera )
+#define ECG_PH 124        // alto del trazo
+#define ECG_SLICE_MS 5000 // tandas largas, como en las demás
+#define ECG_SWEEP_MS 25   // ms entre pasos del barrido
+#define ECG_SWEEP_PASO 3  // píxeles que avanza el barrido en cada paso
+#define ECG_COLA 8        // largo de la cola del barrido
+
+#define ECG_C_VERDE 0x5FEA // trazo bueno ( verde fósforo )
+#define ECG_C_ROJO 0xFA28  // trazo malo
+#define ECG_C_AMBAR 0xFD20 // línea del umbral
+#define ECG_C_GRIDH 0x01A0 // rejilla horizontal
+#define ECG_C_GRIDV 0x0260 // rejilla vertical ( cada 5 min )
+#define ECG_C_ZONA 0x1800  // fondo de la zona por debajo del umbral
+#define ECG_C_GRIS 0x7BEF  // textos pequeños
+
+static float ecgH[ECG_N];        // historial ( anillo ), KH/s
+static uint16_t ecgHead = 0;     // donde se escribe la próxima muestra
+static uint16_t ecgCount = 0;    // cuántas muestras hay ( máx. ECG_N )
+static uint32_t ecgSeq = 0;      // sube con cada muestra nueva
+static unsigned long ecgUlt = 0; // cuándo se tomó la última
+static bool ecgInit = false;
+static uint32_t ecgSeqVisto = 0;
+
+static int16_t ecgY[ECG_N]; // fila de cada columna ( 0 = arriba ), -1 si todavía no hay muestra
+static bool ecgOk[ECG_N];   // true si esa muestra supera el umbral
+static int16_t ecgYUmb = 0; // fila del umbral
+static int16_t ecgGY[10];   // filas de la rejilla horizontal
+static float ecgGV[10];     // valor ( KH/s ) de cada fila
+static uint8_t ecgNG = 0;
+static float ecgMin = 0, ecgMax = 0;
+static int ecgSw = 0;       // columna del barrido ( negativo = en pausa )
+static bool ecgLat = false; // el punto de la última muestra está "latiendo"
+
+// Toma una muestra cada ECG_MS. Se puede llamar todo lo seguido que se quiera.
+static void ecgMuestrea()
+{
+  unsigned long ahora = millis();
+  if (ecgUlt != 0 && ahora - ecgUlt < ECG_MS)
+    return;
+  if (mineria.currentHashRate.length() == 0)
+    return;
+  float h = mineria.currentHashRate.toFloat();
+  if (h <= 0 && ecgCount == 0)
+    return; // el historial empieza con el primer hashrate real
+  ecgUlt = ahora;
+  ecgH[ecgHead] = h;
+  ecgHead = (ecgHead + 1) % ECG_N;
+  if (ecgCount < ECG_N)
+    ecgCount++;
+  ecgSeq++;
+}
+
+// Muestra de la columna c ( 0 = la más vieja, ECG_N - 1 = la más nueva ). -1 si todavía no hay.
+static float ecgMuestra(int c)
+{
+  int edad = ECG_N - 1 - c;
+  if (edad >= ecgCount)
+    return -1.0f;
+  return ecgH[((int)ecgHead - 1 - edad + 2 * ECG_N) % ECG_N];
+}
+
+static uint16_t ecgMezcla(uint16_t a, uint16_t b, uint8_t t) // t = 0 -> a, 255 -> b
+{
+  int ra = (a >> 11) & 31, ga = (a >> 5) & 63, ba = a & 31;
+  int rb = (b >> 11) & 31, gb = (b >> 5) & 63, bb = b & 31;
+  int r = ra + ((rb - ra) * t) / 255;
+  int g = ga + ((gb - ga) * t) / 255;
+  int bl = ba + ((bb - ba) * t) / 255;
+  return (uint16_t)((r << 11) | (g << 5) | bl);
+}
+
+static int ecgFila(float v, float lo, float hi)
+{
+  int y = (int)lroundf((ECG_PH - 1) - (v - lo) / (hi - lo) * (ECG_PH - 1));
+  return y < 0 ? 0 : (y > ECG_PH - 1 ? ECG_PH - 1 : y);
+}
+
+// Calcula la escala ( redondeada para que las etiquetas no bailen ), la rejilla y la fila de cada columna
+static void ecgEscala()
+{
+  float dmin = 1e9f, dmax = -1e9f;
+  for (int c = 0; c < ECG_N; c++)
+  {
+    float v = ecgMuestra(c);
+    if (v < 0)
+      continue;
+    if (v < dmin)
+      dmin = v;
+    if (v > dmax)
+      dmax = v;
+  }
+  bool hay = (dmax >= 0);
+  ecgMin = hay ? dmin : 0;
+  ecgMax = hay ? dmax : 0;
+  if (!hay)
+  {
+    dmin = ECG_UMBRAL - 50;
+    dmax = ECG_UMBRAL + 50;
+  }
+
+  float lo = dmin < ECG_UMBRAL ? dmin : ECG_UMBRAL; // el umbral siempre se ve
+  float hi = dmax > ECG_UMBRAL ? dmax : ECG_UMBRAL;
+  if (hi - lo < 30)
+  {
+    float m = (lo + hi) / 2;
+    lo = m - 15;
+    hi = m + 15;
+  }
+  float margen = (hi - lo) * 0.12f;
+  lo -= margen;
+  hi += margen;
+  if (lo < 0)
+    lo = 0;
+
+  static const float pasos[] = {1, 2, 5, 10, 20, 25, 50, 100, 200, 500, 1000, 2000, 5000};
+  float paso = 5000;
+  for (unsigned i = 0; i < sizeof(pasos) / sizeof(pasos[0]); i++)
+    if ((hi - lo) / pasos[i] <= 6)
+    {
+      paso = pasos[i];
+      break;
+    }
+  lo = floorf(lo / paso) * paso;
+  hi = ceilf(hi / paso) * paso;
+  if (hi - lo < paso)
+    hi = lo + paso;
+
+  ecgNG = 0;
+  for (float g = lo; g <= hi + 0.01f && ecgNG < 10; g += paso)
+  {
+    ecgGV[ecgNG] = g;
+    ecgGY[ecgNG] = ecgFila(g, lo, hi);
+    ecgNG++;
+  }
+  ecgYUmb = ecgFila(ECG_UMBRAL, lo, hi);
+
+  for (int c = 0; c < ECG_N; c++)
+  {
+    float v = ecgMuestra(c);
+    ecgY[c] = (v >= 0) ? ecgFila(v, lo, hi) : -1;
+    ecgOk[c] = (v >= ECG_UMBRAL);
+  }
+}
+
+// Pinta una columna entera ( fondo, relleno, rejilla, umbral, trazo y punto ) y la manda de un golpe
+static void ecgPintaCol(int c)
+{
+  uint16_t col[ECG_PH];
+  const int yc = ecgY[c];
+  const int dist = ecgSw - c; // distancia al barrido ( 0 = justo debajo )
+
+  for (int i = 0; i < ECG_PH; i++)
+    col[i] = (dist >= 0 && dist <= 1) ? 0x0220 : ((i > ecgYUmb) ? ECG_C_ZONA : 0x0000);
+
+  if (yc >= 0) // relleno degradado debajo del trazo
+  {
+    uint16_t A, B, C;
+    if (ecgOk[c])
+    {
+      A = 0x03A0;
+      B = 0x0240;
+      C = 0x0120;
+    }
+    else
+    {
+      A = 0x4800;
+      B = 0x3000;
+      C = 0x1800;
+    }
+    for (int i = yc; i < ECG_PH; i++)
+      col[i] = (i - yc < 8) ? A : ((i - yc < 28) ? B : C);
+  }
+
+  if ((c % 3) == 0)
+    for (int g = 0; g < ecgNG; g++)
+      col[ecgGY[g]] = ECG_C_GRIDH;
+  if ((c % 49) == 0)
+    for (int i = 0; i < ECG_PH; i += 3)
+      col[i] = ECG_C_GRIDV;
+  if ((c % 6) < 3)
+    col[ecgYUmb] = ECG_C_AMBAR; // umbral discontinuo
+
+  if (yc >= 0) // trazo: tramo vertical que une con las columnas vecinas, así la línea no tiene huecos
+  {
+    int y0 = yc, y1 = yc;
+    if (c > 0 && ecgY[c - 1] >= 0)
+      y0 = (ecgY[c - 1] + yc) / 2;
+    if (c < ECG_N - 1 && ecgY[c + 1] >= 0)
+      y1 = (yc + ecgY[c + 1]) / 2;
+    int a = y0 < y1 ? y0 : y1;
+    int b = y0 > y1 ? y0 : y1;
+    if (yc < a)
+      a = yc;
+    if (yc > b)
+      b = yc;
+    uint16_t core = ecgOk[c] ? ECG_C_VERDE : ECG_C_ROJO;
+    int hl = (dist >= 0 && dist <= ECG_COLA) ? ECG_COLA - dist : 0; // destello del barrido
+    if (hl)
+      core = ecgMezcla(core, 0xFFFF, hl * 28);
+    uint16_t brillo = ecgMezcla(core, 0x0000, 170);
+    if (hl >= 3)
+    {
+      a--;
+      b++;
+    }
+    for (int i = a - 1; i <= b + 1; i++)
+      if (i >= 0 && i < ECG_PH)
+        col[i] = (i >= a && i <= b) ? core : brillo;
+  }
+
+  const int hy = ecgY[ECG_N - 1]; // punto de la última muestra ( late con los BPM )
+  if (hy >= 0 && c >= ECG_N - 7)
+  {
+    const int R = ecgLat ? 4 : 2;
+    const int dx = c - (ECG_N - 1);
+    uint16_t halo = ecgMezcla(ecgOk[ECG_N - 1] ? ECG_C_VERDE : ECG_C_ROJO, 0x0000, 110);
+    for (int i = hy - 6; i <= hy + 6; i++)
+    {
+      if (i < 0 || i >= ECG_PH)
+        continue;
+      int d2 = dx * dx + (i - hy) * (i - hy);
+      if (d2 <= R * R)
+        col[i] = 0xFFFF;
+      else if (ecgLat && d2 <= (R + 2) * (R + 2))
+        col[i] = halo;
+    }
+  }
+
+  tft.startWrite();
+  tft.setAddrWindow(ECG_PX + c, ECG_PY, 1, ECG_PH);
+  tft.pushColors(col, ECG_PH, true);
+  tft.endWrite();
+}
+
+// Escala a la izquierda, marcas de tiempo y máx / mín debajo del trazo
+static void ecgEjes()
+{
+  char b[16];
+  tft.fillRect(0, ECG_PY, ECG_PX, ECG_PH, TFT_BLACK);
+  tft.fillRect(0, ECG_PY + ECG_PH + 1, 320, 8, TFT_BLACK);
+  tft.setFreeFont(NULL);
+  tft.setTextFont(1);
+  tft.setTextSize(1);
+  tft.setTextPadding(0);
+
+  tft.setTextDatum(MR_DATUM);
+  tft.setTextColor(ECG_C_GRIS, TFT_BLACK);
+  for (int g = 0; g < ecgNG; g++)
+  {
+    int y = ECG_PY + ecgGY[g];
+    if (abs(y - (ECG_PY + ecgYUmb)) < 8)
+      continue; // no pisar la etiqueta del umbral
+    snprintf(b, sizeof(b), "%d", (int)(ecgGV[g] + 0.5f));
+    tft.drawString(b, ECG_PX - 3, y);
+  }
+  snprintf(b, sizeof(b), "%d", (int)ECG_UMBRAL);
+  tft.setTextColor(ECG_C_AMBAR, TFT_BLACK);
+  tft.drawString(b, ECG_PX - 3, ECG_PY + ecgYUmb);
+
+  const int yT = ECG_PY + ECG_PH + 1;
+  tft.setTextDatum(TL_DATUM);
+  tft.setTextColor(ECG_C_GRIS, TFT_BLACK);
+  tft.drawString("-30m", ECG_PX, yT);
+  tft.drawString("-15m", ECG_PX + (ECG_N / 2) - 12, yT);
+
+  tft.setTextDatum(TR_DATUM);
+  if (ecgCount > 0)
+  {
+    snprintf(b, sizeof(b), "MIN %d", (int)(ecgMin + 0.5f));
+    tft.setTextColor(ECG_C_ROJO, TFT_BLACK);
+    tft.drawString(b, 319, yT);
+    int w = 6 * (int)strlen(b) + 8;
+    snprintf(b, sizeof(b), "MAX %d", (int)(ecgMax + 0.5f));
+    tft.setTextColor(ECG_C_VERDE, TFT_BLACK);
+    tft.drawString(b, 319 - w, yT);
+  }
+  else
+  {
+    tft.setTextDatum(MC_DATUM);
+    tft.setTextColor(ECG_C_AMBAR, TFT_BLACK);
+    tft.drawString("ESPERANDO HASHRATE...", ECG_PX + ECG_N / 2, ECG_PY + ECG_PH / 2);
+  }
+  tft.setTextDatum(TL_DATUM);
+}
+
+// Repinta todo el trazo ( cuando llega una muestra nueva o al entrar en la pantalla )
+static void ecgPintaTodo()
+{
+  ecgEscala();
+  for (int c = 0; c < ECG_N; c++)
+    ecgPintaCol(c);
+  ecgEjes();
+}
+
+static void ecgCorazon(bool grande, uint16_t color)
+{
+  const int cx = 214;
+  const int r = grande ? 5 : 4;
+  const int base = 6 + (r >> 1);
+  tft.fillRect(cx - 13, 0, 26, 19, TFT_BLACK);
+  tft.fillCircle(cx - r, 6, r, color);
+  tft.fillCircle(cx + r, 6, r, color);
+  tft.fillTriangle(cx - 2 * r, base, cx + 2 * r, base, cx, base + 2 * r, color);
+}
+
+static void ecgCabecera(const char *bpm, uint16_t col)
+{
+  tft.setFreeFont(NULL);
+  tft.setTextFont(1);
+  tft.setTextSize(2);
+  tft.setTextPadding(0);
+  tft.setTextDatum(TL_DATUM);
+  tft.setTextColor(TFT_CYAN, TFT_BLACK);
+  tft.drawString("ECG HASHRATE 30M", 4, 2);
+  tft.setTextDatum(TR_DATUM);
+  tft.setTextColor(col, TFT_BLACK);
+  tft.setTextPadding(84);
+  tft.drawString(bpm, 316, 2);
+  tft.setTextPadding(0);
+  tft.setTextDatum(TL_DATUM);
+  tft.drawFastHLine(0, 19, 320, 0x0410);
+}
+
+static void ecgHud(const char *izq, uint16_t colIzq, const char *der)
+{
+  tft.setFreeFont(NULL);
+  tft.setTextFont(1);
+  tft.setTextSize(2);
+  tft.setTextPadding(150);
+  tft.setTextDatum(TL_DATUM);
+  tft.setTextColor(colIzq, TFT_BLACK);
+  tft.drawString(izq, 4, 153);
+  tft.setTextDatum(TR_DATUM);
+  tft.setTextColor(TFT_WHITE, TFT_BLACK);
+  tft.drawString(der, 316, 153);
+  tft.setTextPadding(0);
+  tft.setTextDatum(TL_DATUM);
+}
+
+// bit0 = rojo, bit1 = verde. fase = ms dentro del segundo actual
+static uint8_t ecgLedMask(int clase, unsigned long fase)
+{
+  if (clase == 2) // sinusal: un destello verde cada segundo
+    return (fase < 120) ? 2 : 0;
+  if (clase == 1) // arritmia: rojo, doble latido lub-dub
+    return (fase < 70 || (fase >= 170 && fase < 240)) ? 1 : 0;
+  return 1; // asistolia: rojo fijo
+}
+
+void esp32_2432S028R_ECGScreen(unsigned long mElapsed)
+{
+  mineria = getMiningData(mElapsed);
+  Serial.printf("M8AX - %s >>> Completados %s Share(s), %s Khashes, Prom. Hashrate %s KH/s %s°\n",
+                mineria.currentTime.c_str(), mineria.completedShares.c_str(), mineria.totalKHashes.c_str(), mineria.currentHashRate.c_str(), mineria.temp.c_str());
+
+  bool redraw = hasChangedScreen;
+  if (!ecgInit)
+  {
+    ecgInit = true;
+    redraw = true;
+  }
+
+  ecgMuestrea();
+  if (redraw)
+  {
+    tft.fillRect(0, 0, 320, 170, TFT_BLACK);
+    ecgSw = 0;
+    ecgLat = false;
+    ecgSeqVisto = ecgSeq;
+    ecgPintaTodo();
+  }
+  printPoolData(); // pie de las criptos (solo se repinta cuando toca)
+  hasChangedScreen = false;
+
+  float hash = mineria.currentHashRate.toFloat();
+  char hashStr[16];
+  snprintf(hashStr, sizeof(hashStr), "%s", mineria.currentHashRate.c_str());
+  char izq[24], der[24], bpmS[16];
+  char lastIzq[24] = "", lastDer[24] = "", lastBpm[16] = "";
+  int lastClase = -1, lastBeat = -1;
+  uint8_t lastLed = 255;
+
+  unsigned long start = millis();
+  unsigned long lastTxt = 0;
+  unsigned long lastSweep = 0;
+  unsigned long lastMiningUpdate = 0;
+  unsigned long lastTouchChk = 0;
+  pongLeds(false); // LEDs apagados para empezar
+
+  while (millis() - start < ECG_SLICE_MS)
+  {
+    unsigned long now = millis();
+
+    // ---- Tactil (misma logica que esp32_2432S028R_DoLedStuff) ----
+    if (now - lastTouchChk >= 40 && now - previousTouchMillis >= 500)
+    {
+      lastTouchChk = now;
+      int16_t t_x, t_y;
+      if (touch.getXY(t_x, t_y))
+      {
+        previousTouchMillis = now;
+        if (((t_x > 109) && (t_x < 211)) && ((t_y > 185) && (t_y < 241)))
+        {
+          bottomScreenBlue ^= true;
+          hasChangedScreen = true;
+        }
+        else if ((t_x > 235) && ((t_y > 0) && (t_y < 16)))
+        {
+          esp32_2432S028R_AlternateScreenState();
+        }
+        else if (t_x > 160)
+        {
+          currentDisplayDriver->current_cyclic_screen = (currentDisplayDriver->current_cyclic_screen + 1) % currentDisplayDriver->num_cyclic_screens;
+        }
+        else
+        {
+          currentDisplayDriver->current_cyclic_screen = currentDisplayDriver->current_cyclic_screen - 1;
+          if (currentDisplayDriver->current_cyclic_screen < 0)
+            currentDisplayDriver->current_cyclic_screen = currentDisplayDriver->num_cyclic_screens - 1;
+        }
+        break;
+      }
+    }
+
+    // ---- Muestra nueva: el trazo se desplaza un paso a la izquierda ----
+    ecgMuestrea();
+    if (ecgSeqVisto != ecgSeq)
+    {
+      ecgSeqVisto = ecgSeq;
+      ecgPintaTodo();
+    }
+
+    // ---- Hashrate (cada segundo) ----
+    if (now - lastMiningUpdate >= 1000)
+    {
+      lastMiningUpdate = now;
+      mineria = getMiningData(mElapsed);
+      hash = mineria.currentHashRate.toFloat();
+      snprintf(hashStr, sizeof(hashStr), "%s", mineria.currentHashRate.c_str());
+    }
+    const int clase = (hash > ECG_UMBRAL) ? 2 : ((hash > 0) ? 1 : 0); // 2 sinusal, 1 arritmia, 0 asistolia
+    const uint16_t colEstado = (clase == 2) ? ECG_C_VERDE : ECG_C_ROJO;
+
+    // ---- LEDs: verde cada segundo si > umbral, si no rojo ----
+    uint8_t led = ecgLedMask(clase, now % 1000);
+    if (led != lastLed)
+    {
+      lastLed = led;
+      digitalWrite(LED_PIN, (led & 1) ? LOW : HIGH);
+      digitalWrite(LED_PIN_G, (led & 2) ? LOW : HIGH);
+      digitalWrite(LED_PIN_B, HIGH);
+    }
+
+    // ---- Latido: corazón de la cabecera y punto de la última muestra ----
+    int bpm = 0;
+    if (hash > 0)
+    {
+      bpm = (int)(hash * ECG_BPM_K + 0.5f);
+      bpm = bpm < 20 ? 20 : (bpm > 220 ? 220 : bpm);
+    }
+    int beat = 0;
+    if (bpm > 0)
+    {
+      unsigned long per = 60000UL / bpm;
+      unsigned long ph = (now - start) % per;
+      beat = (ph < 100) || (ph >= 170 && ph < 240);
+    }
+    if (beat != lastBeat)
+    {
+      lastBeat = beat;
+      ecgLat = beat;
+      ecgCorazon(beat, bpm > 0 ? 0xF800 : 0x4208);
+      if (ecgCount > 0)
+        for (int c = ECG_N - 8; c < ECG_N; c++)
+          ecgPintaCol(c);
+    }
+
+    // ---- Barrido: destello con cola que recorre el trazo ----
+    if (ecgCount > 0 && now - lastSweep >= ECG_SWEEP_MS)
+    {
+      lastSweep = now;
+      int desde = ecgSw - ECG_COLA;
+      ecgSw += ECG_SWEEP_PASO;
+      int hasta = ecgSw;
+      if (ecgSw > ECG_N + ECG_COLA)
+      {
+        ecgSw = -20; // pequeña pausa y vuelta a empezar
+        hasta = ECG_N - 1;
+      }
+      desde = desde < 0 ? 0 : desde;
+      hasta = hasta > ECG_N - 1 ? ECG_N - 1 : hasta;
+      for (int c = desde; c <= hasta; c++)
+        ecgPintaCol(c);
+    }
+
+    // ---- Textos ( 5 veces por segundo, solo si cambian ) ----
+    if (now - lastTxt >= 200)
+    {
+      lastTxt = now;
+      snprintf(izq, sizeof(izq), "%s", clase == 2 ? "RITMO SINUSAL" : (clase == 1 ? "ARRITMIA!" : "ASISTOLIA!!"));
+      snprintf(der, sizeof(der), "%s KH/s", hashStr);
+      snprintf(bpmS, sizeof(bpmS), "%d BPM", bpm);
+      if (clase != lastClase || strcmp(izq, lastIzq) != 0 || strcmp(der, lastDer) != 0)
+      {
+        ecgHud(izq, colEstado, der);
+        strcpy(lastIzq, izq);
+        strcpy(lastDer, der);
+      }
+      if (clase != lastClase || strcmp(bpmS, lastBpm) != 0)
+      {
+        ecgCabecera(bpmS, colEstado);
+        strcpy(lastBpm, bpmS);
+      }
+      lastClase = clase;
+    }
+
+    webAtender();
+    delay(5);
+  }
+
+  pongLeds(false); // por si salimos con los LEDs encendidos
+  tft.setTextPadding(0);
+  tft.setTextDatum(TL_DATUM);
+
+  cuentita++;
+  if (cuentita == 15)
+  {
+    ajustarZonaHoraria(), obtenerLocYTemp();
+    obtenerVariacionesBTC(variacion1dia, variacion1semana);
+  }
+}
+
+/****************************************************************************************************************
+ *
+ *   Escrito por: M8AX
+ *
+ *   Descripción: FRACTAL 3D M8AX - Fractales en tres dimensiones trazados rayo a rayo por el ESP32_2432S028R
+ *   --------------------------------------------------------------------------------------------------------
+ *
+ *   Para cada punto de la pantalla se lanza un rayo desde una cámara que da vueltas alrededor de un fractal
+ *   que no existe en ningún sitio: solo hay una fórmula que dice a qué distancia está la superficie desde
+ *   cualquier punto del espacio. El rayo avanza esa distancia, vuelve a preguntar, avanza otra vez... y así
+ *   hasta que se pega a la superficie o se pierde. Con eso se calcula la normal ( cuatro preguntas más ), la
+ *   luz, una oclusión ambiental gratis sacada de cuántos pasos ha costado llegar y un brillo de neón alrededor
+ *   para los rayos que pasan rozando. Los colores salen de la órbita que ha hecho el punto dentro de la fórmula.
+ *
+ *   Hay cuatro vistas, de 26 segundos cada una: el Mandelbulb de potencia 8 en magenta y en oro ( con la fórmula
+ *   sin trigonometría, que va unas cuatro veces más rápida ) y la esponja de Menger en azul hielo y en verde.
+ *   Se pinta de arriba abajo, fila a fila, directamente a la pantalla: no hay framebuffer, ni una sola imagen
+ *   en memoria, así que cada fotograma se ve como se va calculando. Ojo, que esto es tiempo real a lo bruto, no
+ *   esperes 60 fps: cada fotograma son unos 10.000 rayos con decenas de evaluaciones cada uno.
+ *
+ *   Abajo: nombre de la vista, miles de evaluaciones de la fórmula por segundo y los millones que lleva.
+ *
+ *   LEDs: un destello al acabar cada fotograma con el color de la vista, y los tres a la vez al cambiar de vista.
+ *
+ *   Memoria: menos de 1 KB en el heap ( la línea que se manda a la pantalla y cuatro variables ), que se pide al
+ *   entrar en la pantalla y se libera al salir. Si no hay RAM, se salta la pantalla sin pintar nada.
+ *
+ *   Para activarla: pegar este bloque justo antes de analiCadaSegundo, meter esp32_2432S028R_Fractal3DScreen en el
+ *   array esp32_2432S028RCyclicScreens[] y añadir en analiCadaSegundo, debajo del if de atrM, este otro:
+ *   if (f3M && pantallaActual != esp32_2432S028R_Fractal3DScreen) { free(f3M); f3M = NULL; }
+ *
+ ****************************************************************************************************************/
+
+// >>> FRACTAL 3D MOTOR
+#define F3_W 160
+#define F3_H 60
+#define F3_Y0 28 // el HUD de arriba ocupa hasta la 26 y el de abajo empieza en la 150
+#define F3_SLICE_MS 5000
+#define F3_VISTA_MS 26000
+#define F3_MAXPASOS 56
+
+struct F3Mem
+{
+  uint16_t linea[F3_W * 2];
+  float ox, oy, oz, fx, fy, fz, rx, ry, rz, ux, uy, uz, lx, ly, lz;
+  float ang, elev;
+  uint8_t vista, nuevo;
+  int fila;
+  uint32_t fotograma, pasos, pasosPrev, vel, tVista, tSeg, ledOff;
+  char tNom[12], tVel[20], tIt[20];
+};
+static F3Mem *f3M = NULL;
+
+// por vista: escena ( 0 bulbo, 1 esponja ), paleta, nombre
+static const uint8_t F3_ESC[4] = {0, 1, 0, 1};
+static const uint8_t F3_PAL[4] = {0, 1, 2, 0};
+static const char *const F3_NOM[4] = {"Bulbo 3D", "Menger 3D", "Bulbo Oro", "Esponja"};
+// por escena: distancia de la cámara y radio de la esfera que lo envuelve
+static const float F3_RCAM[2] = {3.7f, 4.9f};
+static const float F3_RBOL[2] = {1.35f, 1.85f};
+static const float F3_PO[3][3] = {{0.00f, 0.33f, 0.67f}, {0.00f, 0.12f, 0.25f}, {0.55f, 0.40f, 0.20f}};
+
+static inline float f3Min(float a, float b) { return a < b ? a : b; }
+static inline float f3Max(float a, float b) { return a > b ? a : b; }
+static inline float f3Cl(float v, float a, float b) { return v < a ? a : (v > b ? b : v); }
+
+// Mandelbulb de potencia 8 sin senos ni cosenos ( el polinomio ya desarrollado ), devuelve la distancia estimada
+static float f3Bulbo(float px, float py, float pz, float *trap)
+{
+  float wx = px, wy = py, wz = pz;
+  float m = wx * wx + wy * wy + wz * wz;
+  float dz = 1.0f, tr = m;
+  for (int i = 0; i < 4; i++)
+  {
+    dz = 8.0f * m * m * m * sqrtf(m) * dz + 1.0f;
+    float x = wx, y = wy, z = wz;
+    float x2 = x * x, y2 = y * y, z2 = z * z;
+    float x4 = x2 * x2, y4 = y2 * y2, z4 = z2 * z2;
+    float k3 = x2 + z2;
+    float k2 = 1.0f / sqrtf(k3 * k3 * k3 * k3 * k3 * k3 * k3);
+    float k1 = x4 + y4 + z4 - 6.0f * y2 * z2 - 6.0f * x2 * y2 + 2.0f * z2 * x2;
+    float k4 = x2 - y2 + z2;
+    wx = px + 64.0f * x * y * z * (x2 - z2) * k4 * (x4 - 6.0f * x2 * z2 + z4) * k1 * k2;
+    wy = py - 16.0f * y2 * k3 * k4 * k4 + k1 * k1;
+    wz = pz - 8.0f * y * k4 * (x4 * x4 - 28.0f * x4 * x2 * z2 + 70.0f * x4 * z4 - 28.0f * x2 * z2 * z4 + z4 * z4) * k1 * k2;
+    m = wx * wx + wy * wy + wz * wz;
+    if (m < tr)
+      tr = m;
+    if (m > 256.0f)
+      break;
+  }
+  *trap = tr;
+  return 0.25f * logf(m) * sqrtf(m) / dz;
+}
+
+static float f3Menger(float px, float py, float pz, float *trap)
+{
+  float ax = fabsf(px) - 1.0f, ay = fabsf(py) - 1.0f, az = fabsf(pz) - 1.0f;
+  float ox = f3Max(ax, 0.0f), oy = f3Max(ay, 0.0f), oz = f3Max(az, 0.0f);
+  float d = sqrtf(ox * ox + oy * oy + oz * oz) + f3Min(f3Max(ax, f3Max(ay, az)), 0.0f);
+  float s = 1.0f, tr = 1e9f;
+  for (int i = 0; i < 4; i++)
+  {
+    float qx = px * s, qy = py * s, qz = pz * s;
+    qx = qx - 2.0f * floorf(qx * 0.5f) - 1.0f;
+    qy = qy - 2.0f * floorf(qy * 0.5f) - 1.0f;
+    qz = qz - 2.0f * floorf(qz * 0.5f) - 1.0f;
+    s *= 3.0f;
+    float rx = fabsf(1.0f - 3.0f * fabsf(qx)), ry = fabsf(1.0f - 3.0f * fabsf(qy)), rz = fabsf(1.0f - 3.0f * fabsf(qz));
+    float da = f3Max(rx, ry), db = f3Max(ry, rz), dc = f3Max(rz, rx);
+    float c = (f3Min(da, f3Min(db, dc)) - 1.0f) / s;
+    if (c > d)
+      d = c;
+    float q2 = qx * qx + qy * qy + qz * qz;
+    if (q2 < tr)
+      tr = q2;
+  }
+  *trap = tr;
+  return d;
+}
+
+static inline float f3DE(int esc, float x, float y, float z, float *trap)
+{
+  return esc == 0 ? f3Bulbo(x, y, z, trap) : f3Menger(x, y, z, trap);
+}
+
+static void f3Pal(float t, int p, float *r, float *g, float *b)
+{
+  const float DOSPI = 6.2831853f;
+  *r = 0.5f + 0.5f * cosf(DOSPI * (t + F3_PO[p][0]));
+  *g = 0.5f + 0.5f * cosf(DOSPI * (t + F3_PO[p][1]));
+  *b = 0.5f + 0.5f * cosf(DOSPI * (t + F3_PO[p][2]));
+}
+
+static inline uint16_t f3Rgb(float r, float g, float b)
+{
+  r = f3Cl(r, 0.0f, 1.0f);
+  g = f3Cl(g, 0.0f, 1.0f);
+  b = f3Cl(b, 0.0f, 1.0f);
+  return ((int)(r * 31.0f) << 11) | ((int)(g * 63.0f) << 5) | (int)(b * 31.0f);
+}
+
+// pone la cámara en órbita y deja calculada su base y la luz ( que viaja con la cámara )
+static void f3Camara()
+{
+  F3Mem &m = *f3M;
+  const float R = F3_RCAM[F3_ESC[m.vista]];
+  float ce = cosf(m.elev);
+  m.ox = R * ce * sinf(m.ang);
+  m.oy = R * sinf(m.elev);
+  m.oz = R * ce * cosf(m.ang);
+  float l = 1.0f / sqrtf(m.ox * m.ox + m.oy * m.oy + m.oz * m.oz);
+  m.fx = -m.ox * l;
+  m.fy = -m.oy * l;
+  m.fz = -m.oz * l;
+  l = 1.0f / sqrtf(m.fx * m.fx + m.fz * m.fz);
+  m.rx = -m.fz * l;
+  m.ry = 0.0f;
+  m.rz = m.fx * l;
+  m.ux = m.ry * m.fz - m.rz * m.fy;
+  m.uy = m.rz * m.fx - m.rx * m.fz;
+  m.uz = m.rx * m.fy - m.ry * m.fx;
+  float lx = -0.5f * m.rx + 0.8f * m.ux - 0.6f * m.fx;
+  float ly = -0.5f * m.ry + 0.8f * m.uy - 0.6f * m.fy;
+  float lz = -0.5f * m.rz + 0.8f * m.uz - 0.6f * m.fz;
+  l = 1.0f / sqrtf(lx * lx + ly * ly + lz * lz);
+  m.lx = lx * l;
+  m.ly = ly * l;
+  m.lz = lz * l;
+}
+
+// una fila entera: traza los rayos, la deja en linea[] y la manda dos veces a la pantalla ( cada punto es 2x2 )
+static void f3Fila(int j)
+{
+  F3Mem &m = *f3M;
+  const int esc = F3_ESC[m.vista], pal = F3_PAL[m.vista];
+  const float rb2 = F3_RBOL[esc] * F3_RBOL[esc];
+  const float c0 = m.ox * m.ox + m.oy * m.oy + m.oz * m.oz - rb2;
+  const float sy = -((j + 0.5f) / F3_H * 2.0f - 1.0f) * 0.5f;
+  const float foc = 1.7f;
+  uint32_t pasos = 0;
+  uint16_t *l = m.linea;
+  for (int i = 0; i < F3_W; i++)
+  {
+    float sx = ((i + 0.5f) / F3_W * 2.0f - 1.0f) * 1.3333f;
+    float dx = m.fx * foc + m.rx * sx + m.ux * sy;
+    float dy = m.fy * foc + m.ry * sx + m.uy * sy;
+    float dz = m.fz * foc + m.rz * sx + m.uz * sy;
+    float il = 1.0f / sqrtf(dx * dx + dy * dy + dz * dz);
+    dx *= il;
+    dy *= il;
+    dz *= il;
+    float fondo = 0.5f + 0.5f * dy;
+    float r = 0.02f + 0.05f * fondo, g = 0.02f, b = 0.06f + 0.10f * fondo;
+    float bq = m.ox * dx + m.oy * dy + m.oz * dz;
+    float h = bq * bq - c0;
+    if (h > 0.0f)
+    {
+      h = sqrtf(h);
+      float t = -bq - h, tmax = -bq + h;
+      if (t < 0.0f)
+        t = 0.0f;
+      float minD = 1e9f, trap = 0.0f, px = 0.0f, py = 0.0f, pz = 0.0f;
+      int n, hit = 0;
+      for (n = 0; n < F3_MAXPASOS; n++)
+      {
+        px = m.ox + dx * t;
+        py = m.oy + dy * t;
+        pz = m.oz + dz * t;
+        float d = f3DE(esc, px, py, pz, &trap);
+        if (d < 0.0012f * t)
+        {
+          hit = 1;
+          break;
+        }
+        if (d < minD)
+          minD = d;
+        t += d;
+        if (t > tmax)
+          break;
+      }
+      pasos += n + 1;
+      if (hit)
+      {
+        // la normal sale de cuatro preguntas alrededor del punto ( tetraedro )
+        static const float K[4][3] = {{1, -1, -1}, {-1, -1, 1}, {-1, 1, -1}, {1, 1, 1}};
+        float e = 0.002f * t + 0.0004f, tt, nx = 0.0f, ny = 0.0f, nz = 0.0f;
+        for (int q = 0; q < 4; q++)
+        {
+          float dd = f3DE(esc, px + K[q][0] * e, py + K[q][1] * e, pz + K[q][2] * e, &tt);
+          nx += K[q][0] * dd;
+          ny += K[q][1] * dd;
+          nz += K[q][2] * dd;
+        }
+        pasos += 4;
+        float nl = 1.0f / (sqrtf(nx * nx + ny * ny + nz * nz) + 1e-9f);
+        nx *= nl;
+        ny *= nl;
+        nz *= nl;
+        float nd = nx * m.lx + ny * m.ly + nz * m.lz;
+        float dif = f3Max(nd, 0.0f);
+        float ao = 1.0f - (float)n / F3_MAXPASOS;
+        ao *= ao;
+        float luz = (0.35f + 0.25f * ny) * ao + 0.9f * dif * (0.4f + 0.6f * ao);
+        float sp = f3Max(2.0f * nd * (nx * dx + ny * dy + nz * dz) - (dx * m.lx + dy * m.ly + dz * m.lz), 0.0f);
+        sp *= sp;
+        sp *= sp;
+        sp *= sp;
+        float tc = esc == 1 ? 0.52f + 0.22f * ny + 0.12f * nx + 0.04f * t : sqrtf(trap) * 0.9f + 0.15f * t;
+        float cr, cg, cb;
+        f3Pal(tc, pal, &cr, &cg, &cb);
+        float brillo = 0.35f * sp * ao;
+        r = cr * luz + brillo;
+        g = cg * luz + brillo;
+        b = cb * luz + brillo;
+      }
+      else
+      {
+        // el rayo se ha ido, pero si ha pasado cerca del fractal se lleva un poco de neón
+        float glow = expf(-minD * 14.0f) * 0.9f, gr, gg, gb;
+        f3Pal(0.1f, pal, &gr, &gg, &gb);
+        r += gr * glow;
+        g += gg * glow;
+        b += gb * glow;
+      }
+    }
+    uint16_t c = f3Rgb(r, g, b);
+    l[0] = c;
+    l[1] = c;
+    l += 2;
+  }
+  m.pasos += pasos;
+  tft.startWrite();
+  tft.setAddrWindow(0, F3_Y0 + j * 2, F3_W * 2, 2);
+  tft.pushColors(m.linea, F3_W * 2, true);
+  tft.pushColors(m.linea, F3_W * 2, true);
+  tft.endWrite();
+}
+
+static void f3Init()
+{
+  F3Mem &m = *f3M;
+  memset(m.linea, 0, sizeof(m.linea));
+  m.vista = esp_random() % 4;
+  m.ang = (esp_random() % 628) / 100.0f;
+  m.elev = 0.3f;
+  m.fila = 0;
+  m.fotograma = 0;
+  m.pasos = m.pasosPrev = m.vel = m.tSeg = m.ledOff = 0;
+  m.nuevo = 1;
+  m.tVel[0] = m.tIt[0] = 0;
+  strcpy(m.tNom, F3_NOM[m.vista]);
+  m.tVista = millis();
+  f3Camara();
+}
+
+// destello de los LEDs, los pines son activos en LOW
+static void f3Led(uint8_t vista, bool todos)
+{
+  static const uint8_t RGB[4][3] = {{1, 0, 1}, {0, 1, 1}, {1, 1, 0}, {0, 1, 0}};
+  digitalWrite(LED_PIN, (todos || RGB[vista][0]) ? LOW : HIGH);
+  digitalWrite(LED_PIN_G, (todos || RGB[vista][1]) ? LOW : HIGH);
+  digitalWrite(LED_PIN_B, (todos || RGB[vista][2]) ? LOW : HIGH);
+  f3M->ledOff = millis() + (todos ? 220 : 60);
+}
+
+// avanza la cámara cuando se acaba un fotograma y cambia de vista si ya toca
+static void f3Siguiente()
+{
+  F3Mem &m = *f3M;
+  m.fila = 0;
+  m.fotograma++;
+  m.ang += 0.045f;
+  m.elev = 0.12f + 0.32f * sinf(m.fotograma * 0.037f);
+  if (millis() - m.tVista >= F3_VISTA_MS)
+  {
+    m.vista = (m.vista + 1) % 4;
+    m.tVista = millis();
+    m.nuevo = 1;
+    strcpy(m.tNom, F3_NOM[m.vista]);
+    Serial.printf("M8AX - Fractal 3D: %s\n", m.tNom);
+    f3Led(m.vista, true);
+  }
+  else
+    f3Led(m.vista, false);
+  f3Camara();
+}
+
+// los tres textos de abajo, solo se repintan si cambian
+static void f3Textos(bool forzar)
+{
+  F3Mem &m = *f3M;
+  char vel[20], it[20];
+  snprintf(vel, sizeof(vel), "%lu K/s", (unsigned long)m.vel);
+  snprintf(it, sizeof(it), "%lu.%02lu M", (unsigned long)(m.pasos / 1000000UL), (unsigned long)((m.pasos / 10000UL) % 100UL));
+  bool a = forzar || m.nuevo, b = forzar || strcmp(vel, m.tVel) != 0, c = forzar || strcmp(it, m.tIt) != 0;
+  if (!a && !b && !c)
+    return;
+  tft.setFreeFont(NULL);
+  tft.setTextFont(1);
+  tft.setTextSize(2);
+  if (a)
+  {
+    tft.setTextColor(TFT_YELLOW, TFT_BLACK);
+    tft.setTextPadding(110);
+    tft.setTextDatum(TL_DATUM);
+    tft.drawString(m.tNom, 4, 151);
+    m.nuevo = 0;
+  }
+  if (b)
+  {
+    tft.setTextColor(TFT_CYAN, TFT_BLACK);
+    tft.setTextPadding(84);
+    tft.setTextDatum(TC_DATUM);
+    tft.drawString(vel, 160, 151);
+    strcpy(m.tVel, vel);
+  }
+  if (c)
+  {
+    tft.setTextColor(TFT_GREEN, TFT_BLACK);
+    tft.setTextPadding(110);
+    tft.setTextDatum(TR_DATUM);
+    tft.drawString(it, 316, 151);
+    strcpy(m.tIt, it);
+  }
+  tft.setTextPadding(0);
+  tft.setTextDatum(TL_DATUM);
+}
+// <<< FRACTAL 3D MOTOR
+
+void esp32_2432S028R_Fractal3DScreen(unsigned long mElapsed)
+{
+  mineria = getMiningData(mElapsed);
+  Serial.printf("M8AX - %s >>> Completados %s Share(s), %s Khashes, Prom. Hashrate %s KH/s %s°\n",
+                mineria.currentTime.c_str(), mineria.completedShares.c_str(), mineria.totalKHashes.c_str(), mineria.currentHashRate.c_str(), mineria.temp.c_str());
+
+  bool redraw = hasChangedScreen;
+  if (!f3M)
+  {
+    f3M = (F3Mem *)malloc(sizeof(F3Mem));
+    if (!f3M)
+    {
+      Serial.println("M8AX - Fractal 3D: No Hay RAM Libre");
+      delay(1000);
+      return;
+    }
+    f3Init();
+    redraw = true;
+  }
+  const int f3MiPantalla = currentDisplayDriver->current_cyclic_screen;
+  if (redraw)
+  {
+    tft.fillRect(0, 0, 320, 170, TFT_BLACK);
+    f3Textos(true);
+  }
+  printPoolData(); // barra de abajo, solo se repinta cuando toca
+  hasChangedScreen = false;
+
+  char horaStr[9] = "";
+  char lastHora[9] = "";
+  char hashStr[16];
+  char lastHash[16] = "";
+
+  unsigned long start = millis();
+  unsigned long lastMiningUpdate = 0;
+  unsigned long lastTouchChk = 0;
+  pongLeds(false);
+  f3M->ledOff = 0;
+
+  while (millis() - start < F3_SLICE_MS)
+  {
+    unsigned long now = millis();
+
+    // ---- Táctil (misma lógica que el Pong) ----
+    if (now - lastTouchChk >= 40 && now - previousTouchMillis >= 500)
+    {
+      lastTouchChk = now;
+      int16_t t_x, t_y;
+      if (touch.getXY(t_x, t_y))
+      {
+        previousTouchMillis = now;
+        if (((t_x > 109) && (t_x < 211)) && ((t_y > 185) && (t_y < 241)))
+        {
+          bottomScreenBlue ^= true;
+          hasChangedScreen = true;
+        }
+        else if ((t_x > 235) && ((t_y > 0) && (t_y < 16)))
+        {
+          esp32_2432S028R_AlternateScreenState();
+        }
+        else if (t_x > 160)
+        {
+          currentDisplayDriver->current_cyclic_screen = (currentDisplayDriver->current_cyclic_screen + 1) % currentDisplayDriver->num_cyclic_screens;
+        }
+        else
+        {
+          currentDisplayDriver->current_cyclic_screen = currentDisplayDriver->current_cyclic_screen - 1;
+          if (currentDisplayDriver->current_cyclic_screen < 0)
+            currentDisplayDriver->current_cyclic_screen = currentDisplayDriver->num_cyclic_screens - 1;
+        }
+        break;
+      }
+    }
+
+    if (f3M->ledOff && now >= f3M->ledOff)
+    {
+      pongLeds(false);
+      f3M->ledOff = 0;
+    }
+
+    // ---- A trazar rayos, una fila por vuelta ----
+    f3Fila(f3M->fila);
+    f3M->fila++;
+    if (f3M->fila >= F3_H)
+      f3Siguiente();
+    if (now - f3M->tSeg >= 1000)
+    {
+      f3M->vel = (f3M->pasos - f3M->pasosPrev) / 1000UL;
+      f3M->pasosPrev = f3M->pasos;
+      f3M->tSeg = now;
+      f3Textos(false);
+    }
+
+    // ---- Hora (izquierda) y hashrate (derecha), arriba como en las demás ----
+    if (now - lastMiningUpdate >= 1000)
+    {
+      lastMiningUpdate = now;
+      mineria = getMiningData(mElapsed);
+      snprintf(hashStr, sizeof(hashStr), "%s", mineria.currentHashRate.c_str());
+      time_t epoch = (time_t)timeClient.getEpochTime();
+      struct tm *ti = localtime(&epoch);
+      snprintf(horaStr, sizeof(horaStr), "%02d:%02d:%02d", ti->tm_hour, ti->tm_min, ti->tm_sec);
+      if (strcmp(horaStr, lastHora) != 0 || strcmp(hashStr, lastHash) != 0)
+      {
+        pongDrawHud(hashStr, horaStr);
+        strcpy(lastHora, horaStr);
+        strcpy(lastHash, hashStr);
+      }
+    }
+    webAtender();
+    delay(1);
+  }
+
+  pongLeds(false);
+  tft.setTextPadding(0);
+  tft.setTextDatum(TL_DATUM);
+
+  if (currentDisplayDriver->current_cyclic_screen != f3MiPantalla)
+  {
+    free(f3M);
+    f3M = NULL;
+  }
+
+  cuentita++;
+  if (cuentita == 15)
+  {
+    ajustarZonaHoraria();
+    obtenerLocYTemp();
+    obtenerVariacionesBTC(variacion1dia, variacion1semana);
+  }
+}
+
 void analiCadaSegundo(unsigned long frame)
 {
   unsigned long epochTime = timeClient.getEpochTime(); // Obtener segundos desde 1970
@@ -14980,6 +18267,20 @@ void analiCadaSegundo(unsigned long frame)
     free(atrM);
     atrM = NULL;
   }
+
+  if (demM && pantallaActual != esp32_2432S028R_DemoScreen)
+  {
+    free(demM);
+    demM = NULL;
+  }
+
+  if (f3M && pantallaActual != esp32_2432S028R_Fractal3DScreen)
+  {
+    free(f3M);
+    f3M = NULL;
+  }
+
+  ecgMuestrea();
 
   if (startTime == 0)
   {
@@ -15086,7 +18387,6 @@ void esp32_2432S028R_DoLedStuff(unsigned long frame)
 
         // Touching the top right corner of the screen, roughly in the gray status label.
         // Disabling the screen backlight.
-
         esp32_2432S028R_AlternateScreenState();
       }
       else if (t_x > 160)
@@ -15112,33 +18412,33 @@ void esp32_2432S028R_DoLedStuff(unsigned long frame)
     previousTouchMillis = currentMillis;
   }
   if (currentScreen != currentDisplayDriver->current_cyclic_screen)
-    hasChangedScreen = true;
-  currentScreen = currentDisplayDriver->current_cyclic_screen;
-  switch (mMonitor.NerdStatus)
   {
-  case NM_waitingConfig:
-    digitalWrite(LED_PIN, LOW); // LED encendido de forma continua
-    break;
-  case NM_Connecting:
+    hasChangedScreen = true;
+    ledsLibres();
+    ledUltimoManejo = 0;
+  }
+  currentScreen = currentDisplayDriver->current_cyclic_screen;
+  bool minando = (mMonitor.NerdStatus == NM_hashing) || (ledUltimoManejo != 0 && ledHashRate > 0);
+  if (minando)
+  {
+    actualizaLeds();
+  }
+  else if (mMonitor.NerdStatus == NM_waitingConfig)
+  {
+    digitalWrite(LED_PIN, LOW);
+  }
+  else if (mMonitor.NerdStatus == NM_Connecting)
+  {
     if (currentMillis - previousMillis >= 500)
     {
       previousMillis = currentMillis;
       digitalWrite(LED_PIN, HIGH);                      // rojo apagado
       digitalWrite(LED_PIN_B, !digitalRead(LED_PIN_B)); // azul parpadea
     }
-    break;
-  case NM_hashing:
-    if (currentMillis - previousMillis >= 500)
-    { // 0.1sec blink
-      previousMillis = currentMillis;
-      digitalWrite(LED_PIN_B, HIGH);
-      digitalWrite(LED_PIN, !digitalRead(LED_PIN)); // Cambia el estado del LED
-    }
-    break;
   }
 }
 
-CyclicScreenFunction esp32_2432S028RCyclicScreens[] = {esp32_2432S028R_MinerScreen, esp32_2432S028R_BTCprice, esp32_2432S028R_ClockScreen, tDisplay_granHash, tDisplay_hashGigante, RelojDeNumeros, tDisplay_m8axScreen7, esp32_2432S028R_m8axScreen1, esp32_2432S028R_m8axScreen2, tDisplay_m8axScreenMegaNerd, tDisplay_m8axScreen5, tDisplay_m8axScreen6, esp32_2432S028R_BannerScreen, tDisplay_Primos, esp32_2432S028R_CifrasScreen, esp32_2432S028R_TetrisScreen, esp32_2432S028R_AjedrezScreen, esp32_2432S028R_GalaxianScreen, esp32_2432S028R_AsteroidesScreen, esp32_2432S028R_PongScreen, esp32_2432S028R_KrakoutScreen, esp32_2432S028R_SnakeScreen, esp32_2432S028R_DoomScreen, esp32_2432S028R_LifeScreen, esp32_2432S028R_FractalScreen, esp32_2432S028R_AtractoresScreen, esp32_2432S028R_GalaxiasScreen, esp32_2432S028R_RainScreen, esp32_2432S028R_monedaYdado, tDisplay_m8axScreen3, tDisplay_m8axScreen4};
+CyclicScreenFunction esp32_2432S028RCyclicScreens[] = {esp32_2432S028R_MinerScreen, esp32_2432S028R_BTCprice, esp32_2432S028R_ClockScreen, esp32_2432S028R_ECGScreen, tDisplay_granHash, tDisplay_hashGigante, RelojDeNumeros, tDisplay_m8axScreen7, esp32_2432S028R_m8axScreen1, esp32_2432S028R_m8axScreen2, tDisplay_m8axScreenMegaNerd, tDisplay_m8axScreen5, tDisplay_m8axScreen6, esp32_2432S028R_BannerScreen, tDisplay_Primos, esp32_2432S028R_CifrasScreen, esp32_2432S028R_TetrisScreen, esp32_2432S028R_AjedrezScreen, esp32_2432S028R_GalaxianScreen, esp32_2432S028R_AsteroidesScreen, esp32_2432S028R_PongScreen, esp32_2432S028R_KrakoutScreen, esp32_2432S028R_SnakeScreen, esp32_2432S028R_FlappyHashScreen, esp32_2432S028R_DoomScreen, esp32_2432S028R_LifeScreen, esp32_2432S028R_FractalScreen, esp32_2432S028R_Fractal3DScreen, esp32_2432S028R_AtractoresScreen, esp32_2432S028R_GalaxiasScreen, esp32_2432S028R_RainScreen, esp32_2432S028R_DemoScreen, esp32_2432S028R_monedaYdado, esp32_2432S028R_CalcScreen, tDisplay_m8axScreen3, tDisplay_m8axScreen4};
 
 DisplayDriver esp32_2432S028RDriver = {
     esp32_2432S028R_Init,

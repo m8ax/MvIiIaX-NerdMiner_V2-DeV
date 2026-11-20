@@ -512,7 +512,7 @@ String horaEnIngles(int hora, int minutos, int segundos)
 
 double moonPhase::_fhour(const struct tm &timeinfo)
 {
-  return timeinfo.tm_hour + map((timeinfo.tm_min * 60) + timeinfo.tm_sec, 0, 3600, 0.0, 1.0);
+  return timeinfo.tm_hour + ((timeinfo.tm_min * 60) + timeinfo.tm_sec) / 3600.0;
 }
 
 static double _Julian(int32_t year, int32_t month, const double &day)
@@ -1331,13 +1331,13 @@ std::string obtenerDiaSemana(const std::string &fecha)
 
 void sincronizarTiempo()
 {
-  zonilla = obtenHoraPorIP(ipPublica);
-  int timezoneDifference = abs(Settings.Timezone - zonilla);
-  if (timezoneDifference <= 1)
+  int nueva = obtenHoraPorIP(ipPublica);
+  if (nueva != 1000)
   {
-    if (Settings.Timezone != zonilla)
+    zonilla = nueva;
+    if (abs(Settings.Timezone - nueva) <= 1 && Settings.Timezone != nueva)
     {
-      Settings.Timezone = zonilla;
+      Settings.Timezone = nueva;
       nvMem.saveConfig(&Settings);
       Serial.println(String("M8AX - Cambiando TimeZone... Actualmente Es UTC ") + (Settings.Timezone >= 0 ? "+" : "") + String(Settings.Timezone));
     }
