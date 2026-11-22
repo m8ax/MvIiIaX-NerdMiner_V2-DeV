@@ -90,7 +90,7 @@
  *
  *                                 HASHRATE - 380 / 390 KH/S
  *
- *                     Tmp. De Programación 15H - 18480 Líneas De Código
+ *                     Tmp. De Programación 15H - 19365 Líneas De Código
  *                     -------------------------------------------------
  *
  ****************************************************************************************************************/
@@ -1423,9 +1423,9 @@ void M8AXTicker()
 
 void nevar3()
 {
-  tft.fillScreen(TFT_BLACK);      // Fondo negro (puedes cambiarlo)
-  const int NUM_COPOS = 500;      // Número de copos de nieve en pantalla
-  int x[NUM_COPOS], y[NUM_COPOS]; // Coordenadas de los copos
+  tft.fillScreen(TFT_BLACK);             // Fondo negro (puedes cambiarlo)
+  const int NUM_COPOS = 500;             // Número de copos de nieve en pantalla
+  static int x[NUM_COPOS], y[NUM_COPOS]; // Coordenadas de los copos
 
   // Inicializa copos en posiciones aleatorias
   for (int i = 0; i < NUM_COPOS; i++)
@@ -1435,21 +1435,21 @@ void nevar3()
   }
   unsigned long startTime = millis();
   while (millis() - startTime < 2000)
-  {                            // 5 segundos
-    tft.fillScreen(TFT_BLACK); // Borra pantalla
+  {
     for (int i = 0; i < NUM_COPOS; i++)
     {
-      colorI = esp_random() % (sizeof(colors) / sizeof(colors[0]));
-      tft.drawPixel(x[i], y[i], colors[colorI]); // Dibuja copo de nieve
-      y[i] += (esp_random() % 5) + 1;            // Baja La Posición DeL Copo
+      tft.drawPixel(x[i], y[i], TFT_BLACK);
+      y[i] += (esp_random() % 5) + 1;
       if (y[i] > 240)
-      { // Si sale de la pantalla, reaparece arriba
+      {
         y[i] = 0;
         x[i] = esp_random() % 536;
       }
+      colorI = esp_random() % (sizeof(colors) / sizeof(colors[0]));
+      tft.drawPixel(x[i], y[i], colors[colorI]);
     }
     int nnumeroAleatorio = esp_random() % 20 + 1;
-    delay(nnumeroAleatorio); // Controla la velocidad de la animación
+    delay(nnumeroAleatorio);
   }
   M8AXTicker();
 }
@@ -1563,8 +1563,8 @@ void nevar()
 {
   tft.fillScreen(TFT_BLACK); // Fondo negro (puedes cambiarlo)
   colorI = esp_random() % (sizeof(colors) / sizeof(colors[0]));
-  const int NUM_COPOS = 400;      // Número de copos de nieve en pantalla
-  int x[NUM_COPOS], y[NUM_COPOS]; // Coordenadas de los copos
+  const int NUM_COPOS = 400;             // Número de copos de nieve en pantalla
+  static int x[NUM_COPOS], y[NUM_COPOS]; // Coordenadas de los copos
   // Inicializa copos en posiciones aleatorias
   for (int i = 0; i < NUM_COPOS; i++)
   {
@@ -1575,22 +1575,19 @@ void nevar()
   unsigned long startTime = millis();
 
   while (millis() - startTime < 5000)
-  {                            // 5 segundos
-    tft.fillScreen(TFT_BLACK); // Borra pantalla
-
+  {
     for (int i = 0; i < NUM_COPOS; i++)
     {
-      tft.drawPixel(x[i], y[i], colors[colorI]); // Dibuja copo de nieve
-      y[i] += (esp_random() % 4) + 1;            // Baja la posición del copo
-
+      tft.drawPixel(x[i], y[i], TFT_BLACK);
+      y[i] += (esp_random() % 4) + 1;
       if (y[i] > 240)
-      { // Si sale de la pantalla, reaparece arriba
+      {
         y[i] = 0;
         x[i] = esp_random() % 536;
       }
+      tft.drawPixel(x[i], y[i], colors[colorI]);
     }
-
-    delay(35); // Controla la velocidad de la animación
+    delay(35);
   }
 
   tft.fillScreen(TFT_BLACK);
@@ -1607,8 +1604,8 @@ void nevar2()
 {
   tft.fillScreen(TFT_BLACK); // Fondo negro (puedes cambiarlo)
   colorI = esp_random() % (sizeof(colors) / sizeof(colors[0]));
-  const int NUM_COPOS = 600;      // Número de copos de nieve en pantalla
-  int x[NUM_COPOS], y[NUM_COPOS]; // Coordenadas de los copos
+  const int NUM_COPOS = 600;             // Número de copos de nieve en pantalla
+  static int x[NUM_COPOS], y[NUM_COPOS]; // Coordenadas de los copos
 
   // Inicializa copos en posiciones aleatorias
   for (int i = 0; i < NUM_COPOS; i++)
@@ -1620,21 +1617,19 @@ void nevar2()
   unsigned long startTime = millis();
 
   while (millis() - startTime < 5000)
-  {                            // 5 segundos
-    tft.fillScreen(TFT_BLACK); // Borra pantalla
-
+  {
     for (int i = 0; i < NUM_COPOS; i++)
     {
-      tft.drawPixel(x[i], y[i], colors[colorI]); // Dibuja copo de nieve
-      y[i] += (esp_random() % 5) + 1;            // Baja Posición Del Copo
+      tft.drawPixel(x[i], y[i], TFT_BLACK);
+      y[i] += (esp_random() % 5) + 1;
       if (y[i] > 240)
-      { // Si sale de la pantalla, reaparece arriba
+      {
         y[i] = 0;
         x[i] = esp_random() % 536;
       }
+      tft.drawPixel(x[i], y[i], colors[colorI]);
     }
-
-    delay(25); // Controla la velocidad de la animación
+    delay(25);
   }
 
   tft.fillScreen(TFT_BLACK);
@@ -1645,6 +1640,47 @@ void nevar2()
   tft.drawString("LIBERTY BITCOIN", 159, 100); // Texto en el centro
   delay(1500);
   tft.setFreeFont(NULL);
+}
+
+// Nieve + felicitación ( Navidad y Año Nuevo ). Copos 100 / 200 como en el tDisplay
+void nevarFelicita(const char *texto, int copos, int pausaMs)
+{
+  if (copos > 200)
+    copos = 200;
+  static int x[200], y[200];
+  tft.fillScreen(TFT_BLACK);
+  for (int i = 0; i < copos; i++)
+  {
+    x[i] = esp_random() % 320;
+    y[i] = esp_random() % 240;
+  }
+  int vel = (copos > 100) ? 5 : 4;
+  unsigned long inicio = millis();
+  while (millis() - inicio < 5000)
+  {
+    for (int i = 0; i < copos; i++)
+    {
+      tft.fillRect(x[i], y[i], 2, 2, TFT_BLACK);
+      y[i] += (esp_random() % vel) + 1;
+      if (y[i] >= 240)
+      {
+        y[i] = 0;
+        x[i] = esp_random() % 318;
+      }
+      tft.fillRect(x[i], y[i], 2, 2, TFT_WHITE);
+    }
+    delay(pausaMs);
+  }
+  tft.fillScreen(TFT_BLACK);
+  colorI = esp_random() % (sizeof(colors) / sizeof(colors[0]));
+  tft.setTextColor(colors[colorI], TFT_BLACK);
+  tft.setTextDatum(MC_DATUM);
+  tft.setFreeFont(FSB18);
+  tft.drawString(texto, 160, 85);
+  delay(1500);
+  tft.setFreeFont(NULL);
+  tft.setTextDatum(TL_DATUM);
+  hasChangedScreen = true;
 }
 
 int calcularPrimerDia(int dia, int mes, int anio)
@@ -1702,7 +1738,7 @@ String obtenerNombreMes(int mes)
   case 12:
     return "Diciembre";
   default:
-    return "Mes Inválido";
+    return "Mes Invalido";
   }
 }
 
@@ -2522,6 +2558,10 @@ void webAtender()
 
 String bloqueCriptos();
 
+void wxHistMuestrea(void);
+
+String cifrasTelegram();
+
 bool recopilaTelegram()
 {
   unsigned long epochTime = timeClient.getEpochTime(); // Obtener segundos desde 1970
@@ -2634,7 +2674,10 @@ bool recopilaTelegram()
   rndnumero = esp_random();
   cadenaEnvio += "Factorización De Número - " + String(rndnumero) + " -> " + factorize(rndnumero) + "\n";
   rndnumero = esp_random();
-  cadenaEnvio += "Factorización De Número - " + String(rndnumero) + " -> " + factorize(rndnumero) + "\n";
+  cadenaEnvio += "Factorización De Número - " + String(rndnumero) + " -> " + factorize(rndnumero);
+  cadenaEnvio += "\n------------------------------------------------------------------------------------------------\n";
+  cadenaEnvio += cifrasTelegram();
+  cadenaEnvio += "\n";
   cadenaEnvio += "------------------------------------------------------------------------------------------------\n                                       By M8AX Corp. " + convertirARomanos(anio);
   cadenaEnvio += F("\n------------------------------------------------------------------------------------------------");
   bool botOk = (BOT_TOKEN != "NO CONFIGURADO" && CHAT_ID != "NO CONFIGURADO");
@@ -2713,7 +2756,10 @@ int obtenHoraPorIP(const String &ip)
 
 void ajustarZonaHoraria()
 {
-  zonilla = obtenHoraPorIP(getPublicIP());
+  int nueva = obtenHoraPorIP(getPublicIP());
+  if (nueva == 1000)
+    return;
+  zonilla = nueva;
   int timezoneDifference = abs(Settings.Timezone - zonilla);
   if (timezoneDifference <= 1)
   {
@@ -4201,7 +4247,7 @@ void tDisplay_m8axScreen7(unsigned long mElapsed)
   }
   else if (numero == 27)
   {
-    tft.print("Blockchain No Pregunta Quién Eres, Solo Si Tienes La Llave.");
+    tft.print("Blockchain No Pregunta Quien Eres, Solo Si Tienes La Llave.");
   }
   else if (numero == 28)
   {
@@ -6555,6 +6601,48 @@ static void cifNuevaCuenta()
   cf.tiene = true;
 }
 
+static int tgCifJuego = 0, tgCifAc = 0, tgCifFa = 0; // juegos enviados a Telegram, aciertos y fallos
+
+// Juega una cuenta del juego de las cifras y devuelve el texto para Telegram
+String cifrasTelegram()
+{
+  CifState guardado = cf; // la pantalla de Cifras no se entera
+  cifNuevaCuenta();
+  tgCifJuego++;
+  if (cf.exacto)
+    tgCifAc++;
+  else
+    tgCifFa++;
+  int total = tgCifAc + tgCifFa;
+  float pAc = tgCifAc * 100.0f / total;
+  float pFa = tgCifFa * 100.0f / total;
+
+  String res = "... JUEGO " + String(tgCifJuego) + " DE LAS CIFRAS ...\n";
+  res += "Números -> ";
+  for (int i = 0; i < CIF_MAX_NUMBERS; i++)
+  {
+    res += String(cf.nums[i]);
+    if (i < CIF_MAX_NUMBERS - 1)
+      res += "  ";
+  }
+  res += "\nObjetivo -> " + String(cf.target) + "\n";
+  for (int k = 0; k < cf.nPasos; k++)
+  {
+    const CifPaso &p = cf.pasos[k];
+    char linea[40];
+    snprintf(linea, sizeof(linea), "%d. %d %c %d = %d\n", k + 1, p.a, (p.op == '*') ? 'x' : p.op, p.b, p.r);
+    res += linea;
+  }
+  if (cf.exacto)
+    res += "¡ EXACTO !\n";
+  else
+    res += "No Exacto, Lo Más Cercano -> " + String(cf.valor) + " ( Dif " + String(abs(cf.valor - cf.target)) + " )\n";
+  res += "Aciertos -> " + String(tgCifAc) + " ( " + String(pAc, 1) + "% )\n";
+  res += "Fallos -> " + String(tgCifFa) + " ( " + String(pFa, 1) + "% )";
+  cf = guardado;
+  return res;
+}
+
 static void cifDrawRate()
 {
   char b[12];
@@ -7753,15 +7841,15 @@ void esp32_2432S028R_TetrisScreen(unsigned long mElapsed)
  *   ------------------------------------------------------
  *
  *   Un número enorme en el centro y debajo de él los primos anteriores, uno encima de otro y cada vez más
- *   apagados. Empiezan saliendo seguidos (2 3 5 7 11 13...) y después va subiendo, multiplicando por 1,25
- *   cada vez, hasta llegar al mayor primo que cabe en 64 bits, 18446744073709551557 (2^64 - 59). Ahí se
- *   para unos segundos y vuelve a empezar desde el 2.
+ *   apagados. Salen todos los primos seguidos (2 3 5 7 11 13...), sin saltarse ninguno, hasta llegar al
+ *   mayor primo que cabe en 64 bits, 18446744073709551557 (2^64 - 59). Ahí se para y se queda mostrándolo.
  *
  *   El número grande es de 7 segmentos y se ajusta solo al ancho: con una cifra ocupa media pantalla y con
  *   las 20 cifras de un uint64 llena la pantalla entera de lado a lado, en una sola línea. Los primos no
  *   se sacan de una tabla, se calculan de verdad: es Miller-Rabin con las 12 primeras bases, que es exacto
  *   para cualquier número de 64 bits (la multiplicación grande se hace sumando y duplicando, así no hace
- *   falta nada de 128 bits). Cada primo gigante tarda unos pocos milisegundos en la ESP32.
+ *   falta nada de 128 bits). Con números pequeños el cálculo es casi instantáneo y lo que limita es el
+ *   dibujo; por encima de 2^32 cada primo cuesta bastante más.
  *
  *   Arriba a la izquierda la hora y arriba a la derecha el hashrate, como en las demás. Abajo una barra con
  *   cuántos de los 64 bits lleva usados el número y el 2^64-1 de referencia.
@@ -7770,8 +7858,9 @@ void esp32_2432S028R_TetrisScreen(unsigned long mElapsed)
  *   pila mientras corre la pantalla.
  *
  *   Para activarla hay que pegar este bloque antes del array tDisplayCyclicScreens[] y meter tDisplay_Primos
- *   en ese array. No usa táctil ni botones, de eso se encarga el driver; como la pantalla puede cambiar en
- *   cualquier momento, el estado se guarda y sigue donde se quedó cuando vuelve a salir.
+ *   en ese array. El táctil funciona como en el Pong: los lados cambian de pantalla, la zona de arriba a la
+ *   derecha alterna el estado de la pantalla y el centro de abajo cambia la barra. Como la pantalla puede
+ *   cambiar en cualquier momento, el estado se guarda y sigue donde se quedó cuando vuelve a salir.
  *
  ****************************************************************************************************************/
 
@@ -7780,13 +7869,8 @@ void esp32_2432S028R_TetrisScreen(unsigned long mElapsed)
 // ---------------------------------------------------------------------------------------------------------
 
 #define PM_MAXPRIMO 18446744073709551557ULL // el primo mas grande que cabe en un uint64 (2^64 - 59)
-#define PM_UMBRAL 14000000000000000000ULL   // por encima de esto se salta directo al ultimo
-#define PM_N_SEC 30                         // los primeros 30 salen seguidos: 2 3 5 7 11 13...
 #define PM_PASO_SEC_MS 0                    // ms entre primos mientras salen seguidos
-#define PM_PASO_SALTO_MS 90                 // ms entre primos mientras va subiendo
-#define PM_FIN_MS 5000                      // lo que se queda el mayor primo antes de empezar otra vez
-
-#define PM_BANDA_Y 76 // la banda del numero grande
+#define PM_BANDA_Y 76                       // la banda del numero grande
 #define PM_BANDA_H 54
 
 static const uint16_t PM_COL[7] = {0x07FF, 0x07E0, 0xFFE0, 0xFD20, 0xF81F, 0xF800, 0x041F};
@@ -7885,18 +7969,17 @@ static uint64_t pmSiguiente(uint64_t n)
 // ---- Estado: lo unico que se guarda entre tandas (~100 bytes, nada de heap) ----
 struct PmEstado
 {
-  uint8_t init, fase; // fase: 0 seguidos, 1 subiendo, 2 mayor primo (parado)
+  uint8_t init, fase; // fase: 0 contando, 2 mayor primo (parado)
   uint64_t actual;
   uint64_t hist[4]; // los 4 anteriores, el mas reciente primero
   uint8_t nHist;
   uint32_t k; // numero de orden mientras salen seguidos
-  unsigned long finAt, ultLlamada;
+  unsigned long ultLlamada;
   char vista[21]; // lo que hay dibujado en la banda (para repintar solo las cifras que cambian)
 };
 static PmEstado pm = {0};
 // Medicion de primos calculados por segundo
 static uint32_t pmCuentaVelocidad = 0;
-static uint32_t pmPrimosSegundo = 0;
 static unsigned long pmTiempoVelocidad = 0;
 static uint32_t pmVelocidadMostrada = 0;
 
@@ -7925,8 +8008,7 @@ static int pmBits(uint64_t v)
   return b;
 }
 
-// Siguiente primo de la lista: seguidos al principio y despues va multiplicando por ~1,25 hasta el mayor de 64 bits
-// Busca TODOS los primos consecutivos, sin saltarse ninguno.
+// Siguiente primo de la lista: todos los consecutivos, sin saltarse ninguno, hasta el mayor de 64 bits
 static void pmAvanza()
 {
   for (int i = 3; i > 0; i--)
@@ -7944,7 +8026,6 @@ static void pmAvanza()
   {
     // Se han agotado los primos representables en uint64
     pm.fase = 2;
-    pm.finAt = millis();
     return;
   }
 
@@ -8097,7 +8178,7 @@ static void pmPintaTodo()
   pmPintaInfo();
 }
 
-static inline unsigned long pmPasoMs() { return pm.fase == 0 ? PM_PASO_SEC_MS : PM_PASO_SALTO_MS; }
+static inline unsigned long pmPasoMs() { return PM_PASO_SEC_MS; }
 
 // Un paso de la animacion
 static void pmPaso()
@@ -8109,7 +8190,7 @@ static void pmPaso()
   ledFlash(true, false, false, LED_FLASH_MS);
 }
 
-// Aqui no hay tactil: el cambio de pantalla lo hace el driver, por eso las tandas son de 1 s
+// Tandas de 1 s para que el cambio de pantalla (táctil o automático) responda enseguida
 #define PM_SLICE_MS 1000
 
 // Hora arriba a la izquierda, hashrate arriba a la derecha
@@ -8145,7 +8226,11 @@ void tDisplay_Primos(unsigned long mElapsed)
     pmReinicia();
   }
   if (limpiar)
+  {
     tft.fillRect(0, 0, 320, 170, TFT_BLACK);
+    pmCuentaVelocidad = 0;
+    pmTiempoVelocidad = millis();
+  }
   pmPintaTodo();
   printPoolData(); // barra de abajo, solo se repinta cuando toca
   hasChangedScreen = false;
@@ -8204,7 +8289,7 @@ void tDisplay_Primos(unsigned long mElapsed)
     {
       pmVelocidadMostrada = pmCuentaVelocidad;
       pmCuentaVelocidad = 0;
-      pmTiempoVelocidad += 1000;
+      pmTiempoVelocidad = now;
       pmPintaInfo();
     }
 
@@ -18229,6 +18314,666 @@ void esp32_2432S028R_Fractal3DScreen(unsigned long mElapsed)
   }
 }
 
+/********************************************************************************************
+ *  PANTALLA ESTACION METEOROLOGICA - El tiempo de donde esta el minero + todo el hashrate
+ *
+ *  La localidad se saca sola de la IP publica (ip-api.com, sin clave) y el tiempo de
+ *  Open-Meteo (https://open-meteo.com, gratis y sin clave). Se pide cada 10 minutos y la
+ *  localizacion cada 6 horas, asi que si mueves el minero de sitio se entera solo.
+ *
+ *  Izquierda: icono dibujado con formas ( sol, luna, nubes, lluvia, nieve, tormenta, niebla ),
+ *  temperatura, estado del cielo, sensacion, presion, punto de rocio, nubes, viento y rachas
+ *  con direccion, lluvia y probabilidad, UV maximo, salida y puesta del sol y prevision de
+ *  hoy y de los 2 dias siguientes ( max / min / prob. de lluvia ). Abajo a la izquierda va la luna
+ *  con el mismo dibujo que las otras pantallas ( dibujarPorcentajeLunar ), su fase y el porcentaje
+ *  iluminado con 3 decimales. La luna se calcula en local, funciona aunque no haya internet.
+ *  La salida y la puesta del sol van en la cabecera, entre la localidad y la hora.
+ *
+ *  Derecha: hashrate actual en grande ( verde > 300, amarillo > 0, rojo = 0 ), maximo, minimo,
+ *  media de los ultimos minutos, shares, bloques validos, mejor dificultad, total de KH,
+ *  plantillas, temperatura de la CPU, tiempo minando y una grafica con el hashrate de los
+ *  ultimos 10 minutos ( se sigue rellenando aunque estes en otra pantalla ).
+ *
+ *  Abajo se mantiene la barra de precios de criptos como en el resto de pantallas normales.
+ *
+ *  LEDs: igual que en la pantalla del minero ( manejandoLeds ), con todo su comportamiento:
+ *  hashrate, noche, fin de semana, bloque minado y 10 de marzo.
+ *
+ *  RAM: nada de sprites. Se pinta directo con tft y solo se repinta cada linea si cambia su
+ *  texto. Estado fijo total unos 450 bytes. La peticion HTTPS solo se lanza si hay memoria
+ *  contigua suficiente ( WX_HEAP_MIN ) y todo lo temporal se libera al terminar.
+ *
+ *  Ajustes: WX_REFRESCO_MS, WX_GEO_REFRESCO_MS y, si la IP te sitúa mal ( pasa con algunos
+ *  operadores ), WX_LAT_FIJA / WX_LON_FIJA / WX_CIUDAD_FIJA para fijar la localidad a mano.
+ ********************************************************************************************/
+
+#define WX_REFRESCO_MS 600000UL       // tiempo cada 10 minutos
+#define WX_REINTENTO_MS 60000UL       // si falla, reintenta al minuto
+#define WX_GEO_REFRESCO_MS 21600000UL // localidad cada 6 horas
+#define WX_HEAP_MIN 36000             // bytes contiguos minimos para lanzar la peticion HTTPS
+#define WX_HN 77                      // muestras de la grafica ( 2 px cada una )
+#define WX_HIST_SEG 8                 // segundos entre muestras ( 77 x 8 s = unos 10 min )
+#define WX_LAT_FIJA 999.0f            // 999 = automatico por IP. Pon tu latitud para fijarla
+#define WX_LON_FIJA 999.0f
+#define WX_CIUDAD_FIJA ""
+
+struct WxDia
+{
+  int8_t tmax, tmin;
+  uint8_t pp, code;
+};
+
+struct WxDatos
+{
+  bool ok;
+  bool dia;
+  uint8_t hum, nubes, code;
+  int16_t wdir;
+  float t, sens, pres, viento, racha, lluvia, uv;
+  char sale[6], pone[6];
+  WxDia d[3];
+  unsigned long tFetch;
+};
+
+static WxDatos wxd = {};
+static float wxLat = 0, wxLon = 0;
+static char wxCiudad[24] = "";
+static bool wxGeoOk = false, wxFalloUlt = false, wxPintadoOk = false, wxForce = false;
+static unsigned long wxTGeo = 0, wxTIntento = 0;
+static uint16_t wxHist[WX_HN]; // KH/s x 10
+static uint8_t wxHead = 0, wxCount = 0;
+static uint16_t wxSeq = 0, wxSeqPint = 0xFFFF;
+static uint32_t wxHsh[32];
+static char wxLunaTxt[12] = "";
+static uint8_t wxIconKey = 255;
+
+// Se llama cada segundo desde analiCadaSegundo(), asi la grafica se llena en cualquier pantalla
+void wxHistMuestrea(void)
+{
+  static unsigned long ult = 0;
+  unsigned long ahora = millis();
+  if (ahora - ult < WX_HIST_SEG * 1000UL)
+    return;
+  ult = ahora;
+  float h = mineria.currentHashRate.toFloat() * 10.0f;
+  if (h < 0)
+    h = 0;
+  if (h > 65535)
+    h = 65535;
+  wxHist[wxHead] = (uint16_t)h;
+  wxHead = (wxHead + 1) % WX_HN;
+  if (wxCount < WX_HN)
+    wxCount++;
+  wxSeq++;
+}
+
+static void wxStats(uint16_t &lo, uint16_t &hi, float &avg)
+{
+  lo = 65535;
+  hi = 0;
+  uint32_t s = 0;
+  for (uint8_t i = 0; i < wxCount; i++)
+  {
+    uint16_t v = wxHist[(wxHead + WX_HN - wxCount + i) % WX_HN];
+    if (v < lo)
+      lo = v;
+    if (v > hi)
+      hi = v;
+    s += v;
+  }
+  if (wxCount)
+    avg = s / (10.0f * wxCount);
+  else
+  {
+    lo = 0;
+    avg = 0;
+  }
+}
+
+// UTF-8 a ASCII ( la fuente de la pantalla no tiene acentos )
+static void wxAscii(char *dst, size_t n, const char *src)
+{
+  static const char up[] = "AAAAAAACEEEEIIIIDNOOOOOxOUUUUYTs";
+  static const char lo[] = "aaaaaaaceeeeiiiidnooooo/ouuuuyty";
+  size_t k = 0;
+  for (size_t i = 0; src[i] && k < n - 1; i++)
+  {
+    uint8_t c = (uint8_t)src[i];
+    if (c == 0xC3 && src[i + 1])
+    {
+      uint8_t d = (uint8_t)src[++i];
+      c = (d >= 0x80 && d <= 0x9F) ? up[d - 0x80] : ((d >= 0xA0 && d <= 0xBF) ? lo[d - 0xA0] : '?');
+    }
+    else if (c >= 0x80)
+      continue;
+    dst[k++] = (char)toupper(c);
+  }
+  dst[k] = 0;
+}
+
+static bool wxGeo()
+{
+  if (WX_LAT_FIJA < 900.0f)
+  {
+    wxLat = WX_LAT_FIJA;
+    wxLon = WX_LON_FIJA;
+    wxAscii(wxCiudad, sizeof(wxCiudad), WX_CIUDAD_FIJA);
+    wxGeoOk = true;
+    wxTGeo = millis();
+    return true;
+  }
+  bool ok = false;
+  HTTPClient http;
+  http.setConnectTimeout(5000);
+  http.setTimeout(5000);
+  http.begin("http://ip-api.com/json/?fields=status,city,lat,lon&lang=es"); // sin IP = la del que pregunta
+  int code = http.GET();
+  if (code == HTTP_CODE_OK)
+  {
+    StaticJsonDocument<384> doc;
+    DeserializationError e = deserializeJson(doc, http.getString());
+    if (!e && strcmp(doc["status"] | "", "success") == 0 && !doc["lat"].isNull() && !doc["lon"].isNull())
+    {
+      wxLat = doc["lat"].as<float>();
+      wxLon = doc["lon"].as<float>();
+      wxAscii(wxCiudad, sizeof(wxCiudad), doc["city"] | "");
+      wxGeoOk = true;
+      wxTGeo = millis();
+      ok = true;
+      Serial.printf("M8AX - Tiempo: Localidad %s ( %.3f, %.3f )\n", wxCiudad, wxLat, wxLon);
+    }
+  }
+  else
+    Serial.printf("M8AX - Tiempo: Error Geolocalizacion HTTP %d\n", code);
+  http.end();
+  return ok;
+}
+
+static int wxGet(const char *url, bool seguro, String &body)
+{
+  int code = -1;
+  if (seguro)
+  {
+    WiFiClientSecure client;
+    client.setInsecure();
+    HTTPClient http;
+    http.setConnectTimeout(6000);
+    http.setTimeout(6000);
+    if (!http.begin(client, url))
+      return -1;
+    code = http.GET();
+    if (code == HTTP_CODE_OK)
+      body = http.getString();
+    http.end();
+  }
+  else
+  {
+    WiFiClient client;
+    HTTPClient http;
+    http.setConnectTimeout(6000);
+    http.setTimeout(6000);
+    if (!http.begin(client, url))
+      return -1;
+    code = http.GET();
+    if (code == HTTP_CODE_OK)
+      body = http.getString();
+    http.end();
+  }
+  return code;
+}
+
+static bool wxFetch()
+{
+  String body;
+  bool obtenido = false;
+  char url[480];
+
+  for (uint8_t intento = 0; intento < 2 && !obtenido; intento++)
+  {
+    bool seguro = (intento == 1);
+    if (seguro && ESP.getMaxAllocHeap() < WX_HEAP_MIN)
+    {
+      Serial.printf("M8AX - Tiempo: Poca RAM Contigua ( %u ) Para HTTPS\n", (unsigned)ESP.getMaxAllocHeap());
+      break;
+    }
+    snprintf(url, sizeof(url),
+             "%s://api.open-meteo.com/v1/forecast?latitude=%.4f&longitude=%.4f"
+             "&current=temperature_2m,relative_humidity_2m,apparent_temperature,is_day,precipitation,"
+             "weather_code,cloud_cover,surface_pressure,wind_speed_10m,wind_direction_10m,wind_gusts_10m"
+             "&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,"
+             "uv_index_max,sunrise,sunset&timezone=auto&forecast_days=3",
+             seguro ? "https" : "http", wxLat, wxLon);
+    body = "";
+    int code = wxGet(url, seguro, body);
+    if (code == HTTP_CODE_OK && body.length() > 50)
+      obtenido = true;
+    else
+      Serial.printf("M8AX - Tiempo: Error Open-Meteo %s HTTP %d\n", seguro ? "HTTPS" : "HTTP", code);
+  }
+  if (!obtenido)
+    return false;
+
+  StaticJsonDocument<96> filtro;
+  filtro["current"] = true;
+  filtro["daily"] = true;
+  DynamicJsonDocument doc(2560);
+  DeserializationError e = deserializeJson(doc, body, DeserializationOption::Filter(filtro));
+  body = "";
+  if (e)
+  {
+    Serial.printf("M8AX - Tiempo: Error Al Parsear JSON ( %s )\n", e.c_str());
+    return false;
+  }
+  JsonObject c = doc["current"];
+  JsonObject d = doc["daily"];
+  if (c.isNull() || d.isNull())
+    return false;
+  wxd.t = c["temperature_2m"] | 0.0f;
+  wxd.sens = c["apparent_temperature"] | 0.0f;
+  wxd.hum = c["relative_humidity_2m"] | 0;
+  wxd.dia = (c["is_day"] | 1) != 0;
+  wxd.lluvia = c["precipitation"] | 0.0f;
+  wxd.code = c["weather_code"] | 0;
+  wxd.nubes = c["cloud_cover"] | 0;
+  wxd.pres = c["surface_pressure"] | 0.0f;
+  wxd.viento = c["wind_speed_10m"] | 0.0f;
+  wxd.wdir = c["wind_direction_10m"] | 0;
+  wxd.racha = c["wind_gusts_10m"] | 0.0f;
+  wxd.uv = d["uv_index_max"][0] | 0.0f;
+  for (int i = 0; i < 3; i++)
+  {
+    wxd.d[i].code = d["weather_code"][i] | 0;
+    wxd.d[i].tmax = (int8_t)lroundf(d["temperature_2m_max"][i] | 0.0f);
+    wxd.d[i].tmin = (int8_t)lroundf(d["temperature_2m_min"][i] | 0.0f);
+    wxd.d[i].pp = d["precipitation_probability_max"][i] | 0;
+  }
+  const char *sr = d["sunrise"][0] | "";
+  const char *ss = d["sunset"][0] | "";
+  strlcpy(wxd.sale, strlen(sr) >= 16 ? sr + 11 : "--:--", sizeof(wxd.sale));
+  strlcpy(wxd.pone, strlen(ss) >= 16 ? ss + 11 : "--:--", sizeof(wxd.pone));
+  wxd.ok = true;
+  wxd.tFetch = millis();
+  Serial.printf("M8AX - Tiempo: %s %.1fC Hum %d%% Viento %.0f km/h Pres %.0f hPa\n", wxCiudad, wxd.t, wxd.hum, wxd.viento, wxd.pres);
+  return true;
+}
+
+static uint8_t wxKind(uint8_t c)
+{
+  if (c == 0)
+    return 0; // despejado
+  if (c <= 2)
+    return 1; // poco nuboso
+  if (c == 3)
+    return 2; // nublado
+  if (c == 45 || c == 48)
+    return 3; // niebla
+  if ((c >= 51 && c <= 67) || (c >= 80 && c <= 82))
+    return 4; // lluvia
+  if ((c >= 71 && c <= 77) || c == 85 || c == 86)
+    return 5; // nieve
+  if (c >= 95)
+    return 6; // tormenta
+  return 2;
+}
+
+static const char *wxTxt(uint8_t c)
+{
+  switch (c)
+  {
+  case 0:
+    return "DESPEJADO";
+  case 1:
+    return "POCO NUBOSO";
+  case 2:
+    return "PARC. NUBOSO";
+  case 3:
+    return "NUBLADO";
+  case 45:
+  case 48:
+    return "NIEBLA";
+  case 51:
+  case 53:
+  case 55:
+    return "LLOVIZNA";
+  case 56:
+  case 57:
+    return "LLOV. HELADA";
+  case 61:
+    return "LLUVIA DEBIL";
+  case 63:
+    return "LLUVIA";
+  case 65:
+    return "LLUVIA FUERTE";
+  case 66:
+  case 67:
+    return "LLUVIA HELADA";
+  case 71:
+    return "NIEVE DEBIL";
+  case 73:
+    return "NIEVE";
+  case 75:
+    return "NIEVE FUERTE";
+  case 77:
+    return "GRANIZO FINO";
+  case 80:
+    return "CHUBASCOS";
+  case 81:
+  case 82:
+    return "CHUBASC FUERT";
+  case 85:
+  case 86:
+    return "CHUBASC NIEVE";
+  case 95:
+    return "TORMENTA";
+  case 96:
+  case 99:
+    return "TORM+GRANIZO";
+  }
+  return "---";
+}
+
+static void wxNube(int x, int y, uint16_t c)
+{
+  tft.fillCircle(x + 14, y + 30, 8, c);
+  tft.fillCircle(x + 25, y + 24, 11, c);
+  tft.fillCircle(x + 36, y + 31, 7, c);
+  tft.fillRect(x + 14, y + 31, 22, 8, c);
+}
+
+static void wxIcono(int x, int y, uint8_t kind, bool dia)
+{
+  tft.fillRect(x, y, 50, 48, TFT_BLACK);
+  switch (kind)
+  {
+  case 0: // sol o luna
+    if (dia)
+    {
+      tft.fillCircle(x + 24, y + 24, 10, TFT_YELLOW);
+      for (int k = 0; k < 8; k++)
+      {
+        float a = k * 0.785398f;
+        tft.drawLine(x + 24 + (int)(15 * cosf(a)), y + 24 + (int)(15 * sinf(a)),
+                     x + 24 + (int)(21 * cosf(a)), y + 24 + (int)(21 * sinf(a)), TFT_YELLOW);
+      }
+    }
+    else
+    {
+      tft.fillCircle(x + 24, y + 24, 13, TFT_LIGHTGREY);
+      tft.fillCircle(x + 31, y + 18, 11, TFT_BLACK);
+    }
+    break;
+  case 1: // sol/luna con nube
+    if (dia)
+      tft.fillCircle(x + 17, y + 15, 9, TFT_YELLOW);
+    else
+    {
+      tft.fillCircle(x + 17, y + 15, 9, TFT_LIGHTGREY);
+      tft.fillCircle(x + 22, y + 11, 8, TFT_BLACK);
+    }
+    wxNube(x + 4, y + 8, TFT_WHITE);
+    break;
+  case 2: // nublado
+    wxNube(x, y + 4, TFT_LIGHTGREY);
+    break;
+  case 3: // niebla
+    wxNube(x, y - 4, TFT_LIGHTGREY);
+    for (int i = 0; i < 3; i++)
+      tft.drawFastHLine(x + 6 + (i % 2) * 4, y + 36 + i * 4, 32, TFT_LIGHTGREY);
+    break;
+  case 4: // lluvia
+    wxNube(x, y - 4, TFT_LIGHTGREY);
+    for (int i = 0; i < 3; i++)
+      tft.drawLine(x + 15 + i * 10, y + 37, x + 12 + i * 10, y + 46, TFT_CYAN);
+    break;
+  case 5: // nieve
+    wxNube(x, y - 4, TFT_LIGHTGREY);
+    for (int i = 0; i < 3; i++)
+      tft.fillCircle(x + 14 + i * 10, y + 41 + (i % 2) * 4, 2, TFT_WHITE);
+    break;
+  default: // tormenta
+    wxNube(x, y - 6, TFT_DARKGREY);
+    tft.fillTriangle(x + 28, y + 28, x + 19, y + 40, x + 26, y + 40, TFT_YELLOW);
+    tft.fillTriangle(x + 26, y + 40, x + 22, y + 47, x + 32, y + 33, TFT_YELLOW);
+    break;
+  }
+}
+
+static uint16_t wxColorT(float t)
+{
+  if (t < 5)
+    return TFT_CYAN;
+  if (t < 12)
+    return TFT_SKYBLUE;
+  if (t < 20)
+    return TFT_GREENYELLOW;
+  if (t < 28)
+    return TFT_YELLOW;
+  if (t < 35)
+    return TFT_ORANGE;
+  return TFT_RED;
+}
+
+// Fase de la luna a partir del % iluminado y de si esta creciendo o menguando
+static const char *wxFase(double p, bool crece)
+{
+  if (p < 2.0)
+    return "NUEVA";
+  if (p >= 98.0)
+    return "LLENA";
+  if (p >= 45.0 && p <= 55.0)
+    return crece ? "CUARTO CREC." : "CUARTO MENG.";
+  if (p < 45.0)
+    return crece ? "CRECIENTE" : "MENGUANTE";
+  return crece ? "GIB.CRECIENTE" : "GIB.MENGUANTE";
+}
+
+// Pinta una linea solo si ha cambiado ( hash del texto ), sin parpadeo gracias al padding
+static void wxPut(uint8_t i, int x, int y, int w, uint8_t sz, uint16_t col, const char *s, uint8_t datum = TL_DATUM)
+{
+  uint32_t h = 2166136261u ^ col ^ ((uint32_t)sz << 16);
+  for (const char *p = s; *p; p++)
+  {
+    h ^= (uint8_t)*p;
+    h *= 16777619u;
+  }
+  if (!wxForce && h == wxHsh[i])
+    return;
+  wxHsh[i] = h;
+  tft.setFreeFont(NULL);
+  tft.setTextFont(1);
+  tft.setTextSize(sz);
+  tft.setTextColor(col, TFT_BLACK);
+  tft.setTextPadding(w);
+  tft.setTextDatum(datum);
+  tft.drawString(s, x, y);
+  tft.setTextPadding(0);
+  tft.setTextDatum(TL_DATUM);
+}
+
+void esp32_2432S028R_WeatherScreen(unsigned long mElapsed)
+{
+  mineria = getMiningData(mElapsed);
+  if (hasChangedScreen)
+  {
+    tft.fillRect(0, 0, 320, 170, TFT_BLACK);
+    tft.drawFastHLine(0, 17, 320, TFT_DARKGREY);
+    tft.drawFastHLine(0, 155, 320, TFT_DARKGREY);
+    tft.drawFastVLine(162, 18, 137, TFT_DARKGREY);
+    wxForce = true;
+    wxPintadoOk = false;
+    wxIconKey = 255;
+    wxSeqPint = 0xFFFF;
+  }
+  printPoolData();
+  hasChangedScreen = false;
+
+  unsigned long ahora = millis();
+  time_t epoch = (time_t)timeClient.getEpochTime();
+  struct tm ti;
+  localtime_r(&epoch, &ti);
+  char b[40];
+
+  // Cabecera: localidad, antiguedad del dato y hora
+  snprintf(b, sizeof(b), "%.10s", wxGeoOk ? wxCiudad : "BUSCANDO...");
+  wxPut(0, 2, 1, 120, 2, TFT_YELLOW, b);
+  if (wxd.ok)
+    snprintf(b, sizeof(b), "SOL^%s v%s", wxd.sale, wxd.pone);
+  else
+    snprintf(b, sizeof(b), "SOL^--:-- v--:--");
+  wxPut(27, 124, 0, 96, 1, TFT_GOLD, b);
+  if (wxd.ok)
+    snprintf(b, sizeof(b), "ACT %lum", (ahora - wxd.tFetch) / 60000UL);
+  else
+    snprintf(b, sizeof(b), "ACT --");
+  wxPut(1, 126, 8, 90, 1, TFT_DARKGREY, b);
+  snprintf(b, sizeof(b), "%02d:%02d:%02d", ti.tm_hour, ti.tm_min, ti.tm_sec);
+  wxPut(2, 318, 1, 96, 2, TFT_WHITE, b, TR_DATUM);
+
+  // Descarga: bloquea 2-4 s cada 10 minutos, se avisa en pantalla
+  bool conectado = (WiFi.status() == WL_CONNECTED);
+  unsigned long espera = (wxd.ok && !wxFalloUlt) ? WX_REFRESCO_MS : WX_REINTENTO_MS;
+  if (conectado && (wxTIntento == 0 || ahora - wxTIntento >= espera))
+  {
+    wxPut(3, 2, 30, 156, 1, TFT_ORANGE, "ACTUALIZANDO TIEMPO...");
+    wxTIntento = ahora;
+    if (!wxGeoOk || ahora - wxTGeo >= WX_GEO_REFRESCO_MS)
+      wxGeo();
+    wxFalloUlt = !(wxGeoOk && wxFetch());
+    wxHsh[3] = 0;
+    wxPintadoOk = false; // el aviso tapo el icono: se repinta todo el panel del tiempo
+  }
+
+  if (!wxd.ok)
+  {
+    wxPut(3, 2, 30, 156, 1, TFT_ORANGE, conectado ? (wxTIntento ? "SIN DATOS DEL TIEMPO" : "CONECTANDO...") : "SIN WIFI");
+  }
+  else
+  {
+    if (!wxPintadoOk)
+    {
+      tft.fillRect(0, 18, 162, 137, TFT_BLACK);
+      wxPintadoOk = true;
+      wxForce = true;
+      wxIconKey = 255;
+    }
+    uint8_t key = wxKind(wxd.code) | (wxd.dia ? 0x10 : 0);
+    if (key != wxIconKey)
+    {
+      wxIcono(2, 18, wxKind(wxd.code), wxd.dia);
+      wxIconKey = key;
+    }
+    snprintf(b, sizeof(b), "%.1fC", wxd.t);
+    wxPut(4, 52, 22, 108, 3, wxColorT(wxd.t), b);
+    snprintf(b, sizeof(b), "HUM %d%%", wxd.hum);
+    wxPut(5, 52, 49, 108, 2, TFT_CYAN, b);
+    wxPut(6, 2, 66, 156, 2, TFT_YELLOW, wxTxt(wxd.code));
+
+    static const char *rosa[] = {"N", "NE", "E", "SE", "S", "SO", "O", "NO"};
+    float tr = wxd.t, hr = wxd.hum > 0 ? wxd.hum : 1;
+    float g = logf(hr / 100.0f) + 17.62f * tr / (243.12f + tr);
+    float rocio = 243.12f * g / (17.62f - g);
+    snprintf(b, sizeof(b), "SENS %.1fC  PRES %.0fhPa", wxd.sens, wxd.pres);
+    wxPut(7, 2, 84, 156, 1, TFT_WHITE, b);
+    snprintf(b, sizeof(b), "ROCIO %.1fC  NUBES %d%%", rocio, wxd.nubes);
+    wxPut(8, 2, 94, 156, 1, TFT_WHITE, b);
+    snprintf(b, sizeof(b), "VIENTO %.0f R%.0f km/h %s", wxd.viento, wxd.racha, rosa[((int)((wxd.wdir + 22.5f) / 45.0f)) & 7]);
+    wxPut(9, 2, 104, 156, 1, TFT_GREENYELLOW, b);
+    snprintf(b, sizeof(b), "LLUVIA %.1fmm %d%% UV %.1f", wxd.lluvia, wxd.d[0].pp, wxd.uv);
+    wxPut(10, 2, 114, 156, 1, wxd.uv >= 6 ? TFT_ORANGE : TFT_CYAN, b);
+
+    static const char *dias[] = {"DOM", "LUN", "MAR", "MIE", "JUE", "VIE", "SAB"};
+    for (int i = 0; i < 3; i++)
+    {
+      snprintf(b, sizeof(b), "%s %d/%dC LL:%d%%", i == 0 ? "HOY" : dias[(ti.tm_wday + i) % 7], wxd.d[i].tmax, wxd.d[i].tmin, wxd.d[i].pp);
+      if (strlen(b) * 6 > 104) // no cabe (negativas o 100 % con 2 digitos): version corta
+        snprintf(b, sizeof(b), "%s %d/%d %d%%", i == 0 ? "HOY" : dias[(ti.tm_wday + i) % 7], wxd.d[i].tmax, wxd.d[i].tmin, wxd.d[i].pp);
+      wxPut(14 + i, 2 + i * 106, 160, 104, 1, wxd.d[i].pp >= 50 ? TFT_CYAN : TFT_WHITE, b);
+    }
+  }
+
+  // Luna: calculo local, no necesita internet. Mismo dibujo que en las otras pantallas
+  {
+    moonData_t luna = mymoonPhase.getPhase(epoch);
+    moonData_t luna2 = mymoonPhase.getPhase(epoch + 3600); // dentro de 1 hora: sirve para saber si crece
+    double pl = luna.percentLit * 100.0;
+    bool crece = luna2.percentLit > luna.percentLit;
+    char pct[12];
+    snprintf(pct, sizeof(pct), "%.3f%%", pl);
+    if (wxForce || strcmp(pct, wxLunaTxt) != 0)
+    {
+      strlcpy(wxLunaTxt, pct, sizeof(wxLunaTxt));
+      tft.fillRect(0, 124, 33, 30, TFT_BLACK);
+      auto ciGuardado = colorIndex;
+      colorIndex = 14; // plateado, y se devuelve como estaba
+      dibujarPorcentajeLunar(16, 139, 14, pl);
+      colorIndex = ciGuardado;
+    }
+    snprintf(b, sizeof(b), "LUNA %s", wxFase(pl, crece));
+    wxPut(28, 36, 125, 124, 1, TFT_SKYBLUE, b);
+    wxPut(29, 36, 136, 124, 2, TFT_WHITE, pct);
+  }
+
+  // Columna del minero
+  float hash = mineria.currentHashRate.toFloat();
+  uint16_t chash = hash > 300 ? TFT_GREEN : (hash > 0 ? TFT_YELLOW : TFT_RED);
+  snprintf(b, sizeof(b), "%.1f", hash);
+  wxPut(17, 166, 20, 102, hash >= 1000 ? 2 : 3, chash, b);
+  wxPut(18, 318, 28, 48, 2, TFT_WHITE, "KH/s", TR_DATUM);
+
+  uint16_t lo, hi;
+  float avg;
+  wxStats(lo, hi, avg);
+  char mn[12];
+  if (minkh >= 1000.0f)
+    strcpy(mn, "--");
+  else
+    snprintf(mn, sizeof(mn), "%.1f", minkh);
+  snprintf(b, sizeof(b), "MAX %.1f  MIN %s", maxkh, mn);
+  wxPut(19, 166, 48, 152, 1, TFT_WHITE, b);
+  if (wxCount)
+    snprintf(b, sizeof(b), "MEDIA %.1f (%dm)", avg, wxCount * WX_HIST_SEG / 60);
+  else
+    snprintf(b, sizeof(b), "MEDIA --");
+  wxPut(20, 166, 58, 152, 1, TFT_WHITE, b);
+  snprintf(b, sizeof(b), "SHARES %.8s  VALIDOS %.5s", mineria.completedShares.c_str(), mineria.valids.c_str());
+  wxPut(21, 166, 68, 152, 1, TFT_CYAN, b);
+  snprintf(b, sizeof(b), "MEJOR DIF %.14s", mineria.bestDiff.c_str());
+  wxPut(22, 166, 78, 152, 1, TFT_GOLD, b);
+  snprintf(b, sizeof(b), "TOTAL %.10s KH", mineria.totalKHashes.c_str());
+  wxPut(23, 166, 88, 152, 1, TFT_WHITE, b);
+  snprintf(b, sizeof(b), "PLANT %.6s  CPU %.4sC", mineria.templates.c_str(), mineria.temp.c_str());
+  wxPut(24, 166, 98, 152, 1, TFT_ORANGE, b);
+  snprintf(b, sizeof(b), "TIEMPO %.16s", mineria.timeMining.c_str());
+  wxPut(25, 166, 108, 152, 1, TFT_GREENYELLOW, b);
+
+  // Grafica de los ultimos minutos
+  if (wxCount)
+    snprintf(b, sizeof(b), "ULT %dm ^%.0f v%.0f", (wxCount * WX_HIST_SEG + 59) / 60, hi / 10.0f, lo / 10.0f);
+  else
+    snprintf(b, sizeof(b), "RECOGIENDO HASHRATE...");
+  wxPut(26, 166, 118, 152, 1, TFT_SKYBLUE, b);
+  if (wxForce || wxSeq != wxSeqPint)
+  {
+    wxSeqPint = wxSeq;
+    tft.fillRect(166, 128, 154, 26, TFT_BLACK);
+    uint32_t rango = hi > lo ? (uint32_t)(hi - lo) : 1;
+    for (uint8_t i = 0; i < wxCount; i++)
+    {
+      uint16_t v = wxHist[(wxHead + WX_HN - wxCount + i) % WX_HN];
+      int h = 2 + (int)(((uint32_t)(v - lo) * 22) / rango);
+      int x = 166 + (WX_HN - wxCount + i) * 2;
+      uint16_t col = (i == wxCount - 1) ? TFT_WHITE : ((v / 10.0f >= avg) ? TFT_GREEN : TFT_YELLOW);
+      tft.fillRect(x, 154 - h, 2, h, col);
+    }
+  }
+
+  wxForce = false;
+  manejandoLeds(hash); // LEDs exactamente igual que en la pantalla del minero
+#ifdef DEBUG_MEMORY
+  printheap();
+#endif
+}
+
 void analiCadaSegundo(unsigned long frame)
 {
   unsigned long epochTime = timeClient.getEpochTime(); // Obtener segundos desde 1970
@@ -18280,12 +19025,103 @@ void analiCadaSegundo(unsigned long frame)
     f3M = NULL;
   }
 
+  if (snkM && pantallaActual != esp32_2432S028R_SnakeScreen)
+  {
+    free(snkM);
+    snkM = NULL;
+  }
+
+  if (banM && pantallaActual != esp32_2432S028R_BannerScreen)
+  {
+    free(banM);
+    banM = NULL;
+  }
+
+  if (dmM && pantallaActual != esp32_2432S028R_DoomScreen)
+  {
+    free(dmM);
+    dmM = NULL;
+  }
+
+  if (fhM && pantallaActual != esp32_2432S028R_FlappyHashScreen)
+  {
+    free(fhM);
+    fhM = NULL;
+  }
+
+  if (chMem && pantallaActual != esp32_2432S028R_AjedrezScreen)
+    chMemLibera();
+
   ecgMuestrea();
+
+  wxHistMuestrea();
+
+  // Felicitar La Navidad O El Año Nuevo ( 20 dic - 6 ene ), tambien nada mas arrancar
+  {
+    static long navUltima = -1;
+    static bool navArranque = false;
+    bool horaValida = (epochTime > 1700000000UL);
+    bool epocaNavidad = horaValida && ((mes == 12 && dia >= 20) || (mes == 1 && dia <= 6));
+    bool toca = false;
+    long clave = ((long)mes * 32 + dia) * 24 + horita;
+
+    if (horaValida && !navArranque)
+    {
+      navArranque = true;
+      if (epocaNavidad)
+        toca = true;
+    }
+    else if (epocaNavidad && minutitos == 30 && (horita % 2 == 0) &&
+             ((horita >= 8 && horita <= 15) || (horita >= 19 && horita <= 23) || (horita <= 2)) &&
+             dia % 2 == 0 && clave != navUltima)
+    {
+      toca = true;
+    }
+
+    if (toca)
+    {
+      navUltima = clave;
+      if (mes == 12)
+      {
+        Serial.println("M8AX - Felicitando La Navidad...");
+        nevarFelicita("FELIZ NAVIDAD", 100, 35);
+      }
+      else
+      {
+        Serial.println("M8AX - Felicitando El Año Nuevo...");
+        nevarFelicita("HAPPY NEW YEAR", 200, 25);
+      }
+    }
+  }
+
+  // Dando Esperanzas Al Dueño Del NerdminerV2: Lo Conseguirás... Ostia!!! xD
+  rndnumero = esp_random();
+  if (rndnumero <= 10031977 && segundos <= 20 && segundos % 2 == 0 && dia % 2 == 0)
+  {
+    Serial.printf("M8AX - >>> NerdMinerV2 Dando Ánimos Y Esperanza Al Usuario...\n");
+    tft.fillScreen(TFT_BLACK);
+    tft.setTextDatum(TL_DATUM);
+    tft.setTextPadding(0);
+    tft.setFreeFont(NULL);
+    tft.setTextFont(1);
+    tft.setTextColor(colors[esp_random() % (sizeof(colors) / sizeof(colors[0]))]);
+    tft.setTextSize(3);
+    tft.setCursor(0, 0);
+    const char *mensaje1 = (rndnumero % 2 == 0) ? "La Esperanza Es\nLo Ultimo Que\nSe Pierde...\nLo Conseguiremos!\n\n     VAMOS !" : "Hope Is The Last\nThing To Lose, We\nWill Achieve It!\n\n    COME ON !";
+    tft.println(mensaje1);
+    tft.setTextSize(1);
+    tft.println("");
+    tft.setTextSize(2), tft.setTextColor(TFT_WHITE);
+    tft.println("     ... By M8AX ..."), delay(3000);
+    tft.setTextSize(1);
+    hasChangedScreen = true; // repinta la pantalla actual y la barra de abajo
+  }
 
   if (startTime == 0)
   {
-    BOT_TOKEN = Settings.botTelegram;                                                   // Bot De Telegram
-    CHAT_ID = Settings.ChanelIDTelegram;                                                // ID Del Canal De Telegram
+    BOT_TOKEN = Settings.botTelegram;    // Bot De Telegram
+    CHAT_ID = Settings.ChanelIDTelegram; // ID Del Canal De Telegram
+    zonilla = Settings.Timezone;
     startTime = (epochTime > 1700000000UL && epochTime < 4102444800UL) ? epochTime : 0; // Guardar el tiempo de inicio cuando el dispositivo arranca
   }
 
@@ -18316,6 +19152,7 @@ void analiCadaSegundo(unsigned long frame)
   }
 
   // Si ya ha pasado el tiempo de arranque mínimo (por ejemplo, 10 minutos) y han pasado 2 horas desde el último mensaje de Telegram
+
   if (startTime > 0 && epochTime - startTime >= minStartupTime && epochTime - lastTelegramEpochTime >= interval)
   {
     // Ajustar la zona horaria si es necesario
@@ -18323,14 +19160,61 @@ void analiCadaSegundo(unsigned long frame)
       ajustarZonaHoraria();
     obtenerLocYTemp();
     obtenerVariacionesBTC(variacion1dia, variacion1semana);
-
     // Verificar si los datos de Telegram están configurados
     static int fallosSeguidos = 0;
-    if (nbd) // libera la RAM de las galaxias antes de la conexión segura
+    // libera la RAM de la pantalla actual antes de la conexión segura
+    if (nbd)
     {
       free(nbd);
       nbd = NULL;
     }
+    if (galM)
+    {
+      free(galM);
+      galM = NULL;
+    }
+    if (astM)
+    {
+      free(astM);
+      astM = NULL;
+    }
+    if (atrM)
+    {
+      free(atrM);
+      atrM = NULL;
+    }
+    if (demM)
+    {
+      free(demM);
+      demM = NULL;
+    }
+    if (f3M)
+    {
+      free(f3M);
+      f3M = NULL;
+    }
+    if (snkM)
+    {
+      free(snkM);
+      snkM = NULL;
+    }
+    if (banM)
+    {
+      free(banM);
+      banM = NULL;
+    }
+    if (dmM)
+    {
+      free(dmM);
+      dmM = NULL;
+    }
+    if (fhM)
+    {
+      free(fhM);
+      fhM = NULL;
+    }
+    if (chMem)
+      chMemLibera();
     bool enviado = recopilaTelegram(); // Monta el mensaje, lo envía a Telegram si hay bot y lo guarda en la SD
     if (enviado)
     {
@@ -18387,6 +19271,7 @@ void esp32_2432S028R_DoLedStuff(unsigned long frame)
 
         // Touching the top right corner of the screen, roughly in the gray status label.
         // Disabling the screen backlight.
+
         esp32_2432S028R_AlternateScreenState();
       }
       else if (t_x > 160)
@@ -18438,7 +19323,7 @@ void esp32_2432S028R_DoLedStuff(unsigned long frame)
   }
 }
 
-CyclicScreenFunction esp32_2432S028RCyclicScreens[] = {esp32_2432S028R_MinerScreen, esp32_2432S028R_BTCprice, esp32_2432S028R_ClockScreen, esp32_2432S028R_ECGScreen, tDisplay_granHash, tDisplay_hashGigante, RelojDeNumeros, tDisplay_m8axScreen7, esp32_2432S028R_m8axScreen1, esp32_2432S028R_m8axScreen2, tDisplay_m8axScreenMegaNerd, tDisplay_m8axScreen5, tDisplay_m8axScreen6, esp32_2432S028R_BannerScreen, tDisplay_Primos, esp32_2432S028R_CifrasScreen, esp32_2432S028R_TetrisScreen, esp32_2432S028R_AjedrezScreen, esp32_2432S028R_GalaxianScreen, esp32_2432S028R_AsteroidesScreen, esp32_2432S028R_PongScreen, esp32_2432S028R_KrakoutScreen, esp32_2432S028R_SnakeScreen, esp32_2432S028R_FlappyHashScreen, esp32_2432S028R_DoomScreen, esp32_2432S028R_LifeScreen, esp32_2432S028R_FractalScreen, esp32_2432S028R_Fractal3DScreen, esp32_2432S028R_AtractoresScreen, esp32_2432S028R_GalaxiasScreen, esp32_2432S028R_RainScreen, esp32_2432S028R_DemoScreen, esp32_2432S028R_monedaYdado, esp32_2432S028R_CalcScreen, tDisplay_m8axScreen3, tDisplay_m8axScreen4};
+CyclicScreenFunction esp32_2432S028RCyclicScreens[] = {esp32_2432S028R_MinerScreen, esp32_2432S028R_BTCprice, esp32_2432S028R_ClockScreen, esp32_2432S028R_WeatherScreen, esp32_2432S028R_ECGScreen, tDisplay_granHash, tDisplay_hashGigante, RelojDeNumeros, tDisplay_m8axScreen7, esp32_2432S028R_m8axScreen1, esp32_2432S028R_m8axScreen2, tDisplay_m8axScreenMegaNerd, tDisplay_m8axScreen5, tDisplay_m8axScreen6, esp32_2432S028R_BannerScreen, tDisplay_Primos, esp32_2432S028R_CifrasScreen, esp32_2432S028R_TetrisScreen, esp32_2432S028R_AjedrezScreen, esp32_2432S028R_GalaxianScreen, esp32_2432S028R_AsteroidesScreen, esp32_2432S028R_PongScreen, esp32_2432S028R_KrakoutScreen, esp32_2432S028R_SnakeScreen, esp32_2432S028R_FlappyHashScreen, esp32_2432S028R_DoomScreen, esp32_2432S028R_LifeScreen, esp32_2432S028R_FractalScreen, esp32_2432S028R_Fractal3DScreen, esp32_2432S028R_AtractoresScreen, esp32_2432S028R_GalaxiasScreen, esp32_2432S028R_RainScreen, esp32_2432S028R_DemoScreen, esp32_2432S028R_monedaYdado, esp32_2432S028R_CalcScreen, tDisplay_m8axScreen3, tDisplay_m8axScreen4};
 
 DisplayDriver esp32_2432S028RDriver = {
     esp32_2432S028R_Init,

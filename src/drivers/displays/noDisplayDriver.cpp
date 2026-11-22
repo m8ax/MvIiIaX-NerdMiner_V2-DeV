@@ -1195,7 +1195,7 @@ static void cifras_search(CifrasCtx &c, const int *vals, const int *ids, int n, 
         }
         if ((++c.nodes & 0x3FF) == 0)
         {
-          if (millis() > c.deadline)
+          if ((int32_t)(millis() - c.deadline) > 0)
           {
             c.done = true;
             return;
@@ -1929,25 +1929,25 @@ void noDisplay_NoScreen(unsigned long mElapsed)
       Tresultado = obtenerCiudadYTemperatura(ipPublica);
     }
     Serial.print("\n--------------------------------------------------------------------------------------------------------------");
-    Serial.printf("\n>>> M8AX - Datos Serial Número - %s | PLACA-WROOM-ESP32D-%s\n", String(sumacalen + 1), String(u4digits));
+    Serial.printf("\n>>> M8AX - Datos Serial Número - %s | PLACA-WROOM-ESP32D-%s\n", String(sumacalen + 1).c_str(), String(u4digits).c_str());
     Serial.printf(">>> M8AX - F.C.FW - %s A Las %s | Hace %s\n", __DATE__, __TIME__, String(convertirTiempoNoMinando(segundosDesdeCompilacion())).c_str());
-    Serial.printf(">>> M8AX - Fecha - %s %s | Hora - %s | Semana Del Año Número - %s | %% Luna Visible - %s\n", String(fechaFormateada), quediase.c_str(), horaFormateada, numdesemana, String(porcentajeTexto).c_str());
+    Serial.printf(">>> M8AX - Fecha - %s %s | Hora - %s | Semana Del Año Número - %s | %% Luna Visible - %s\n", fechaFormateada, quediase.c_str(), horaFormateada, numdesemana.c_str(), porcentajeTexto);
     Serial.printf(">>> M8AX - %s, %s | %s | UTC %s%d\n", Tresultado.first.c_str(), Tresultado.second.c_str(), salidaypuesta.c_str(), (zonilla >= 0) ? "+" : "", zonilla);
     String horaFinal = horaEnIngles(horas, minutos, segundos);
     Serial.printf(">>> M8AX - Hora En Inglés - %s\n", horaFinal.c_str());
     horaFinal = "", horaFinal.reserve(0);
-    Serial.printf(">>> M8AX - Señal WiFi ( RSSI ) -> %d dBm -> ( %s ) -> Canal WiFi - %s\n", WiFi.RSSI(), String(evaluarRSSI(String(WiFi.RSSI()))).c_str(), String(WiFi.channel()));
+    Serial.printf(">>> M8AX - Señal WiFi ( RSSI ) -> %d dBm -> ( %s ) -> Canal WiFi - %s\n", WiFi.RSSI(), String(evaluarRSSI(String(WiFi.RSSI()))).c_str(), String(WiFi.channel()).c_str());
     quediase.clear(), quediase.shrink_to_fit();
     char *hostname = strdup(WiFi.getHostname());
     Serial.printf(">>> M8AX - HostName - %s\n", strupr(hostname));
     free(hostname);
     Serial.printf(">>> M8AX - Dir.MAC - %s\n", WiFi.macAddress().c_str());
-    Serial.printf(">>> M8AX - IP Pública - %s\n", ipPublica);
-    Serial.printf(">>> M8AX - IP Local - %s\n", WiFi.localIP().toString());
+    Serial.printf(">>> M8AX - IP Pública - %s\n", ipPublica.c_str());
+    Serial.printf(">>> M8AX - IP Local - %s\n", WiFi.localIP().toString().c_str());
     float Tops = ((data.currentHashRate.toFloat() * 1000) * 2560) / 1000000000;
     char tbuffer[10];
     dtostrf(Tops, 8, 6, tbuffer);
-    Serial.printf(">>> M8AX - Modelo Del Chip - %s, %d MHz, %d Núcleos, ( %s RT.TOPS )\n", String(ESP.getChipModel()), ESP.getCpuFreqMHz(), ESP.getChipCores(), String(tbuffer));
+    Serial.printf(">>> M8AX - Modelo Del Chip - %s, %d MHz, %d Núcleos, ( %s RT.TOPS )\n", ESP.getChipModel(), ESP.getCpuFreqMHz(), ESP.getChipCores(), tbuffer);
     if (tiempoTranscurrido > 0)
     {
       parpadeosPorSegundo = (double)totalparpadeosled / ((double)tiempoTranscurrido / 1000.0);
@@ -1958,7 +1958,7 @@ void noDisplay_NoScreen(unsigned long mElapsed)
     Serial.printf(">>> M8AX - Plantillas De Bloques - %s\n", data.templates.c_str());
     Serial.printf(">>> M8AX - Mejor Dificultad Alcanzada - %s\n", data.bestDiff.c_str());
     Serial.printf(">>> M8AX - Shares Enviados A La Pool - %s\n", data.completedShares.c_str());
-    Serial.printf(">>> M8AX - HashRate - %s KH/s\n", String(hhashrate));
+    Serial.printf(">>> M8AX - HashRate - %s KH/s\n", String(hhashrate).c_str());
     Serial.printf(">>> M8AX - Barra De Velocidad KH/s - %s\n", generarBarraHash(hhashrate).c_str());
     String valor = String(hhashrate);
     int parteEntera = valor.substring(0, valor.indexOf(".")).toInt();
@@ -1973,7 +1973,7 @@ void noDisplay_NoScreen(unsigned long mElapsed)
     float semanagh = hrgfloat * 60 * 60 * 24 * 7;
     float semanath = hrtfloat * 60 * 60 * 24 * 7;
     float semanaph = hrpfloat * 60 * 60 * 24 * 7;
-    Serial.printf(">>> M8AX - +/- GH/SEM - %s GH/Semana | +/- TH/SEM - %s TH/Semana | +/- PH/SEM - %s PH/Semana\n", String(semanagh, 2), String(semanath, 2), String(semanaph, 6));
+    Serial.printf(">>> M8AX - +/- GH/SEM - %s GH/Semana | +/- TH/SEM - %s TH/Semana | +/- PH/SEM - %s PH/Semana\n", String(semanagh, 2).c_str(), String(semanath, 2).c_str(), String(semanaph, 6).c_str());
     uint8_t entrada[valor.length() + 1];
     memcpy(entrada, valor.c_str(), valor.length() + 1);
     uint8_t salida[32];
@@ -1989,12 +1989,12 @@ void noDisplay_NoScreen(unsigned long mElapsed)
     }
     Serial.printf(">>> M8AX - HR SHA-256 - %s KH/s\n", String(sha256String).c_str());
     mbedtls_sha256_free(&ctx);
-    Serial.printf(">>> M8AX - Max HashRate - %s KH/s\n", String(maxkh));
-    Serial.printf(">>> M8AX - Min HashRate - %s KH/s\n", String(minkh));
+    Serial.printf(">>> M8AX - Max HashRate - %s KH/s\n", String(maxkh).c_str());
+    Serial.printf(">>> M8AX - Min HashRate - %s KH/s\n", String(minkh).c_str());
     if (hhashrate > 0)
     {
       Serial.println(">>> M8AX - Si Cada Hash (64 Caracteres), Se Escribiera En Línea Recta Con");
-      Serial.printf(">>> M8AX - Tamaño De Letra De Libro, Tu Minero Generaría Texto A - %s Km/s\n", String(calcularKilometrosPorSegundo(valor.toFloat())));
+      Serial.printf(">>> M8AX - Tamaño De Letra De Libro, Tu Minero Generaría Texto A - %s Km/s\n", String(calcularKilometrosPorSegundo(valor.toFloat())).c_str());
       float tiempoLunaSegundos = distanciaLuna / calcularKilometrosPorSegundo(hhashrate);
       float tiempoSolSegundos = distanciaSol / calcularKilometrosPorSegundo(hhashrate);
       float tiempoDiaSolSegundos = distanciadiamsol / calcularKilometrosPorSegundo(hhashrate);
@@ -2014,13 +2014,13 @@ void noDisplay_NoScreen(unsigned long mElapsed)
       Serial.printf(">>> M8AX - Libros Del Quijote Escritos - %.2f QJS/s\n", quijoteseg);
       Serial.printf(">>> M8AX - Si Grabamos Hashes En TxT, La Velocidad Sería - %.2f MB/s - %.2f TB/Día\n", mbteseg, tbdia);
     }
-    Serial.printf(">>> M8AX - Eficiencia Energética - ≈ %.3f KH/s/W - %sW - Al Mes - %s€\n", eficiencia_redondeada, String(consumo), String(costo_mensual, 4));
+    Serial.printf(">>> M8AX - Eficiencia Energética - ≈ %.3f KH/s/W - %sW - Al Mes - %s€\n", eficiencia_redondeada, String(consumo).c_str(), String(costo_mensual, 4).c_str());
     Serial.printf(">>> M8AX - %sTemperatura - %s°\n", obtenerEstadoTemperatura(data.temp.toInt()), data.temp.c_str());
     float tempRange = maxtemp - mintemp;
-    Serial.printf(">>> M8AX - Max Temperatura - %s°\n", String(maxtemp));
-    Serial.printf(">>> M8AX - Min Temperatura - %s°\n", String(mintemp));
+    Serial.printf(">>> M8AX - Max Temperatura - %s°\n", String(maxtemp).c_str());
+    Serial.printf(">>> M8AX - Min Temperatura - %s°\n", String(mintemp).c_str());
     Serial.printf(">>> M8AX - Rango De Temperatura - %d° - %s\n", (int)tempRange, interpretarRangoTemperatura(tempRange));
-    Serial.printf(">>> M8AX - Temperatura A Más De 75° - %s Veces\n", String(alertatemp));
+    Serial.printf(">>> M8AX - Temperatura A Más De 75° - %s Veces\n", String(alertatemp).c_str());
     Serial.printf(">>> M8AX - Tiempo De CPU A Más De 75° - %s\n", String(convertirTiempoNoMinando(alertatemp)).c_str());
     Serial.printf(">>> M8AX - Cómputo Total - %.0f KH - ( %.3f MH | %.3f GH | %.3f TH )\n", atof(data.totalKHashes.c_str()), atof(data.totalKHashes.c_str()) / 1e3, atof(data.totalKHashes.c_str()) / 1e6, atof(data.totalKHashes.c_str()) / 1e9);
     Serial.printf(">>> M8AX - Pool De Minería - %s\n", Settings.PoolAddress.c_str());

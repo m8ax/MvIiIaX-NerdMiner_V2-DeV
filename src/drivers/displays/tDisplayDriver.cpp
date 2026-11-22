@@ -47,7 +47,7 @@
  *
  *                              PARA MÁS INFORMACIÓN LEER PDF
  *
- *                     Tmp. De Programación 24H - 12935 Líneas De Código
+ *                     Tmp. De Programación 24H - 12930 Líneas De Código
  *                     -------------------------------------------------
  *
  ********************************************************************************************/
@@ -1716,8 +1716,8 @@ void nevar()
 {
   tft.fillScreen(TFT_BLACK); // Fondo negro (puedes cambiarlo)
 
-  const int NUM_COPOS = 100;      // Número de copos de nieve en pantalla
-  int x[NUM_COPOS], y[NUM_COPOS]; // Coordenadas de los copos
+  const int NUM_COPOS = 100;             // Número de copos de nieve en pantalla
+  static int x[NUM_COPOS], y[NUM_COPOS]; // Coordenadas de los copos
 
   // Inicializa copos en posiciones aleatorias
   for (int i = 0; i < NUM_COPOS; i++)
@@ -1729,22 +1729,19 @@ void nevar()
   unsigned long startTime = millis();
 
   while (millis() - startTime < 5000)
-  {                            // 5 segundos
-    tft.fillScreen(TFT_BLACK); // Borra pantalla
-
+  {
     for (int i = 0; i < NUM_COPOS; i++)
     {
-      tft.drawPixel(x[i], y[i], TFT_WHITE); // Dibuja copo de nieve
-      y[i] += (esp_random() % 4) + 1;       // Baja la posición del copo
-
+      tft.drawPixel(x[i], y[i], TFT_BLACK);
+      y[i] += (esp_random() % 4) + 1;
       if (y[i] > 170)
-      { // Si sale de la pantalla, reaparece arriba
+      {
         y[i] = 0;
         x[i] = esp_random() % 320;
       }
+      tft.drawPixel(x[i], y[i], TFT_WHITE);
     }
-
-    delay(35); // Controla la velocidad de la animación
+    delay(35);
   }
 
   // Muestra "FELIZ NAVIDAD" al final
@@ -1773,8 +1770,8 @@ void nevar2()
 {
   tft.fillScreen(TFT_BLACK); // Fondo negro (puedes cambiarlo)
 
-  const int NUM_COPOS = 200;      // Número de copos de nieve en pantalla
-  int x[NUM_COPOS], y[NUM_COPOS]; // Coordenadas de los copos
+  const int NUM_COPOS = 200;             // Número de copos de nieve en pantalla
+  static int x[NUM_COPOS], y[NUM_COPOS]; // Coordenadas de los copos
 
   // Inicializa copos en posiciones aleatorias
   for (int i = 0; i < NUM_COPOS; i++)
@@ -1786,21 +1783,19 @@ void nevar2()
   unsigned long startTime = millis();
 
   while (millis() - startTime < 5000)
-  {                            // 5 segundos
-    tft.fillScreen(TFT_BLACK); // Borra pantalla
-
+  {
     for (int i = 0; i < NUM_COPOS; i++)
     {
-      tft.drawPixel(x[i], y[i], TFT_WHITE); // Dibuja copo de nieve
-      y[i] += (esp_random() % 5) + 1;       // Baja Posición Del Copo
+      tft.drawPixel(x[i], y[i], TFT_BLACK);
+      y[i] += (esp_random() % 5) + 1;
       if (y[i] > 170)
-      { // Si sale de la pantalla, reaparece arriba
+      {
         y[i] = 0;
         x[i] = esp_random() % 320;
       }
+      tft.drawPixel(x[i], y[i], TFT_WHITE);
     }
-
-    delay(25); // Controla la velocidad de la animación
+    delay(25);
   }
 
   // Muestra "FELIZ --- AÑO" al final
@@ -1854,8 +1849,8 @@ void nevar3()
 {
   tft.fillScreen(TFT_BLACK); // Fondo negro (puedes cambiarlo)
 
-  const int NUM_COPOS = 500;      // Número de copos de nieve en pantalla
-  int x[NUM_COPOS], y[NUM_COPOS]; // Coordenadas de los copos
+  const int NUM_COPOS = 500;             // Número de copos de nieve en pantalla
+  static int x[NUM_COPOS], y[NUM_COPOS]; // Coordenadas de los copos
 
   // Inicializa copos en posiciones aleatorias
   for (int i = 0; i < NUM_COPOS; i++)
@@ -1867,22 +1862,21 @@ void nevar3()
   unsigned long startTime = millis();
 
   while (millis() - startTime < 2000)
-  {                            // 5 segundos
-    tft.fillScreen(TFT_BLACK); // Borra pantalla
+  {
     for (int i = 0; i < NUM_COPOS; i++)
     {
-      colorI = esp_random() % (sizeof(colors) / sizeof(colors[0]));
-      tft.drawPixel(x[i], y[i], colors[colorI]); // Dibuja copo de nieve
-      y[i] += (esp_random() % 5) + 1;            // Baja La Posición DeL Copo
-
+      tft.drawPixel(x[i], y[i], TFT_BLACK);
+      y[i] += (esp_random() % 5) + 1;
       if (y[i] > 170)
-      { // Si sale de la pantalla, reaparece arriba
+      {
         y[i] = 0;
         x[i] = esp_random() % 320;
       }
+      colorI = esp_random() % (sizeof(colors) / sizeof(colors[0]));
+      tft.drawPixel(x[i], y[i], colors[colorI]);
     }
     int nnumeroAleatorio = esp_random() % 20 + 1;
-    delay(nnumeroAleatorio); // Controla la velocidad de la animación
+    delay(nnumeroAleatorio);
   }
   M8AXTicker();
 }
@@ -2564,7 +2558,7 @@ String obtenerNombreMes(int mes)
   case 12:
     return "Diciembre";
   default:
-    return "Mes Inválido";
+    return "Mes Invalido";
   }
 }
 
@@ -8876,19 +8870,19 @@ void tDisplay_Tetris(unsigned long mElapsed)
  *
  *   Escrito por: M8AX
  *
- *   Descripción: PRIMOS A SACO - Pantalla para NerdminerV2
- *   ------------------------------------------------------
+ *   Descripción: PRIMOS A SACO - Pantalla para NerdminerV2 ( T-Display )
+ *   ---------------------------------------------------------------------
  *
  *   Un número enorme en el centro y debajo de él los primos anteriores, uno encima de otro y cada vez más
- *   apagados. Empiezan saliendo seguidos (2 3 5 7 11 13...) y después va subiendo, multiplicando por 1,25
- *   cada vez, hasta llegar al mayor primo que cabe en 64 bits, 18446744073709551557 (2^64 - 59). Ahí se
- *   para unos segundos y vuelve a empezar desde el 2.
+ *   apagados. Salen todos los primos seguidos (2 3 5 7 11 13...), sin saltarse ninguno, hasta llegar al
+ *   mayor primo que cabe en 64 bits, 18446744073709551557 (2^64 - 59). Ahí se para y se queda mostrándolo.
  *
  *   El número grande es de 7 segmentos y se ajusta solo al ancho: con una cifra ocupa media pantalla y con
  *   las 20 cifras de un uint64 llena la pantalla entera de lado a lado, en una sola línea. Los primos no
  *   se sacan de una tabla, se calculan de verdad: es Miller-Rabin con las 12 primeras bases, que es exacto
  *   para cualquier número de 64 bits (la multiplicación grande se hace sumando y duplicando, así no hace
- *   falta nada de 128 bits). Cada primo gigante tarda unos pocos milisegundos en la ESP32.
+ *   falta nada de 128 bits). Con números pequeños el cálculo es casi instantáneo y lo que limita es el
+ *   dibujo; por encima de 2^32 cada primo cuesta bastante más.
  *
  *   Arriba a la izquierda la hora y arriba a la derecha el hashrate, como en las demás. Abajo una barra con
  *   cuántos de los 64 bits lleva usados el número y el 2^64-1 de referencia.
@@ -8897,8 +8891,9 @@ void tDisplay_Tetris(unsigned long mElapsed)
  *   pila mientras corre la pantalla.
  *
  *   Para activarla hay que pegar este bloque antes del array tDisplayCyclicScreens[] y meter tDisplay_Primos
- *   en ese array. No usa táctil ni botones, de eso se encarga el driver; como la pantalla puede cambiar en
- *   cualquier momento, el estado se guarda y sigue donde se quedó cuando vuelve a salir.
+ *   en ese array. Aquí no hay táctil ni LEDs: el cambio de pantalla lo hace el driver, por eso las tandas son
+ *   de 1 s. Como la pantalla puede cambiar en cualquier momento, el estado se guarda y sigue donde se quedó
+ *   cuando vuelve a salir.
  *
  ****************************************************************************************************************/
 
@@ -8907,13 +8902,8 @@ void tDisplay_Tetris(unsigned long mElapsed)
 // ---------------------------------------------------------------------------------------------------------
 
 #define PM_MAXPRIMO 18446744073709551557ULL // el primo mas grande que cabe en un uint64 (2^64 - 59)
-#define PM_UMBRAL 14000000000000000000ULL   // por encima de esto se salta directo al ultimo
-#define PM_N_SEC 30                         // los primeros 30 salen seguidos: 2 3 5 7 11 13...
 #define PM_PASO_SEC_MS 0                    // ms entre primos mientras salen seguidos
-#define PM_PASO_SALTO_MS 90                 // ms entre primos mientras va subiendo
-#define PM_FIN_MS 5000                      // lo que se queda el mayor primo antes de empezar otra vez
-
-#define PM_BANDA_Y 76 // la banda del numero grande
+#define PM_BANDA_Y 76                       // la banda del numero grande
 #define PM_BANDA_H 54
 
 static const uint16_t PM_COL[7] = {0x07FF, 0x07E0, 0xFFE0, 0xFD20, 0xF81F, 0xF800, 0x041F};
@@ -9012,18 +9002,17 @@ static uint64_t pmSiguiente(uint64_t n)
 // ---- Estado: lo unico que se guarda entre tandas (~100 bytes, nada de heap) ----
 struct PmEstado
 {
-  uint8_t init, fase; // fase: 0 seguidos, 1 subiendo, 2 mayor primo (parado)
+  uint8_t init, fase; // fase: 0 contando, 2 mayor primo (parado)
   uint64_t actual;
   uint64_t hist[4]; // los 4 anteriores, el mas reciente primero
   uint8_t nHist;
   uint32_t k; // numero de orden mientras salen seguidos
-  unsigned long finAt, ultLlamada;
+  unsigned long ultLlamada;
   char vista[21]; // lo que hay dibujado en la banda (para repintar solo las cifras que cambian)
 };
 static PmEstado pm = {0};
 // Medicion de primos calculados por segundo
 static uint32_t pmCuentaVelocidad = 0;
-static uint32_t pmPrimosSegundo = 0;
 static unsigned long pmTiempoVelocidad = 0;
 static uint32_t pmVelocidadMostrada = 0;
 
@@ -9052,8 +9041,7 @@ static int pmBits(uint64_t v)
   return b;
 }
 
-// Siguiente primo de la lista: seguidos al principio y despues va multiplicando por ~1,25 hasta el mayor de 64 bits
-// Busca TODOS los primos consecutivos, sin saltarse ninguno.
+// Siguiente primo de la lista: todos los consecutivos, sin saltarse ninguno, hasta el mayor de 64 bits
 static void pmAvanza()
 {
   for (int i = 3; i > 0; i--)
@@ -9071,7 +9059,6 @@ static void pmAvanza()
   {
     // Se han agotado los primos representables en uint64
     pm.fase = 2;
-    pm.finAt = millis();
     return;
   }
 
@@ -9224,7 +9211,7 @@ static void pmPintaTodo()
   pmPintaInfo();
 }
 
-static inline unsigned long pmPasoMs() { return pm.fase == 0 ? PM_PASO_SEC_MS : PM_PASO_SALTO_MS; }
+static inline unsigned long pmPasoMs() { return PM_PASO_SEC_MS; }
 
 // Un paso de la animacion
 static void pmPaso()
@@ -9271,7 +9258,11 @@ void tDisplay_Primos(unsigned long mElapsed)
     pmReinicia();
   }
   if (limpiar)
+  {
     tft.fillRect(0, 0, 320, 170, TFT_BLACK);
+    pmCuentaVelocidad = 0;
+    pmTiempoVelocidad = millis();
+  }
   pmPintaTodo();
 
   char horaStr[9] = "";
@@ -9286,17 +9277,17 @@ void tDisplay_Primos(unsigned long mElapsed)
   // Inicializar el cronometro solamente la primera vez
   if (pmTiempoVelocidad == 0)
     pmTiempoVelocidad = start;
-  if (limpiar)
-    pmTiempoVelocidad = millis();
+
   while (millis() - start < PM_SLICE_MS)
   {
     unsigned long now = millis();
+
     // Calcular primos encontrados por segundo
     if (now - pmTiempoVelocidad >= 1000)
     {
       pmVelocidadMostrada = pmCuentaVelocidad;
       pmCuentaVelocidad = 0;
-      pmTiempoVelocidad += 1000;
+      pmTiempoVelocidad = now;
       pmPintaInfo();
     }
 
@@ -12741,12 +12732,15 @@ void analiCadaSegundo(unsigned long frame)
 
   // Felicitar La Navidad O El Año Nuevo
 
+  static long navUltima = -1;
   if (anio != 1970 && ((mes == 12 && dia >= 20) || (mes == 1 && dia <= 6)))
   {
+    long clave = ((long)mes * 32 + dia) * 24 + horita;
     if (minutitos == 30 && (horita % 2 == 0) &&
         ((horita >= 8 && horita <= 15) || (horita >= 19 && horita <= 23) || (horita <= 2)) &&
-        segundos == 0 && dia % 2 == 0)
+        dia % 2 == 0 && clave != navUltima)
     {
+      navUltima = clave;
       if (mes == 12)
       {
         nevar();
@@ -12849,12 +12843,13 @@ void analiCadaSegundo(unsigned long frame)
     tft.setTextColor(colors[colorIndex]);
     tft.setTextSize(3);
     tft.setCursor(0, 0);
-    const char *mensaje1 = (rndnumero % 2 == 0) ? "La Esperanza Es\nLo Ultimo Que\nSe Pierde...\nLo Conseguiremos!\n\n     VAMOS !" : "Hope Is The Last\nThing To Lose, We\nWill Archieve It!\n\n    COME ON !";
+    const char *mensaje1 = (rndnumero % 2 == 0) ? "La Esperanza Es\nLo Ultimo Que\nSe Pierde...\nLo Conseguiremos!\n\n     VAMOS !" : "Hope Is The Last\nThing To Lose, We\nWill Achieve It!\n\n    COME ON !";
     tft.println(mensaje1);
     tft.setTextSize(1);
     tft.println("");
     tft.setTextSize(2), tft.setTextColor(TFT_WHITE);
-    tft.println("     ... By M8AX ..."), delay(3000);
+    tft.println("     ... By M8AX ...");
+    delay(3000);
   }
 }
 

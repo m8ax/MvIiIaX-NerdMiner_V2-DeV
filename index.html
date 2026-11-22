@@ -578,6 +578,26 @@
                .vid-link:hover {
                     text-decoration: underline;
                }
+               .vid-row {
+                    display: grid;
+                    grid-template-columns: repeat(2, minmax(0, 1fr));
+                    gap: clamp(8px, 1.5vw, 16px);
+                    align-items: start;
+               }
+               .vid-item {
+                    min-width: 0;
+               }
+               .vid-row .vid-etq {
+                    left: 8px;
+                    bottom: 6px;
+                    font-size: clamp(0.55rem, 1.3vw, 0.78rem);
+               }
+               .vid-row .vid-btn {
+                    width: clamp(36px, 8vw, 64px);
+               }
+               .vid-row .vid-link {
+                    font-size: clamp(0.7rem, 1.4vw, 0.85rem);
+               }
                @media (prefers-reduced-motion: reduce) {
                     .vid-play img,
                     .vid-btn {
@@ -667,29 +687,72 @@
                               Todas Las Pantallas Nuevas Del Firmware En Acción: Juegos Que Juega La CPU Sola, Banner
                               Gigante, Panel De Criptos Y Más. Dale Al Play Y Míralo.
                          </p>
-                         <div class="vid-frame" id="vidFrame" data-id="oW7O5ZgwiAQ">
-                              <a
-                                   class="vid-play"
-                                   id="vidPlay"
-                                   href="https://youtu.be/oW7O5ZgwiAQ"
-                                   target="_blank"
-                                   rel="noopener"
-                                   aria-label="Reproducir El Vídeo Con Las Novedades Del Firmware"
-                              >
-                                   <img
-                                        src="https://i.ytimg.com/vi/oW7O5ZgwiAQ/hqdefault.jpg"
-                                        alt="Miniatura Del Vídeo Con Las Novedades Del Firmware M8AX NerdMinerV2"
-                                        width="480"
-                                        height="270"
-                                        loading="lazy"
-                                   />
-                                   <span class="vid-btn" aria-hidden="true"></span>
-                                   <span class="vid-etq">▶ NOVEDADES · PANTALLAS NUEVAS</span>
-                              </a>
+                         <div class="vid-row">
+                              <div class="vid-item">
+                                   <div
+                                        class="vid-frame"
+                                        data-id="euq0BmaRJOc"
+                                        data-titulo="Novedades del firmware M8AX - NerdMinerV2"
+                                   >
+                                        <a
+                                             class="vid-play"
+                                             href="https://youtu.be/euq0BmaRJOc"
+                                             target="_blank"
+                                             rel="noopener"
+                                             aria-label="Reproducir El Vídeo Con Las Novedades Del Firmware"
+                                        >
+                                             <img
+                                                  src="https://i.ytimg.com/vi/euq0BmaRJOc/hqdefault.jpg"
+                                                  alt="Miniatura Del Vídeo Con Las Novedades Del Firmware M8AX NerdMinerV2"
+                                                  width="480"
+                                                  height="270"
+                                                  loading="lazy"
+                                             />
+                                             <span class="vid-btn" aria-hidden="true"></span>
+                                             <span class="vid-etq">▶ NOVEDADES · 2 IAs Analizando</span>
+                                        </a>
+                                   </div>
+                                   <a
+                                        class="vid-link"
+                                        href="https://youtu.be/euq0BmaRJOc"
+                                        target="_blank"
+                                        rel="noopener"
+                                        >Verlo Directamente En YouTube</a
+                                   >
+                              </div>
+                              <div class="vid-item">
+                                   <div
+                                        class="vid-frame"
+                                        data-id="GefAHufHHko"
+                                        data-titulo="Vídeo 2 M8AX - NerdMinerV2"
+                                   >
+                                        <a
+                                             class="vid-play"
+                                             href="https://youtu.be/GefAHufHHko"
+                                             target="_blank"
+                                             rel="noopener"
+                                             aria-label="Reproducir El Vídeo 2"
+                                        >
+                                             <img
+                                                  src="https://i.ytimg.com/vi/GefAHufHHko/hqdefault.jpg"
+                                                  alt="Miniatura Del Vídeo 2"
+                                                  width="480"
+                                                  height="270"
+                                                  loading="lazy"
+                                             />
+                                             <span class="vid-btn" aria-hidden="true"></span>
+                                             <span class="vid-etq">▶ NOVEDADES · Pantallas Nuevas</span>
+                                        </a>
+                                   </div>
+                                   <a
+                                        class="vid-link"
+                                        href="https://youtu.be/GefAHufHHko"
+                                        target="_blank"
+                                        rel="noopener"
+                                        >Verlo Directamente En YouTube</a
+                                   >
+                              </div>
                          </div>
-                         <a class="vid-link" href="https://youtu.be/oW7O5ZgwiAQ" target="_blank" rel="noopener"
-                              >Verlo Directamente En YouTube</a
-                         >
                     </section>
                     <p class="note">
                          <span class="a"
@@ -715,7 +778,7 @@
                                    title="NerdMiner V2 - ESP32-2432S028R"
                               />
                               <esp-web-install-button manifest="webflash/manifest2.json"></esp-web-install-button
-                              ><strong>ESP32-2432S028R - 36 Screens</strong>
+                              ><strong>ESP32-2432S028R - 37 Screens</strong>
                          </div>
                          <div class="dev">
                               <img
@@ -724,7 +787,7 @@
                                    title="NerdMiner V2 - ESP32-2432S028R - Pantalla Invertida"
                               />
                               <esp-web-install-button manifest="webflash/manifest5.json"></esp-web-install-button
-                              ><strong>ESP32-2432S028R - Pantalla Invertida - 36 Screens</strong>
+                              ><strong>ESP32-2432S028R - Pantalla Invertida - 37 Screens</strong>
                          </div>
                          <div class="dev">
                               <img
@@ -733,7 +796,7 @@
                                    title="NerdMiner V2 - TRUMP VERSION - ESP32-2432S028R"
                               />
                               <esp-web-install-button manifest="webflash/manifest4.json"></esp-web-install-button
-                              ><strong>ESP32-2432S028R - TRUMP VERSION - 36 Screens</strong>
+                              ><strong>ESP32-2432S028R - TRUMP VERSION - 37 Screens</strong>
                          </div>
                          <div class="dev">
                               <img
@@ -742,7 +805,7 @@
                                    title="NerdMiner V2 - Pantallas Automáticas Hasta Tocar"
                               />
                               <esp-web-install-button manifest="webflash/manifest6.json"></esp-web-install-button
-                              ><strong>ESP32-2432S028R - Pantallas Automáticas Hasta Tocar - 36 Screens</strong>
+                              ><strong>ESP32-2432S028R - Pantallas Automáticas Hasta Tocar - 37 Screens</strong>
                          </div>
                          <div class="dev">
                               <img src="webflash/placa.png" alt="Placas ESP32 WROOM" title="Placas ESP32 WROOM" />
@@ -807,7 +870,7 @@
                Original.
                <hr />
                Por Ejemplo El ESP32-2432S028R Ronda Los 380/390 Kh/s.<br /><br />NerdminerV2 - 34 Pantallas.<br /><br />ESP32-2432S028R
-               - 36 Pantallas.
+               - 37 Pantallas.
                <hr />
                Corregidos Varios Fallos...
                <hr />
@@ -827,7 +890,7 @@
                          Criptomonedas
                     </p>
                     <p>• ESP32-2432S028R: El Hashrate Ahora Ronda 380/390 Kh/s</p>
-                    <p>• ESP32-2432S028R: Número Total De Pantallas - 36</p>
+                    <p>• ESP32-2432S028R: Número Total De Pantallas - 37</p>
                     <p>• NerdminerV2: Número Total De Pantallas - 34</p>
                     <p>
                          • ESP32-2432S028R: Cambio En El Comportamiento De Los Leds, Puedes Verlo
@@ -881,8 +944,8 @@
                          Cuentas Con 6 Números ), <strong>Moneda Y Dado</strong> ( El Dado Y La Moneda De La Suerte:
                          Tira Un Dado Y Una Moneda, Con El Hashrate Escrito Con Letras Y Fondos Que Cambian Solos ),
                          <strong>ECG Screen</strong> ( Hashrate Al Más Puro Estilo Electrocardiograma ),
-                         <strong>Primos A Saco</strong> ( Primos Gigantes Hasta 64 Bits ),
-                         <strong>Calculadora</strong> Y <strong>Lluvia Matrix</strong> Hexadecimal
+                         <strong>Primos A Saco</strong> ( Primos Gigantes Hasta 64 Bits ), <strong>Calculadora</strong>,
+                         <strong>Estación Meteorológica</strong> Y <strong>Lluvia Matrix</strong> Hexadecimal
                     </p>
                     <p>
                          • Telegram Y MicroSD: El Informe Incluye Ahora La Hora De Salida Y Puesta Del Sol De Tu Ciudad
@@ -894,7 +957,9 @@
                          Otras 2 Horas
                     </p>
                     <p>• Alguna Sorpresa</p>
+                    <p>• Felicitación Navidad Si Es Navidad Y Pantallazo De Ánimos... ( Aleatorio )</p>
                     <p>• Mayor Estabilidad General</p>
+                    <p>• Pequeños Ajustes</p>
                     <hr />
                     <h3>🔗 Otros Recursos:</h3>
                     <p>
@@ -948,7 +1013,7 @@
                     <p>• Fixed Automatic Time Change Bug</p>
                     <p>• ESP32-2432S028R: Replaced The POOL Information With A Cryptocurrency Price Display Panel</p>
                     <p>• ESP32-2432S028R: The Hashrate Now Is 380/390 Kh/s</p>
-                    <p>• ESP32-2432S028R: Number Of Total Screens - 36</p>
+                    <p>• ESP32-2432S028R: Number Of Total Screens - 37</p>
                     <p>• NerdminerV2: Number Of Total Screens - 34</p>
                     <p>
                          • ESP32-2432S028R: Change In LED Behavior, You Can See It
@@ -1004,7 +1069,8 @@
                          <strong>Coin And Dice</strong> ( The Lucky Dice And Coin: Rolls A Die And Flips A Coin, With
                          The Hashrate Written In Words And Backgrounds That Change By Themselves ),
                          <strong>ECG Screen</strong> ( Hashrate In Pure Electrocardiogram Style ),
-                         <strong>Primes Galore</strong> ( Giant Primes Up To 64 Bits ), <strong>Calculator</strong> And
+                         <strong>Primes Galore</strong> ( Giant Primes Up To 64 Bits ), <strong>Calculator</strong>,
+                         <strong>Weather Station</strong> And
                          <strong>Hexadecimal Matrix Rain</strong>
                     </p>
                     <p>
@@ -1017,7 +1083,9 @@
                          Waiting Another 2 Hours
                     </p>
                     <p>• Some Surprise</p>
+                    <p>• Christmas Greeting If It's Christmas And Screenshot Of Encouragement... ( Random )</p>
                     <p>• Enhanced Overall Stability</p>
+                    <p>• Minor Fixes</p>
                     <hr />
                     <h3>🔗 Other Resources:</h3>
                     <p>
@@ -1279,9 +1347,10 @@
                     randomButton.classList.remove("is-playing");
                }
                function pausarVideo() {
-                    const f = document.querySelector("#vidFrame iframe");
-                    if (f && f.contentWindow)
-                         f.contentWindow.postMessage('{"event":"command","func":"pauseVideo","args":[]}', "*");
+                    document.querySelectorAll(".vid-frame iframe").forEach((f) => {
+                         if (f.contentWindow)
+                              f.contentWindow.postMessage('{"event":"command","func":"pauseVideo","args":[]}', "*");
+                    });
                }
                redButton.addEventListener("click", () => {
                     stopAllAudio();
@@ -1305,12 +1374,10 @@
                }
                randomButton.addEventListener("click", playRandomAudio);
 
-               // Vídeo de YouTube: el reproductor no se carga hasta que se pulsa play (la página va más rápida y no hay cookies de terceros antes de tiempo)
-               (function () {
-                    const frame = document.getElementById("vidFrame");
-                    if (!frame) return;
+               // Vídeos de YouTube: el reproductor no se carga hasta que se pulsa play (la página va más rápida y no hay cookies de terceros antes de tiempo)
+               document.querySelectorAll(".vid-frame").forEach(function (frame) {
                     const id = frame.dataset.id,
-                         enlace = document.getElementById("vidPlay"),
+                         enlace = frame.querySelector(".vid-play"),
                          img = frame.querySelector("img");
                     const grande = new Image();
                     grande.onload = () => {
@@ -1319,13 +1386,15 @@
                     grande.src = "https://i.ytimg.com/vi/" + id + "/maxresdefault.jpg";
                     enlace.addEventListener("click", (e) => {
                          e.preventDefault();
+                         // Para el audio de fondo y pausa el otro vídeo antes de arrancar este
                          if (typeof stopAllAudio === "function") stopAllAudio();
+                         pausarVideo();
                          const f = document.createElement("iframe");
                          f.src =
                               "https://www.youtube-nocookie.com/embed/" +
                               id +
                               "?autoplay=1&rel=0&modestbranding=1&playsinline=1&enablejsapi=1";
-                         f.title = "Novedades del firmware M8AX - NerdMinerV2";
+                         f.title = frame.dataset.titulo || "Vídeo";
                          f.allow =
                               "accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share";
                          f.allowFullscreen = true;
@@ -1333,7 +1402,7 @@
                          frame.innerHTML = "";
                          frame.appendChild(f);
                     });
-               })();
+               });
 
                // Ticker de precios
                async function getCryptoPrices() {
@@ -1417,7 +1486,7 @@
                     function abrirSalvapantallas() {
                          if (capa) return;
                          // Si el usuario esta viendo el video de YouTube incrustado, no se interrumpe
-                         if (document.querySelector("#vidFrame iframe")) return reiniciar();
+                         if (document.querySelector(".vid-frame iframe")) return reiniciar();
                          capa = document.createElement("div");
                          capa.id = "salvapantallasM8AX";
                          capa.style.cssText = "position:fixed;inset:0;z-index:2147483647;background:#000;cursor:none;";
