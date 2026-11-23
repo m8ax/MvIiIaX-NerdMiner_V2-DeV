@@ -71,7 +71,7 @@
  *   5 - "Forma De Almacenar Valor Que No Depende De Gobiernos Ni Instituciones." – Barry Silbert, CEO De Digital Currency Group.
  *
  *
- *              ///\\\ --- Minimizando Código, Maximizando Funcionalidad. Solo 2315 Líneas De Código En 8h --- ///\\\
+ *              ///\\\ --- Minimizando Código, Maximizando Funcionalidad. Solo 2380 Líneas De Código En 9h --- ///\\\
  *
  *                                                     .M8AX Corp. - ¡A Minar!
  *
@@ -113,7 +113,7 @@
 #define m8ax 2
 #define MAX_RESULT_LENGTH 500
 #define MAX_NUMBERS 6
-#define MAX_HASHRATE 420
+#define MAX_HASHRATE 400
 #define BAR_LENGTH 42
 #define GOTAAGUA 0.00005
 #define pasoskm 0.0007
@@ -222,6 +222,7 @@ int obtenHoraPorIP(const String &ip)
   for (int intento = 1; intento <= 5; intento++)
   {
     HTTPClient http;
+    http.useHTTP10(true);
     http.setTimeout(2000);
     http.begin(api_url);
     int httpCode = http.GET();
@@ -645,6 +646,7 @@ float getPrecioBTC()
 {
   const char *apiUrl = "https://api.coinbase.com/v2/prices/BTC-USD/spot";
   HTTPClient http;
+  http.useHTTP10(true);
   http.begin(apiUrl);
   int httpCode = http.GET();
   float btcPrice = 0.0;
@@ -1453,6 +1455,25 @@ String convertirARomanos(int num)
   return result;
 }
 
+static inline size_t tgCodifica(uint8_t c, char *o)
+{
+  static const char hexd[] = "0123456789ABCDEF";
+  if ((c >= '0' && c <= '9') || (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || c == '-' || c == '_' || c == '.' || c == '~')
+  {
+    o[0] = (char)c;
+    return 1;
+  }
+  if (c == ' ')
+  {
+    o[0] = '+';
+    return 1;
+  }
+  o[0] = '%';
+  o[1] = hexd[c >> 4];
+  o[2] = hexd[c & 15];
+  return 3;
+}
+
 bool enviarMensajeATelegram(String &mensaje)
 {
   bool ok = false;
@@ -1469,32 +1490,71 @@ bool enviarMensajeATelegram(String &mensaje)
       return false;
     }
   }
+
+  const char *m = mensaje.c_str();
+  const size_t n = mensaje.length();
+  const String cab = "chat_id=" + CHAT_ID + "&text=";
+  char t[3];
+  size_t largo = cab.length();
+  for (size_t i = 0; i < n; i++)
+    largo += tgCodifica((uint8_t)m[i], t);
+  String head = "POST /bot" + BOT_TOKEN + "/sendMessage HTTP/1.1\r\nHost: api.telegram.org\r\nContent-Type: application/x-www-form-urlencoded\r\nContent-Length: " + String((unsigned)largo) + "\r\nConnection: close\r\n\r\n";
+  const size_t total = head.length() + largo;
+
   WiFiClientSecure client;
   client.setInsecure();
-  String mensajeCodificado = urlEncode(mensaje);
-  mensajeCodificado.replace("\n", "%0A");
-  mensaje = "", mensaje.reserve(0);
   Serial.println("M8AX - Enviando Mensaje A Telegram...");
   if (client.connect("api.telegram.org", 443))
   {
-    client.print("GET https://api.telegram.org/bot");
-    client.print(BOT_TOKEN);
-    client.print("/sendMessage?chat_id=");
-    client.print(CHAT_ID);
-    client.print("&text=");
-    client.print(mensajeCodificado);
-    client.print(" HTTP/1.1\r\nHost: api.telegram.org\r\nConnection: close\r\n\r\n");
-    mensajeCodificado = "", mensajeCodificado.reserve(0);
+    uint8_t *pet = (uint8_t *)malloc(total);
+    if (!pet)
+    {
+      Serial.printf("M8AX - Telegram: No Hay RAM Para El Mensaje ( %u Bytes )\n", (unsigned)total);
+      client.stop();
+      sincroLED3();
+      return false;
+    }
+    size_t p = head.length();
+    memcpy(pet, head.c_str(), p);
+    head = "";
+    memcpy(pet + p, cab.c_str(), cab.length());
+    p += cab.length();
+    for (size_t i = 0; i < n; i++)
+      p += tgCodifica((uint8_t)m[i], (char *)pet + p);
+    mensaje = "", mensaje.reserve(0);
+
+    bool fallo = client.write(pet, p) != p;
+    free(pet);
     unsigned long t0 = millis();
-    while (!client.available() && client.connected() && millis() - t0 < 5000)
+    while (!client.available() && client.connected() && millis() - t0 < 12000)
     {
       vTaskDelay(pdMS_TO_TICKS(10));
     }
     String estado = client.readStringUntil('\n');
+    bool sinRespuesta = !fallo && estado.length() == 0;
+    bool acepto = !fallo && estado.indexOf(" 200") > 0;
+    String resto;
+    if (!acepto && !sinRespuesta)
+    {
+      unsigned long t1 = millis();
+      while ((client.available() || client.connected()) && millis() - t1 < 1500 && resto.length() < 600)
+      {
+        while (client.available() && resto.length() < 600)
+          resto += (char)client.read();
+        vTaskDelay(pdMS_TO_TICKS(5));
+      }
+    }
     client.stop();
-    if (estado.indexOf(" 200") > 0)
+    if (acepto)
     {
       Serial.println("M8AX - Mensaje Enviado A Telegram...");
+      sumatele += 1;
+      ok = true;
+      sincroLED2();
+    }
+    else if (sinRespuesta)
+    {
+      Serial.println("M8AX - Mensaje Enviado A Telegram ( Sin Confirmación A Tiempo )...");
       sumatele += 1;
       ok = true;
       sincroLED2();
@@ -1502,13 +1562,17 @@ bool enviarMensajeATelegram(String &mensaje)
     else
     {
       estado.trim();
+      if (fallo)
+        Serial.println("M8AX - Se Cortó La Conexión Mientras Se Enviaba El Mensaje...");
       Serial.println("M8AX - Telegram No Lo Aceptó - Respuesta: [" + estado + "]");
+      if (resto.length())
+        Serial.println("M8AX - Detalle: " + resto);
       sincroLED3();
     }
   }
   else
   {
-    mensajeCodificado = "", mensajeCodificado.reserve(0);
+    mensaje = "", mensaje.reserve(0);
     Serial.println("M8AX - Error De Conexión, Mensaje A Telegram Falló...");
     client.stop();
     sincroLED3();
@@ -1567,7 +1631,7 @@ bool recopilaTelegram()
   numdesemana.reserve(0);
   cadenaEnvio += "Señal WiFi ( RSSI ) -> " + String(WiFi.RSSI()) + " dBm -> ( " + evaluarRSSI(String(WiFi.RSSI())) + " ) -> ";
   cadenaEnvio += "Canal WiFi - " + String(WiFi.channel()) + "\n";
-  char *hostname = strdup(WiFi.getHostname());
+  char *hostname = strdup(WiFi.getHostname() ? WiFi.getHostname() : "SIN NOMBRE");
   cadenaEnvio += String("HostName - ") + strupr(hostname) + "\n";
   free(hostname);
   cadenaEnvio += String("Dir.MAC - ") + WiFi.macAddress().c_str() + "\n";
@@ -1938,7 +2002,7 @@ void noDisplay_NoScreen(unsigned long mElapsed)
     horaFinal = "", horaFinal.reserve(0);
     Serial.printf(">>> M8AX - Señal WiFi ( RSSI ) -> %d dBm -> ( %s ) -> Canal WiFi - %s\n", WiFi.RSSI(), String(evaluarRSSI(String(WiFi.RSSI()))).c_str(), String(WiFi.channel()).c_str());
     quediase.clear(), quediase.shrink_to_fit();
-    char *hostname = strdup(WiFi.getHostname());
+    char *hostname = strdup(WiFi.getHostname() ? WiFi.getHostname() : "SIN NOMBRE");
     Serial.printf(">>> M8AX - HostName - %s\n", strupr(hostname));
     free(hostname);
     Serial.printf(">>> M8AX - Dir.MAC - %s\n", WiFi.macAddress().c_str());
@@ -2098,8 +2162,10 @@ void noDisplay_NoScreen(unsigned long mElapsed)
                 fechaHora.c_str(), data.completedShares.c_str(), data.totalKHashes.c_str(), data.currentHashRate.c_str(), data.temp.c_str());
   fechaHora.clear();
   fechaHora.reserve(0);
-  if (minutos == 30 && segundos == 0)
+  static int mediaSonada = -1, horaSonada = -1;
+  if (minutos == 30 && segundos < 3 && mediaSonada != horas)
   {
+    mediaSonada = horas;
     digitalWrite(m8ax, HIGH);
     vTaskDelay(pdMS_TO_TICKS(500));
     digitalWrite(m8ax, LOW);
@@ -2107,8 +2173,9 @@ void noDisplay_NoScreen(unsigned long mElapsed)
     precioDeBTC = getPrecioBTC();
     totalparpadeosled++;
   }
-  if (minutos == 0 && segundos == 0)
+  if (minutos == 0 && segundos < 3 && horaSonada != horas)
   {
+    horaSonada = horas;
     digitalWrite(m8ax, HIGH);
     vTaskDelay(pdMS_TO_TICKS(400));
     digitalWrite(m8ax, LOW);
@@ -2139,14 +2206,12 @@ void noDisplay_NoScreen(unsigned long mElapsed)
     if (temperatura > 80)
     {
       Serial.println("M8AX - ¡ Temperatura Muy Alta ! 80°C Superados. Entrando En Deep Sleep Por 10 Minutos Para Enfriar La CPU...");
-      esp_sleep_enable_timer_wakeup(600e6);
-      esp_deep_sleep_start();
+      esp_sleep_enable_timer_wakeup(600e6), esp_deep_sleep_start();
     }
   }
   if (cambioDeDia != dia && cuenta > 10)
   {
-    precioDeBTC = getPrecioBTC();
-    cambioDeDia = dia;
+    precioDeBTC = getPrecioBTC(), cambioDeDia = dia;
     float variacion2 = (anterBTC2 > 0) ? ((precioDeBTC - anterBTC2) / anterBTC2) * 100 : 0;
     subebaja2 = (anterBTC2 > 0 && precioDeBTC > 0) ? ((variacion2 >= 0) ? "+" : "-") + String(fabs(variacion2), 5) + "%" : "... ERROR ...";
     if (precioDeBTC > 0)

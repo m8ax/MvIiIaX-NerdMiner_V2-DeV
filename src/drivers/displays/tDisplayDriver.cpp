@@ -47,7 +47,7 @@
  *
  *                              PARA MÁS INFORMACIÓN LEER PDF
  *
- *                     Tmp. De Programación 24H - 12930 Líneas De Código
+ *                     Tmp. De Programación 25H - 12990 Líneas De Código
  *                     -------------------------------------------------
  *
  ********************************************************************************************/
@@ -1078,6 +1078,26 @@ const char *factorize(uint32_t number)
 }
 
 // Función que envía un texto que contiene estadísticas de minería a tu canal de telegram
+// Codifica un byte para URL ( igual que urlEncode, el espacio sale como + ): escribe 1 o 3 caracteres en o
+
+static inline size_t tgCodifica(uint8_t c, char *o)
+{
+  static const char hexd[] = "0123456789ABCDEF";
+  if ((c >= '0' && c <= '9') || (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || c == '-' || c == '_' || c == '.' || c == '~')
+  {
+    o[0] = (char)c;
+    return 1;
+  }
+  if (c == ' ')
+  {
+    o[0] = '+';
+    return 1;
+  }
+  o[0] = '%';
+  o[1] = hexd[c >> 4];
+  o[2] = hexd[c & 15];
+  return 3;
+}
 
 bool enviarMensajeATelegram(String &mensaje)
 {
@@ -1098,57 +1118,98 @@ bool enviarMensajeATelegram(String &mensaje)
       return false;
     }
   }
+
+  // Se cuenta cuánto ocupará el cuerpo ya codificado ( hace falta para Content-Length )
+  const char *m = mensaje.c_str();
+  const size_t n = mensaje.length();
+  const String cab = "chat_id=" + CHAT_ID + "&text=";
+  char t[3];
+  size_t largo = cab.length();
+  for (size_t i = 0; i < n; i++)
+    largo += tgCodifica((uint8_t)m[i], t);
+  String head = "POST /bot" + BOT_TOKEN + "/sendMessage HTTP/1.1\r\nHost: api.telegram.org\r\nContent-Type: application/x-www-form-urlencoded\r\nContent-Length: " + String((unsigned)largo) + "\r\nConnection: close\r\n\r\n";
+  const size_t total = head.length() + largo;
+
   WiFiClientSecure client;
   client.setInsecure();
-  String mensajeCodificado = urlEncode(mensaje); // Mirar función
-  mensajeCodificado.reserve(mensajeCodificado.length() + 100);
-  mensaje = "";
-  mensaje.reserve(0);
-
-  // Reemplazar los saltos de línea con %0A
-
-  mensajeCodificado.replace("\n", "%0A");
-
   Serial.println("M8AX - Enviando Mensaje A Telegram...");
-
-  String url = "https://api.telegram.org/bot" + BOT_TOKEN + "/sendMessage?chat_id=" + CHAT_ID + "&text=" + mensajeCodificado;
-  url.reserve(url.length() + 50);
-  mensajeCodificado = "";
-  mensajeCodificado.reserve(0);
 
   if (client.connect("api.telegram.org", 443))
   {
-    client.print("GET ");
-    client.print(url);
-    client.print(" HTTP/1.1\r\nHost: api.telegram.org\r\nConnection: close\r\n\r\n");
+    // Un solo bloque con cabecera + cuerpo, creado DESPUÉS de conectar y enviado de una vez
+    uint8_t *pet = (uint8_t *)malloc(total);
+    if (!pet)
+    {
+      Serial.printf("M8AX - Telegram: No Hay RAM Para El Mensaje ( %u Bytes )\n", (unsigned)total);
+      client.stop();
+      return false;
+    }
+    size_t p = head.length();
+    memcpy(pet, head.c_str(), p);
+    head = "";
+    memcpy(pet + p, cab.c_str(), cab.length());
+    p += cab.length();
+    for (size_t i = 0; i < n; i++)
+      p += tgCodifica((uint8_t)m[i], (char *)pet + p);
+
+    // Ya está todo en la petición: se vacía el mensaje original
+    mensaje = "";
+    mensaje.reserve(0);
+
+    bool fallo = client.write(pet, p) != p;
+    free(pet);
+
+    // Telegram a veces tarda en contestar ( la red está ocupada con el minero ): se espera hasta 12 s
     unsigned long t0 = millis();
-    while (!client.available() && client.connected() && millis() - t0 < 5000)
+    while (!client.available() && client.connected() && millis() - t0 < 12000)
     {
       delay(10);
     }
     String estado = client.readStringUntil('\n');
+    bool sinRespuesta = !fallo && estado.length() == 0; // se envió todo pero no contestó a tiempo
+    bool acepto = !fallo && estado.indexOf(" 200") > 0;
+    String resto;
+    if (!acepto && !sinRespuesta)
+    {
+      // Solo si falla de verdad: lee un trozo de la respuesta para ver el motivo ( máx. 600 bytes )
+      unsigned long t1 = millis();
+      while ((client.available() || client.connected()) && millis() - t1 < 1500 && resto.length() < 600)
+      {
+        while (client.available() && resto.length() < 600)
+          resto += (char)client.read();
+        delay(5);
+      }
+    }
     client.stop();
-    if (estado.indexOf(" 200") > 0)
+    if (acepto)
     {
       Serial.println("M8AX - Mensaje Enviado A Telegram...");
+      sumatele += 1;
+      ok = true;
+    }
+    else if (sinRespuesta)
+    {
+      // El mensaje se mandó entero; Telegram lo suele recibir aunque no conteste a tiempo.
+      // Se da por enviado para no reintentar y que no salga repetido.
+      Serial.println("M8AX - Mensaje Enviado A Telegram ( Sin Confirmación A Tiempo )...");
       sumatele += 1;
       ok = true;
     }
     else
     {
       estado.trim();
+      if (fallo)
+        Serial.println("M8AX - Se Cortó La Conexión Mientras Se Enviaba El Mensaje...");
       Serial.println("M8AX - Telegram No Lo Aceptó - Respuesta: [" + estado + "]");
+      if (resto.length())
+        Serial.println("M8AX - Detalle: " + resto);
     }
-    url = "";
-    url.reserve(0);
   }
   else
   {
     Serial.println("M8AX - Error De Conexión, Mensaje A Telegram Falló...");
     client.flush();
     client.stop();
-    url = "";
-    url.reserve(0);
   }
   return ok;
 }
@@ -12848,8 +12909,7 @@ void analiCadaSegundo(unsigned long frame)
     tft.setTextSize(1);
     tft.println("");
     tft.setTextSize(2), tft.setTextColor(TFT_WHITE);
-    tft.println("     ... By M8AX ...");
-    delay(3000);
+    tft.println("     ... By M8AX ..."), delay(3000);
   }
 }
 

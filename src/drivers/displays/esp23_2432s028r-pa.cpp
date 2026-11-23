@@ -92,7 +92,7 @@
  *
  *                                 HASHRATE - 380 / 390 KH/S
  *
- *                     Tmp. De Programación 20H - 19575 Líneas De Código
+ *                     Tmp. De Programación 22H - 20550 Líneas De Código
  *                     -------------------------------------------------
  *
  ****************************************************************************************************************/
@@ -317,6 +317,13 @@ static unsigned long fiestaBloqueHasta = 0;
 static bool fiestaBloqueActiva = false;
 static int validosPrev = -1;
 
+// Aviso en pantalla de BLOQUE MINADO: parpadea cada 5 s ( ES / EN ) hasta que se toque la pantalla
+#define BLOQUE_AVISO_CICLO_MS 5000   // cada cuántos ms sale el aviso ( 5000 = 5 s )
+#define BLOQUE_AVISO_VISIBLE_MS 3000 // cuánto tiempo se ve el aviso en cada parpadeo
+static bool bloqueAvisoActivo = false;
+static bool bloqueAvisoIngles = false;
+static unsigned long bloqueAvisoUltimo = 0;
+
 /***********************************************************************
  *
  *   PWM de los LEDs: se configura UNA sola vez y los 3 canales quedan
@@ -383,6 +390,9 @@ static void actualizaLeds()
   {
     fiestaBloqueActiva = true;
     fiestaBloqueHasta = ahora + LED_FIESTA_BLOQUE_MS;
+    bloqueAvisoActivo = true; // aviso en pantalla hasta que se toque
+    bloqueAvisoIngles = false;
+    bloqueAvisoUltimo = 0;
     Serial.println("M8AX - BLOQUE MINADO! Fiesta De LEDs 12 Horas");
   }
   validosPrev = v;
@@ -1942,6 +1952,26 @@ uint32_t segundosDesdeCompilacion()
   return (uint32_t)(currentEpoch - compiledEpoch);
 }
 
+// Codifica un byte para URL ( igual que urlEncode, el espacio sale como + ): escribe 1 o 3 caracteres en o
+static inline size_t tgCodifica(uint8_t c, char *o)
+{
+  static const char hexd[] = "0123456789ABCDEF";
+  if ((c >= '0' && c <= '9') || (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || c == '-' || c == '_' || c == '.' || c == '~')
+  {
+    o[0] = (char)c;
+    return 1;
+  }
+  if (c == ' ')
+  {
+    o[0] = '+';
+    return 1;
+  }
+  o[0] = '%';
+  o[1] = hexd[c >> 4];
+  o[2] = hexd[c & 15];
+  return 3;
+}
+
 bool enviarMensajeATelegram(const String &mensaje)
 {
   bool ok = false;
@@ -1961,51 +1991,94 @@ bool enviarMensajeATelegram(const String &mensaje)
       return false;
     }
   }
+
+  // Se cuenta cuánto ocupará el cuerpo ya codificado ( hace falta para Content-Length )
+  const char *m = mensaje.c_str();
+  const size_t n = mensaje.length();
+  const String cab = "chat_id=" + CHAT_ID + "&text=";
+  char t[3];
+  size_t largo = cab.length();
+  for (size_t i = 0; i < n; i++)
+    largo += tgCodifica((uint8_t)m[i], t);
+  String head = "POST /bot" + BOT_TOKEN + "/sendMessage HTTP/1.1\r\nHost: api.telegram.org\r\nContent-Type: application/x-www-form-urlencoded\r\nContent-Length: " + String((unsigned)largo) + "\r\nConnection: close\r\n\r\n";
+  const size_t total = head.length() + largo;
+
   WiFiClientSecure client;
   client.setInsecure();
-  String mensajeCodificado = urlEncode(mensaje); // Mirar función
-  mensajeCodificado.reserve(mensajeCodificado.length() + 100);
-  // Reemplazar los saltos de línea con %0A
-  mensajeCodificado.replace("\n", "%0A");
   Serial.println("M8AX - Enviando Mensaje A Telegram...");
-  String url = "https://api.telegram.org/bot" + BOT_TOKEN + "/sendMessage?chat_id=" + CHAT_ID + "&text=" + mensajeCodificado;
-  url.reserve(url.length() + 50);
-  mensajeCodificado = "";
-  mensajeCodificado.reserve(0);
 
   if (client.connect("api.telegram.org", 443))
   {
-    client.print("GET ");
-    client.print(url);
-    client.print(" HTTP/1.1\r\nHost: api.telegram.org\r\nConnection: close\r\n\r\n");
+    // Un solo bloque con cabecera + cuerpo, creado DESPUÉS de conectar y enviado de una vez
+    uint8_t *pet = (uint8_t *)malloc(total);
+    if (!pet)
+    {
+      Serial.printf("M8AX - Telegram: No Hay RAM Para El Mensaje ( %u Bytes )\n", (unsigned)total);
+      client.stop();
+      return false;
+    }
+    size_t p = head.length();
+    memcpy(pet, head.c_str(), p);
+    head = "";
+    memcpy(pet + p, cab.c_str(), cab.length());
+    p += cab.length();
+    for (size_t i = 0; i < n; i++)
+      p += tgCodifica((uint8_t)m[i], (char *)pet + p);
+
+    bool fallo = client.write(pet, p) != p;
+    free(pet);
+
+    // Telegram a veces tarda en contestar ( la red está ocupada con el minero ): se espera hasta 12 s
     unsigned long t0 = millis();
-    while (!client.available() && client.connected() && millis() - t0 < 5000)
+    while (!client.available() && client.connected() && millis() - t0 < 12000)
     {
       delay(10);
     }
     String estado = client.readStringUntil('\n');
+    bool sinRespuesta = !fallo && estado.length() == 0; // se envió todo pero no contestó a tiempo
+    bool acepto = !fallo && estado.indexOf(" 200") > 0;
+    String resto;
+    if (!acepto && !sinRespuesta)
+    {
+      // Solo si falla de verdad: lee un trozo de la respuesta para ver el motivo ( máx. 600 bytes )
+      unsigned long t1 = millis();
+      while ((client.available() || client.connected()) && millis() - t1 < 1500 && resto.length() < 600)
+      {
+        while (client.available() && resto.length() < 600)
+          resto += (char)client.read();
+        delay(5);
+      }
+    }
     client.stop();
-    if (estado.indexOf(" 200") > 0)
+    if (acepto)
     {
       Serial.println("M8AX - Mensaje Enviado A Telegram...");
+      sumatele += 1;
+      ok = true;
+    }
+    else if (sinRespuesta)
+    {
+      // El mensaje se mandó entero; Telegram lo suele recibir aunque no conteste a tiempo.
+      // Se da por enviado para no reintentar a los 5 minutos y que no salga repetido.
+      Serial.println("M8AX - Mensaje Enviado A Telegram ( Sin Confirmación A Tiempo )...");
       sumatele += 1;
       ok = true;
     }
     else
     {
       estado.trim();
+      if (fallo)
+        Serial.println("M8AX - Se Cortó La Conexión Mientras Se Enviaba El Mensaje...");
       Serial.println("M8AX - Telegram No Lo Aceptó - Respuesta: [" + estado + "]");
+      if (resto.length())
+        Serial.println("M8AX - Detalle: " + resto);
     }
-    url = "";
-    url.reserve(0);
   }
   else
   {
     Serial.println("M8AX - Error De Conexión, Mensaje A Telegram Falló...");
     client.flush();
     client.stop();
-    url = "";
-    url.reserve(0);
   }
   return ok;
 }
@@ -2149,7 +2222,7 @@ String sdEspacioTexto()
   uint32_t t0 = millis();
   uint64_t total = SD.totalBytes();
   uint64_t usado = SD.usedBytes();
-  Serial.printf("M8AX - SD usedBytes Tardó %lu ms\n", (unsigned long)(millis() - t0));
+  Serial.printf("M8AX - SD UsedBytes Tardó %lu ms\n", (unsigned long)(millis() - t0));
   uint64_t libre = total > usado ? total - usado : 0;
   String r = "Espacio Libre En La MicroSD - " + String((unsigned long)(libre / 1048576ULL)) + "/" + String((unsigned long)(total / 1048576ULL)) + " MB";
   SD.end(); // se desmonta antes de enviar a Telegram: no ocupa RAM durante la conexión segura
@@ -2227,6 +2300,7 @@ static const char WEB_CSS[] PROGMEM =
     ".m{padding:8px 10px;background:#1a212b;border-radius:8px;margin-bottom:8px;word-break:break-all}"
     ".r{display:flex;align-items:center;gap:8px;padding:9px 10px;border-bottom:1px solid #222b36}"
     ".r:hover{background:#1a212b}"
+    ".b{display:inline-block;padding:6px 12px;background:#f7931a;color:#0f1419;border-radius:6px;cursor:pointer;margin-right:8px}"
     ".n{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}"
     ".s{color:#8b98a5;font-size:12px;white-space:nowrap}"
     "@media(max-width:560px){"
@@ -2261,6 +2335,24 @@ static const char WEB_CSS[] PROGMEM =
     "'https://odysee.com/@m8ax'"
     "];"
     "document.getElementById('ml').href=webs[Math.floor(Math.random()*webs.length)];"
+    "function bx(a,f){"
+    "var n=a.parentNode.querySelector('a.n'),p=new URL(n.href).searchParams.get(f?'d':'p');"
+    "if(!confirm((f?'Borrar Carpeta Y Todo Su Contenido:\\n':'Borrar Archivo:\\n')+p))return false;"
+    "fetch('/x?p='+encodeURIComponent(p),{method:'POST'})"
+    ".then(function(r){return r.text().then(function(t){if(!r.ok)alert(t);location.reload()})})"
+    ".catch(function(){alert('Error')});"
+    "return false}"
+    "function sb(i){"
+    "var fs=i.files,t=fs.length,n=0,d=i.closest('.m').dataset.d,u=document.getElementById('us');"
+    "if(!t)return;"
+    "function s(){"
+    "if(n>=t){location.reload();return}"
+    "u.textContent='Subiendo '+(n+1)+'/'+t+' ...';"
+    "var f=fs[n],fd=new FormData();fd.append('f',f,f.name);"
+    "fetch('/u?d='+d+'&r='+encodeURIComponent(f.webkitRelativePath||f.name),{method:'POST',body:fd})"
+    ".then(function(r){if(r.ok){n++;s()}else r.text().then(function(m){alert(m);location.reload()})})"
+    ".catch(function(){alert('Error');location.reload()})}"
+    "s()}"
 
     /* NODOS ANIMADOS */
     "(()=>{"
@@ -2377,6 +2469,181 @@ static void webUrl(char *o, size_t n, const char *s)
   o[i] = 0;
 }
 
+static bool webBorraTodo(char *p, size_t n)
+{
+  size_t base = strlen(p);
+  for (;;)
+  {
+    File d = SD.open(p);
+    if (!d || !d.isDirectory())
+    {
+      if (d)
+        d.close();
+      return false;
+    }
+    File f = d.openNextFile();
+    if (!f)
+    {
+      d.close();
+      if (!SD.rmdir(p))
+        return false;
+      if (strlen(p) <= base)
+        return true;
+      *strrchr(p, '/') = 0;
+      continue;
+    }
+    bool esDir = f.isDirectory();
+    const char *fn = f.name();
+    const char *bn = strrchr(fn, '/');
+    bn = bn ? bn + 1 : fn;
+    size_t a = strlen(p);
+    if (a + 1 + strlen(bn) >= n)
+    {
+      f.close();
+      d.close();
+      return false;
+    }
+    snprintf(p + a, n - a, "/%s", bn);
+    f.close();
+    d.close();
+    if (esDir)
+      continue;
+    if (!SD.remove(p))
+      return false;
+    p[a] = 0;
+    yield();
+  }
+}
+
+static void webBorrar()
+{
+  if (!web.authenticate(WEB_USER, WEB_PASS))
+    return web.requestAuthentication();
+  char p[128];
+  strlcpy(p, web.arg("p").c_str(), sizeof(p));
+  size_t l = strlen(p);
+  while (l > 1 && p[l - 1] == '/')
+    p[--l] = 0;
+  if (!rutaOk(p) || l < 2)
+    return web.send(400, "text/plain; charset=utf-8", "Ruta No Valida");
+  if (!sdMonta())
+    return web.send(503, "text/plain; charset=utf-8", "No Hay MicroSD");
+  File f = SD.open(p);
+  if (!f)
+  {
+    webSdCierra();
+    return web.send(404, "text/plain; charset=utf-8", "No Existe");
+  }
+  bool esDir = f.isDirectory();
+  f.close();
+  bool ok = esDir ? webBorraTodo(p, sizeof(p)) : SD.remove(p);
+  webSdCierra();
+  web.send(ok ? 200 : 500, "text/plain; charset=utf-8", ok ? "OK" : "No Se Ha Podido Borrar");
+}
+
+static File webSubF;
+static bool webSubFallo = false;
+
+static bool webSubRuta(char *o, size_t n, const char *fn)
+{
+  char dir[128] = "/", rel[128];
+  if (web.hasArg("d"))
+    strlcpy(dir, web.arg("d").c_str(), sizeof(dir));
+  if (!rutaOk(dir))
+    return false;
+  size_t dl = strlen(dir);
+  while (dl > 1 && dir[dl - 1] == '/')
+    dir[--dl] = 0;
+  strlcpy(rel, web.hasArg("r") ? web.arg("r").c_str() : fn, sizeof(rel));
+  for (char *s = rel; *s; s++)
+    if (*s == '\\')
+      *s = '/';
+  const char *r = rel;
+  while (*r == '/')
+    r++;
+  if (!*r || r[strlen(r) - 1] == '/' || strstr(r, "//") || strpbrk(r, "\"*:<>?|"))
+    return false;
+  for (const char *s = r; *s;)
+  {
+    const char *e = strchr(s, '/');
+    size_t ln = e ? (size_t)(e - s) : strlen(s);
+    if ((ln == 1 && s[0] == '.') || (ln == 2 && s[0] == '.' && s[1] == '.'))
+      return false;
+    s = e ? e + 1 : s + ln;
+  }
+  int w = snprintf(o, n, "%s%s%s", dir, dl > 1 ? "/" : "", r);
+  return w > 0 && (size_t)w < n;
+}
+
+static void webSubida()
+{
+  HTTPUpload &up = web.upload();
+  char ruta[128];
+  if (up.status == UPLOAD_FILE_START)
+  {
+    if (webSubF)
+      webSubF.close();
+    if (!web.authenticate(WEB_USER, WEB_PASS) || !sdMonta() || !webSubRuta(ruta, sizeof(ruta), up.filename.c_str()))
+    {
+      webSubFallo = true;
+      return;
+    }
+    for (char *s = ruta + 1; *s; s++)
+      if (*s == '/')
+      {
+        *s = 0;
+        if (!SD.exists(ruta))
+          SD.mkdir(ruta);
+        *s = '/';
+      }
+    webSubF = SD.open(ruta, FILE_WRITE);
+    if (!webSubF)
+      webSubFallo = true;
+  }
+  else if (up.status == UPLOAD_FILE_WRITE)
+  {
+    if (webSubF && webSubF.write(up.buf, up.currentSize) != up.currentSize)
+    {
+      webSubFallo = true;
+      webSubF.close();
+      if (webSubRuta(ruta, sizeof(ruta), up.filename.c_str()))
+        SD.remove(ruta);
+    }
+  }
+  else if (up.status == UPLOAD_FILE_END)
+  {
+    if (webSubF)
+      webSubF.close();
+  }
+  else if (up.status == UPLOAD_FILE_ABORTED)
+  {
+    webSubFallo = true;
+    if (webSubF)
+    {
+      webSubF.close();
+      if (webSubRuta(ruta, sizeof(ruta), up.filename.c_str()))
+        SD.remove(ruta);
+    }
+    if (sdOk)
+      webSdCierra(); // si se corta la subida, devuelve el bus SPI al táctil
+  }
+}
+
+static void webSubidaFin()
+{
+  bool fallo = webSubFallo;
+  webSubFallo = false;
+  if (webSubF)
+    webSubF.close();
+  if (sdOk)
+    webSdCierra();
+  if (!web.authenticate(WEB_USER, WEB_PASS))
+    return web.requestAuthentication();
+  if (fallo)
+    return web.send(500, "text/plain; charset=utf-8", "Fallo Al Subir ( Nombre No Valido, SD Llena O Sin SD )");
+  web.send(200, "text/plain; charset=utf-8", "OK");
+}
+
 static void webListar()
 {
   if (!web.authenticate(WEB_USER, WEB_PASS))
@@ -2428,6 +2695,14 @@ static void webListar()
     p = e ? e + 1 : p + ln;
   }
   webEnv("</div>");
+  webUrl(enc, sizeof(enc), dir);
+  snprintf(l, sizeof(l),
+           "<div class=m data-d='%s'>"
+           "<label class=b>Subir Archivos<input type=file multiple hidden onchange='sb(this)'></label>"
+           "<label class=b>Subir Carpeta<input type=file webkitdirectory hidden onchange='sb(this)'></label>"
+           "<b id=us></b></div>",
+           enc);
+  webEnv(l);
 
   if (strcmp(dir, "/"))
   {
@@ -2464,7 +2739,8 @@ static void webListar()
           nd++;
           snprintf(l, sizeof(l),
                    "<div class=r><span>&#128193;</span><a class=n href='/?d=%s'>%s</a>"
-                   "<span class=s>%s</span></div>",
+                   "<span class=s>%s</span>"
+                   "<a href='#' title=Borrar onclick=\"return bx(this,1)\">&#128465;</a></div>",
                    enc, nom, u);
         }
         else
@@ -2475,7 +2751,8 @@ static void webListar()
           snprintf(l, sizeof(l),
                    "<div class=r><span>&#128196;</span><a class=n href='/f?p=%s'>%s</a>"
                    "<span class=s>%s</span><span class=s>%s</span>"
-                   "<a href='/f?p=%s&dl=1' title=Descargar>&#11015;</a></div>",
+                   "<a href='/f?p=%s&dl=1' title=Descargar>&#11015;</a>"
+                   "<a href='#' title=Borrar onclick=\"return bx(this,0)\">&#128465;</a></div>",
                    enc, nom, u, tam, enc);
         }
         webEnv(l);
@@ -2492,12 +2769,12 @@ static void webListar()
   webTam(v, sizeof(v), tb > ub ? tb - ub : 0);
   const char *tipo = SD.cardType() == CARD_MMC ? "MMC" : SD.cardType() == CARD_SD ? "SDSC"
                                                                                   : "SDHC/SDXC";
-  unsigned long min = millis() / 60000UL;
+  unsigned long min = (unsigned long)(esp_timer_get_time() / 60000000ULL);
   snprintf(l, sizeof(l),
            "<div class=f>%d Carpetas &middot; %d Archivos &middot; %s En Esta Carpeta<br>"
            "Tarjeta %s %s &middot; Usado %s &middot; Libre %s<br>"
-           "RAM Libre %u KB &middot; WiFi %d dBm &middot; Activo %luh %02lum</div></main>",
-           nd, nf, tam, tipo, tar, u, v, (unsigned)(ESP.getFreeHeap() / 1024), WiFi.RSSI(), min / 60, min % 60);
+           "RAM Libre %u KB &middot; WiFi %d dBm &middot; Activo %lud %02luh %02lum</div></main>",
+           nd, nf, tam, tipo, tar, u, v, (unsigned)(ESP.getFreeHeap() / 1024), WiFi.RSSI(), min / 1440, (min / 60) % 24, min % 60);
   webEnv(l);
   web.sendContent("");
   webSdCierra();
@@ -2548,6 +2825,8 @@ void webAtender()
       return;
     web.on("/", webListar);
     web.on("/f", webArchivo);
+    web.on("/x", HTTP_POST, webBorrar);
+    web.on("/u", HTTP_POST, webSubidaFin, webSubida);
     web.begin();
     iniciado = true;
     Serial.printf("\nM8AX - Servidor Web De La SD En http://%s\n", WiFi.localIP().toString().c_str());
@@ -3104,6 +3383,273 @@ const uint16_t BARRA_COLOR_BAJA = 0xFC00; // naranja brillante
 const char *BARRA_PIE[3] = {"opensea.io/m8ax", " youtube.com/m8ax", "\\\\\\ By M8AX ///"};
 const unsigned long BARRA_REFRESCO_MS = 60000; // cada cuántos ms se repinta la barra y se piden precios (60000 = 60 s)
 
+/***********************************************************************************************
+ *
+ *   Carita de ánimo: ojo guiñando ( guiña y abre ) o cara sacando la lengua ( sale y entra ).
+ *   Cara grande centrada en la pantalla de 320 x 240. Dura 3 segundos en total.
+ *
+ ***********************************************************************************************/
+static void animoOjo(int x, int y)
+{
+  tft.fillCircle(x, y, 20, TFT_WHITE);
+  tft.drawCircle(x, y, 20, TFT_BLACK);
+  tft.fillCircle(x + 4, y + 3, 9, TFT_BLACK);
+  tft.fillCircle(x + 7, y - 1, 3, TFT_WHITE); // brillo
+}
+
+static void animoArco(int cx, int cy, int r, int a0, int a1, int grosor, uint16_t color)
+{
+  for (int a = a0; a <= a1; a += 3)
+  {
+    float rad = a * 0.0174533f;
+    tft.fillCircle(cx + (int)lroundf(r * cosf(rad)), cy + (int)lroundf(r * sinf(rad)), grosor, color);
+  }
+}
+
+static void animoSonrisa()
+{
+  animoArco(160, 100, 62, 25, 155, 4, TFT_BLACK);
+}
+
+static void animoOjoDcho(bool abierto)
+{
+  tft.fillCircle(198, 84, 24, TFT_YELLOW); // borra lo que hubiera
+  if (abierto)
+    animoOjo(198, 84);
+  else
+    animoArco(198, 96, 18, 200, 340, 4, TFT_BLACK); // ojo cerrado
+}
+
+static void animoLengua(bool fuera)
+{
+  tft.fillRect(134, 148, 52, 48, TFT_YELLOW); // borra lengua y sonrisa de esa zona
+  animoSonrisa();
+  if (fuera)
+  {
+    tft.fillRoundRect(140, 152, 40, 42, 16, TFT_RED);
+    tft.drawFastVLine(160, 160, 24, TFT_MAROON);
+  }
+}
+
+static void animoCarita(bool guino)
+{
+  tft.fillScreen(TFT_BLACK);
+  tft.fillCircle(160, 106, 102, TFT_ORANGE);
+  tft.fillCircle(160, 106, 98, TFT_YELLOW);
+  animoOjo(122, 84);
+  animoOjo(198, 84);
+  animoSonrisa();
+  tft.setTextDatum(TC_DATUM);
+  tft.setTextPadding(0);
+  tft.setFreeFont(NULL);
+  tft.setTextFont(1);
+  tft.setTextSize(2);
+  tft.setTextColor(TFT_WHITE);
+  tft.drawString("... By M8AX ...", 160, 214);
+  if (guino)
+  {
+    delay(600);
+    animoOjoDcho(false);
+    delay(600);
+    animoOjoDcho(true);
+    delay(500);
+    animoOjoDcho(false);
+    delay(600);
+    animoOjoDcho(true);
+    delay(700);
+  }
+  else
+  {
+    delay(500);
+    animoLengua(true);
+    delay(800);
+    animoLengua(false);
+    delay(400);
+    animoLengua(true);
+    delay(800);
+    animoLengua(false);
+    delay(500);
+  }
+}
+
+/***********************************************************************************************
+ *
+ *   Mensaje de ánimo: 6 variantes al azar ( 4 textos centrados + ojo guiñando + lengua ).
+ *   Siempre dura 3 segundos. El color del texto se elige al azar cada vez.
+ *
+ ***********************************************************************************************/
+static void mensajeAnimo(uint32_t n)
+{
+  uint8_t v = n % 6;
+  if (v >= 4)
+  {
+    animoCarita(v == 4);
+    tft.setTextDatum(TL_DATUM);
+    tft.setTextSize(1);
+    return;
+  }
+  const char *lineas[6];
+  int nl;
+  if (v == 0)
+  {
+    lineas[0] = "La Esperanza Es";
+    lineas[1] = "Lo Ultimo Que";
+    lineas[2] = "Se Pierde...";
+    lineas[3] = "Lo Conseguiremos!";
+    lineas[4] = "";
+    lineas[5] = "VAMOS !";
+    nl = 6;
+  }
+  else if (v == 1)
+  {
+    lineas[0] = "Hope Is The Last";
+    lineas[1] = "Thing To Lose, We";
+    lineas[2] = "Will Achieve It!";
+    lineas[3] = "";
+    lineas[4] = "COME ON !";
+    nl = 5;
+  }
+  else if (v == 2)
+  {
+    lineas[0] = "Paciencia, Que Un";
+    lineas[1] = "Dia Seremos Ricos";
+    lineas[2] = "Y Lo Celebraremos";
+    lineas[3] = "";
+    lineas[4] = "ANIMO !";
+    nl = 5;
+  }
+  else
+  {
+    lineas[0] = "Someday We Will";
+    lineas[1] = "Be Rich, Keep";
+    lineas[2] = "Mining, Friend!";
+    lineas[3] = "";
+    lineas[4] = "NEVER GIVE UP !";
+    nl = 5;
+  }
+  int y = (240 - (nl * 24 + 8 + 16)) / 2;
+  tft.fillScreen(TFT_BLACK);
+  tft.setTextDatum(TC_DATUM);
+  tft.setTextPadding(0);
+  tft.setFreeFont(NULL);
+  tft.setTextFont(1);
+  tft.setTextSize(3);
+  tft.setTextColor(colors[esp_random() % (sizeof(colors) / sizeof(colors[0]))]);
+  for (int i = 0; i < nl; i++, y += 24)
+    tft.drawString(lineas[i], 160, y);
+  tft.setTextSize(2);
+  tft.setTextColor(TFT_WHITE);
+  tft.drawString("... By M8AX ...", 160, y + 8);
+  delay(3000);
+  tft.setTextDatum(TL_DATUM);
+  tft.setTextSize(1);
+}
+
+static bool mensajeBloque(bool ingles)
+{
+  const char *lineas[3];
+  if (ingles)
+  {
+    lineas[0] = "YOU MINED A";
+    lineas[1] = "BLOCK CHAMPION";
+    lineas[2] = "CONGRATULATIONS!";
+  }
+  else
+  {
+    lineas[0] = "HAS MINADO UN";
+    lineas[1] = "BLOQUE CAMPEON";
+    lineas[2] = "ENHORABUENA!";
+  }
+  int y = (240 - (3 * 24 + 40 + 32)) / 2;
+  tft.fillScreen(TFT_BLACK);
+  tft.setTextDatum(TC_DATUM);
+  tft.setTextPadding(0);
+  tft.setFreeFont(NULL);
+  tft.setTextFont(1);
+  tft.setTextSize(3);
+  tft.setTextColor(colors[esp_random() % (sizeof(colors) / sizeof(colors[0]))]);
+  for (int i = 0; i < 3; i++, y += 24)
+    tft.drawString(lineas[i], 160, y);
+  y += 40; // doble espacio
+  tft.setTextSize(2);
+  tft.setTextColor(TFT_WHITE);
+  tft.drawString("... By M8AX ...", 160, y);
+  tft.drawString("youtube.com/m8ax", 160, y + 20);
+
+  bool tocado = false;
+  unsigned long t0 = millis();
+  int16_t tx, ty;
+  while (millis() - t0 < BLOQUE_AVISO_VISIBLE_MS)
+  {
+    if (touch.getXY(tx, ty))
+    {
+      tocado = true;
+      break;
+    }
+    delay(30);
+  }
+  tft.setTextDatum(TL_DATUM);
+  tft.setTextSize(1);
+  return tocado;
+}
+
+/***********************************************************************************************
+ *
+ *   Pinta un recuadro de la barra de abajo ( 2 monedas + texto del pie ). Vale para un sprite
+ *   o para la pantalla directa: si no hay RAM para el sprite, el texto sale igual sin él.
+ *   ox, oy = esquina del recuadro donde empieza a dibujar ( 0, 0 dentro del sprite ).
+ *
+ ***********************************************************************************************/
+template <typename T>
+static void barraRecuadro(T &d, int ox, int oy, int col)
+{
+  const int MED = 54;
+  render.setDrawer(d);
+  render.setLineSpaceRatio(1);
+  render.setAlignment(Align::TopLeft);
+  render.setFontSize(BARRA_PRECIO_TAM);
+  d.setFreeFont(NULL);
+  d.setTextFont(1);
+  d.setTextSize(1);
+
+  for (int fila = 0; fila < 2; fila++)
+  {
+    Cripto &c = criptos[paginaCriptos * 6 + col * 2 + fila];
+    int y = oy + BARRA_FILA_Y[fila] - BARRA_SPR_Y;
+    int xl = ox + MED - BARRA_MEDIO_ANCHO;
+    int xr = ox + MED + BARRA_MEDIO_ANCHO;
+    int ini = xl + strlen(c.simbolo) * 6 + 1;
+    int fin = xr;
+    d.setTextDatum(TL_DATUM);
+    d.setTextColor(TFT_YELLOW);
+    d.drawString(c.simbolo, xl, y + BARRA_ETIQ_DY);
+    if (BARRA_MOSTRAR_USDT)
+    {
+      d.setTextDatum(TR_DATUM);
+      d.setTextColor(TFT_CYAN);
+      d.drawString("USDT", xr, y + BARRA_ETIQ_DY);
+      fin = xr - 24 - 1;
+    }
+    uint16_t colorPrecio = TFT_WHITE;
+    if (c.tendencia > 0)
+      colorPrecio = BARRA_COLOR_SUBE;
+    else if (c.tendencia < 0)
+      colorPrecio = BARRA_COLOR_BAJA;
+    render.cdrawString(formatoPrecio(c.precio).c_str(), (ini + fin) / 2, y, colorPrecio);
+  }
+  d.setTextDatum(TC_DATUM);
+  colorM8 = esp_random() % (sizeof(colors) / sizeof(colors[0]));
+  d.setTextColor(colors[colorM8]);
+  d.drawString(BARRA_PIE[col], ox + MED, oy + BARRA_PIE_Y - BARRA_SPR_Y);
+  d.setTextDatum(TL_DATUM);
+}
+
+/***********************************************************************************************
+ *
+ *   Barra de precios de abajo ( función completa ). Un sprite pequeño por recuadro; si no hay
+ *   RAM para alguno, ese recuadro se escribe directo en la pantalla.
+ *
+ ***********************************************************************************************/
 void printPoolData()
 {
   if ((hasChangedScreen) || (mPoolUpdate == 0) || (millis() - mPoolUpdate > BARRA_REFRESCO_MS))
@@ -3128,69 +3674,30 @@ void printPoolData()
       else
         tft.pushImage(0, 170, 320, 70, bottonPoolScreen_g);
 
-      // 2) Sprite solo con la zona de los recuadros, para escribir sin parpadeo
-      background.createSprite(320, BARRA_SPR_H);
-      if (!background.created())
+      // 2) Un sprite pequeño por recuadro; si no hay RAM, ese recuadro va directo a la pantalla
+      for (int col = 0; col < 3; col++)
       {
-        Serial.println("M8AX - ###### POOL SPRITE ERROR ######");
-        printheap();
-      }
-      else
-      {
-        background.setSwapBytes(true);
-        if (bottomScreenBlue)
-          background.pushImage(0, -(BARRA_SPR_Y - 170), 320, 70, bottonPoolScreen);
-        else
-          background.pushImage(0, -(BARRA_SPR_Y - 170), 320, 70, bottonPoolScreen_g);
-
-        render.setDrawer(background);
-        render.setLineSpaceRatio(1);
-        render.setAlignment(Align::TopLeft);
-        render.setFontSize(BARRA_PRECIO_TAM);
-        background.setFreeFont(NULL);
-        background.setTextFont(1);
-        background.setTextSize(1);
-
-        for (int col = 0; col < 3; col++)
+        const int x0 = BARRA_CX[col] - 54;
+        background.setColorDepth(16);
+        background.createSprite(108, BARRA_SPR_H);
+        if (background.created())
         {
-          int cx = BARRA_CX[col];
-          for (int fila = 0; fila < 2; fila++)
-          {
-            Cripto &c = criptos[paginaCriptos * 6 + col * 2 + fila];
-            int y = BARRA_FILA_Y[fila] - BARRA_SPR_Y;
-            int xl = cx - BARRA_MEDIO_ANCHO; // borde izquierdo útil
-            int xr = cx + BARRA_MEDIO_ANCHO; // borde derecho útil
-            int ini = xl + strlen(c.simbolo) * 6 + 1;
-            int fin = xr;
-            // Símbolo a la izquierda
-            background.setTextDatum(TL_DATUM);
-            background.setTextColor(TFT_YELLOW);
-            background.drawString(c.simbolo, xl, y + BARRA_ETIQ_DY);
-            // USDT a la derecha
-            if (BARRA_MOSTRAR_USDT)
-            {
-              background.setTextDatum(TR_DATUM);
-              background.setTextColor(TFT_CYAN);
-              background.drawString("USDT", xr, y + BARRA_ETIQ_DY);
-              fin = xr - 24 - 1;
-            }
-            // Precio digital centrado entre los dos
-            uint16_t colorPrecio = TFT_WHITE;
-            if (c.tendencia > 0)
-              colorPrecio = BARRA_COLOR_SUBE;
-            else if (c.tendencia < 0)
-              colorPrecio = BARRA_COLOR_BAJA;
-            render.cdrawString(formatoPrecio(c.precio).c_str(), (ini + fin) / 2, y, colorPrecio);
-          }
-          // Línea de abajo del recuadro (web / By M8AX)
-          background.setTextDatum(TC_DATUM);
-          colorM8 = esp_random() % (sizeof(colors) / sizeof(colors[0]));
-          background.setTextColor(colors[colorM8]);
-          background.drawString(BARRA_PIE[col], cx, BARRA_PIE_Y - BARRA_SPR_Y);
+          background.setSwapBytes(true);
+          if (bottomScreenBlue)
+            background.pushImage(-x0, -(BARRA_SPR_Y - 170), 320, 70, bottonPoolScreen);
+          else
+            background.pushImage(-x0, -(BARRA_SPR_Y - 170), 320, 70, bottonPoolScreen_g);
+          barraRecuadro(background, 0, 0, col);
+          background.pushSprite(x0, BARRA_SPR_Y);
+          background.deleteSprite();
         }
-        background.pushSprite(0, BARRA_SPR_Y);
-        background.deleteSprite();
+        else
+        {
+          Serial.println("M8AX - Barra: Sin RAM Para El Sprite, Dibujo Directo");
+          barraRecuadro(tft, x0, BARRA_SPR_Y, col);
+        }
       }
+      render.setDrawer(background);
     }
     else
     {
@@ -5344,6 +5851,7 @@ void esp32_2432S028R_PongScreen(unsigned long mElapsed)
       {
         previousTouchMillis = now;
         autoPantallas = false;
+        bloqueAvisoActivo = false;
         if (((t_x > 109) && (t_x < 211)) && ((t_y > 185) && (t_y < 241)))
         {
           bottomScreenBlue ^= true;
@@ -5697,6 +6205,7 @@ void esp32_2432S028R_LifeScreen(unsigned long mElapsed)
       {
         previousTouchMillis = now;
         autoPantallas = false;
+        bloqueAvisoActivo = false;
         if (((t_x > 109) && (t_x < 211)) && ((t_y > 185) && (t_y < 241)))
         {
           bottomScreenBlue ^= true;
@@ -6160,6 +6669,7 @@ void esp32_2432S028R_KrakoutScreen(unsigned long mElapsed)
       {
         previousTouchMillis = now;
         autoPantallas = false;
+        bloqueAvisoActivo = false;
         if (((t_x > 109) && (t_x < 211)) && ((t_y > 185) && (t_y < 241)))
         {
           bottomScreenBlue ^= true;
@@ -8125,7 +8635,8 @@ void esp32_2432S028R_AjedrezScreen(unsigned long mElapsed)
       if (touch.getXY(t_x, t_y))
       {
         previousTouchMillis = now;
-        autoPantallas = false; // al tocar se para el cambio automatico
+        autoPantallas = false;
+        bloqueAvisoActivo = false; // al tocar se para el cambio automatico
         if (((t_x > 109) && (t_x < 211)) && ((t_y > 185) && (t_y < 241)))
         {
           bottomScreenBlue ^= true;
@@ -8796,7 +9307,8 @@ void esp32_2432S028R_TetrisScreen(unsigned long mElapsed)
       if (touch.getXY(t_x, t_y))
       {
         previousTouchMillis = now;
-        autoPantallas = false; // al tocar se para el cambio automatico
+        autoPantallas = false;
+        bloqueAvisoActivo = false; // al tocar se para el cambio automatico
         if (((t_x > 109) && (t_x < 211)) && ((t_y > 185) && (t_y < 241)))
         {
           bottomScreenBlue ^= true;
@@ -9306,7 +9818,8 @@ void tDisplay_Primos(unsigned long mElapsed)
       if (touch.getXY(t_x, t_y))
       {
         previousTouchMillis = now;
-        autoPantallas = false; // al tocar se para el cambio automatico
+        autoPantallas = false;
+        bloqueAvisoActivo = false; // al tocar se para el cambio automatico
         if (((t_x > 109) && (t_x < 211)) && ((t_y > 185) && (t_y < 241)))
         {
           bottomScreenBlue ^= true;
@@ -9665,7 +10178,7 @@ String cifrasTelegram()
   float pAc = tgCifAc * 100.0f / total;
   float pFa = tgCifFa * 100.0f / total;
 
-  String res = "... JUEGO " + String(tgCifJuego) + " DE LAS CIFRAS ...\n";
+  String res = "... JUEGO " + String(tgCifJuego) + " DE LAS CIFRAS - ( 1 CADA 2H ) ...\n";
   res += "Números -> ";
   for (int i = 0; i < CIF_MAX_NUMBERS; i++)
   {
@@ -9829,6 +10342,7 @@ static bool cifTouch(unsigned long now)
     return false;
   previousTouchMillis = now;
   autoPantallas = false;
+  bloqueAvisoActivo = false;
   if (((t_x > 109) && (t_x < 211)) && ((t_y > 185) && (t_y < 241)))
   {
     bottomScreenBlue ^= true;
@@ -10147,6 +10661,7 @@ void esp32_2432S028R_RainScreen(unsigned long mElapsed)
       {
         previousTouchMillis = now;
         autoPantallas = false;
+        bloqueAvisoActivo = false;
         if (((t_x > 109) && (t_x < 211)) && ((t_y > 185) && (t_y < 241)))
         {
           bottomScreenBlue ^= true;
@@ -10649,6 +11164,7 @@ void esp32_2432S028R_SnakeScreen(unsigned long mElapsed)
       {
         previousTouchMillis = now;
         autoPantallas = false;
+        bloqueAvisoActivo = false;
         if (((t_x > 109) && (t_x < 211)) && ((t_y > 185) && (t_y < 241)))
         {
           bottomScreenBlue ^= true;
@@ -11394,6 +11910,7 @@ void esp32_2432S028R_GalaxianScreen(unsigned long mElapsed)
       {
         previousTouchMillis = now;
         autoPantallas = false;
+        bloqueAvisoActivo = false;
         if (((t_x > 109) && (t_x < 211)) && ((t_y > 185) && (t_y < 241)))
         {
           bottomScreenBlue ^= true;
@@ -11741,6 +12258,7 @@ void esp32_2432S028R_BannerScreen(unsigned long mElapsed)
       {
         previousTouchMillis = now;
         autoPantallas = false;
+        bloqueAvisoActivo = false;
         if (((t_x > 109) && (t_x < 211)) && ((t_y > 185) && (t_y < 241)))
         {
           bottomScreenBlue ^= true;
@@ -12184,6 +12702,7 @@ void esp32_2432S028R_FractalScreen(unsigned long mElapsed)
       {
         previousTouchMillis = now;
         autoPantallas = false;
+        bloqueAvisoActivo = false;
         if (((t_x > 109) && (t_x < 211)) && ((t_y > 185) && (t_y < 241)))
         {
           bottomScreenBlue ^= true;
@@ -12579,6 +13098,7 @@ void esp32_2432S028R_GalaxiasScreen(unsigned long mElapsed)
       {
         previousTouchMillis = now;
         autoPantallas = false;
+        bloqueAvisoActivo = false;
         if (((t_x > 109) && (t_x < 211)) && ((t_y > 185) && (t_y < 241)))
         {
           bottomScreenBlue ^= true;
@@ -13334,6 +13854,7 @@ void esp32_2432S028R_DoomScreen(unsigned long mElapsed)
       {
         previousTouchMillis = now;
         autoPantallas = false;
+        bloqueAvisoActivo = false;
         if (((t_x > 109) && (t_x < 211)) && ((t_y > 185) && (t_y < 241)))
         {
           bottomScreenBlue ^= true;
@@ -14567,6 +15088,7 @@ void esp32_2432S028R_AsteroidesScreen(unsigned long mElapsed)
       {
         previousTouchMillis = now;
         autoPantallas = false;
+        bloqueAvisoActivo = false;
         if (((t_x > 109) && (t_x < 211)) && ((t_y > 185) && (t_y < 241)))
         {
           bottomScreenBlue ^= true;
@@ -15060,6 +15582,7 @@ void esp32_2432S028R_AtractoresScreen(unsigned long mElapsed)
       {
         previousTouchMillis = now;
         autoPantallas = false;
+        bloqueAvisoActivo = false;
         if (((t_x > 109) && (t_x < 211)) && ((t_y > 185) && (t_y < 241)))
         {
           bottomScreenBlue ^= true;
@@ -15940,6 +16463,7 @@ void esp32_2432S028R_DemoScreen(unsigned long mElapsed)
       {
         previousTouchMillis = now;
         autoPantallas = false;
+        bloqueAvisoActivo = false;
         if (((t_x > 109) && (t_x < 211)) && ((t_y > 185) && (t_y < 241)))
         {
           bottomScreenBlue ^= true;
@@ -16510,6 +17034,7 @@ void esp32_2432S028R_CalcScreen(unsigned long mElapsed)
       {
         previousTouchMillis = now;
         autoPantallas = false;
+        bloqueAvisoActivo = false;
         if (t_y < CAL_HH)
         {
           if (t_x < 48)
@@ -17328,6 +17853,7 @@ void esp32_2432S028R_FlappyHashScreen(unsigned long mElapsed)
       {
         previousTouchMillis = now;
         autoPantallas = false;
+        bloqueAvisoActivo = false;
         if (((t_x > 109) && (t_x < 211)) && ((t_y > 185) && (t_y < 241)))
         {
           bottomScreenBlue ^= true;
@@ -17862,6 +18388,7 @@ void esp32_2432S028R_ECGScreen(unsigned long mElapsed)
       {
         previousTouchMillis = now;
         autoPantallas = false;
+        bloqueAvisoActivo = false;
         if (((t_x > 109) && (t_x < 211)) && ((t_y > 185) && (t_y < 241)))
         {
           bottomScreenBlue ^= true;
@@ -18424,6 +18951,7 @@ void esp32_2432S028R_Fractal3DScreen(unsigned long mElapsed)
       {
         previousTouchMillis = now;
         autoPantallas = false;
+        bloqueAvisoActivo = false;
         if (((t_x > 109) && (t_x < 211)) && ((t_y > 185) && (t_y < 241)))
         {
           bottomScreenBlue ^= true;
@@ -19173,6 +19701,456 @@ void esp32_2432S028R_WeatherScreen(unsigned long mElapsed)
 #endif
 }
 
+/********************************************************************************************
+ *  PANTALLA HANOI - Torres de Hanoi con 4 postes que se resuelven solas, en bucle, mientras
+ *  el minero sigue
+ *
+ *  Con 4 postes ya no vale la regla de siempre: para cada tamano hay que calcular donde
+ *  partir la torre (Frame-Stewart) y ese calculo se hace de verdad en cada partida. Poste de
+ *  salida, de llegada y orden de los auxiliares salen al azar, asi que no se repite nunca el
+ *  mismo baile. Empieza con 4 discos y sube de uno en uno hasta 32, luego vuelve a 4.
+ *  Con 32 discos son 1281 movimientos (con 3 postes serian mas de 4000 millones).
+ *
+ *  Cada disco sube, se desliza y baja, y al aterrizar destella el LED con un color distinto.
+ *  Arriba la hora y el hashrate, abajo los movimientos y los discos, y mas abajo se mantiene
+ *  la barra de precios. Tactil igual que Pong: zona central inferior cambia el fondo,
+ *  esquina superior derecha alterna pantalla y los laterales pasan a la siguiente o a la
+ *  anterior.
+ *
+ *  Memoria: todo es estatico (unos 1,8 KB), no pide nada con malloc ni crea sprites.
+ *
+ *  Ajustes: HN_MIN_DISCOS y HN_MAX_DISCOS (no pasar de 32, la lista de movimientos esta
+ *  hecha para eso), HN_PAUSA_MS (lo que se queda el RESUELTO) y HN_SLICE_MS (cada tanda).
+ ********************************************************************************************/
+
+#define HN_MIN_DISCOS 5
+#define HN_MAX_DISCOS 32
+#define HN_MAX_MOVS 1400
+#define HN_SLICE_MS 5000
+#define HN_PAUSA_MS 2500
+#define HN_BASE_Y 138
+#define HN_POSTE_Y 50
+#define HN_VUELO_Y 34
+#define HN_ALEATORIO (HN_MIN_DISCOS + esp_random() % (HN_MAX_DISCOS - HN_MIN_DISCOS + 1))
+
+struct HanoiState
+{
+  bool init;
+  int n;
+  uint8_t peg[4][HN_MAX_DISCOS];
+  uint8_t cnt[4];
+  uint32_t mov, total;
+  uint8_t fase; // 0 elegir, 1 subir, 2 deslizar, 3 bajar, 4 pausa final
+  int from, to, disco;
+  int x, y;
+  int paso, alto;
+  unsigned long hasta;
+  uint8_t ancho[HN_MAX_DISCOS];
+  uint16_t col[HN_MAX_DISCOS];
+  uint8_t lista[HN_MAX_MOVS];
+};
+static HanoiState hn = {false};
+
+static const int HN_PX[4] = {40, 120, 200, 280};
+static uint16_t hnT[HN_MAX_DISCOS + 1];
+static uint8_t hnK[HN_MAX_DISCOS + 1];
+static int hnW = 0;
+
+static inline int hnYNivel(int nivel)
+{
+  return HN_BASE_Y - hn.paso * (nivel + 1) + 1;
+}
+
+static uint16_t hnColor(int d, int n)
+{
+  int h = (d * 360 / n) % 360;
+  int s = h / 60, f = (h % 60) * 255 / 60;
+  uint8_t r = 0, g = 0, b = 0;
+  switch (s)
+  {
+  case 0:
+    r = 255;
+    g = f;
+    break;
+  case 1:
+    r = 255 - f;
+    g = 255;
+    break;
+  case 2:
+    g = 255;
+    b = f;
+    break;
+  case 3:
+    g = 255 - f;
+    b = 255;
+    break;
+  case 4:
+    r = f;
+    b = 255;
+    break;
+  default:
+    r = 255;
+    b = 255 - f;
+    break;
+  }
+  return tft.color565(r, g, b);
+}
+
+static void hnDisco(int cx, int y, int d)
+{
+  tft.fillRoundRect(cx - hn.ancho[d] / 2, y, hn.ancho[d], hn.alto, hn.alto / 3, hn.col[d]);
+}
+
+static void hnMov(int a, int b)
+{
+  if (hnW < HN_MAX_MOVS)
+    hn.lista[hnW++] = (a << 2) | b;
+}
+
+static void hnH3(int k, int s, int d, int x)
+{
+  if (k == 0)
+    return;
+  hnH3(k - 1, s, x, d);
+  hnMov(s, d);
+  hnH3(k - 1, x, d, s);
+}
+
+static void hnH4(int n, int s, int d, int a, int b)
+{
+  if (n == 0)
+    return;
+  if (n == 1)
+  {
+    hnMov(s, d);
+    return;
+  }
+  int k = hnK[n];
+  hnH4(n - k, s, a, d, b);
+  hnH3(k, s, d, b);
+  hnH4(n - k, a, d, s, b);
+}
+
+static void hnNueva(int n)
+{
+  hn.n = n;
+  hn.paso = min(10, 80 / n);
+  hn.alto = hn.paso - 1;
+  for (int d = 0; d < n; d++)
+  {
+    hn.ancho[d] = 10 + d * 62 / (n - 1);
+    hn.col[d] = hnColor(d, n);
+  }
+
+  hnT[0] = 0;
+  hnT[1] = 1;
+  for (int m = 2; m <= n; m++)
+  {
+    uint32_t mejor = 0xFFFFFFFF;
+    for (int k = 1; k < m; k++)
+    {
+      uint32_t c = 2 * hnT[m - k] + (1UL << k) - 1;
+      if (c < mejor)
+      {
+        mejor = c;
+        hnK[m] = k;
+      }
+    }
+    hnT[m] = mejor;
+  }
+
+  int s = esp_random() % 4;
+  int d = (s + 1 + esp_random() % 3) % 4;
+  int ax[2], j = 0;
+  for (int p = 0; p < 4; p++)
+    if (p != s && p != d)
+      ax[j++] = p;
+  if (esp_random() & 1)
+  {
+    int t = ax[0];
+    ax[0] = ax[1];
+    ax[1] = t;
+  }
+
+  hnW = 0;
+  hnH4(n, s, d, ax[0], ax[1]);
+  hn.total = hnW;
+
+  for (int p = 0; p < 4; p++)
+    hn.cnt[p] = 0;
+  for (int i = n - 1; i >= 0; i--)
+    hn.peg[s][hn.cnt[s]++] = i;
+  hn.mov = 0;
+  hn.fase = 0;
+}
+
+static void hnCampo()
+{
+  tft.fillRect(0, 0, 320, 170, TFT_BLACK);
+  tft.fillRect(4, HN_BASE_Y, 312, 4, TFT_WHITE);
+  for (int p = 0; p < 4; p++)
+  {
+    tft.fillRect(HN_PX[p] - 2, HN_POSTE_Y, 4, HN_BASE_Y - HN_POSTE_Y, TFT_LIGHTGREY);
+    for (int i = 0; i < hn.cnt[p]; i++)
+      hnDisco(HN_PX[p], hnYNivel(i), hn.peg[p][i]);
+  }
+  if (hn.fase >= 1 && hn.fase <= 3)
+    hnDisco(hn.x, hn.y, hn.disco);
+}
+
+// Borra el disco en vuelo y repone solo el trozo de poste que tapaba
+static void hnMueve(int nx, int ny)
+{
+  int w = hn.ancho[hn.disco];
+  int x0 = hn.x - w / 2, x1 = x0 + w;
+  tft.fillRect(x0, hn.y, w, hn.alto, TFT_BLACK);
+  int yA = max(HN_POSTE_Y, hn.y), yB = min(HN_BASE_Y, hn.y + hn.alto);
+  for (int p = 0; p < 4; p++)
+    if (HN_PX[p] + 2 > x0 && HN_PX[p] - 2 < x1 && yB > yA)
+      tft.fillRect(HN_PX[p] - 2, yA, 4, yB - yA, TFT_LIGHTGREY);
+  hn.x = nx;
+  hn.y = ny;
+  hnDisco(hn.x, hn.y, hn.disco);
+}
+
+static void hnTextos()
+{
+  char b[16];
+  tft.setFreeFont(NULL);
+  tft.setTextFont(1);
+  tft.setTextSize(2);
+  tft.setTextColor(TFT_WHITE, TFT_BLACK);
+  tft.setTextPadding(144);
+  tft.setTextDatum(TL_DATUM);
+  snprintf(b, sizeof(b), "MOV %03u/%03u", (unsigned)hn.mov, (unsigned)hn.total);
+  tft.drawString(b, 4, 153);
+  tft.setTextDatum(TR_DATUM);
+  snprintf(b, sizeof(b), "DISCOS %d", hn.n);
+  tft.drawString(b, 316, 153);
+  tft.setTextPadding(0);
+  tft.setTextDatum(TL_DATUM);
+}
+
+static void hnHud(const char *hash, const char *hora)
+{
+  char b[24];
+  tft.setFreeFont(NULL);
+  tft.setTextFont(1);
+  tft.setTextSize(2);
+  tft.setTextColor(TFT_WHITE, TFT_BLACK);
+  tft.setTextPadding(100);
+  tft.setTextDatum(TL_DATUM);
+  tft.drawString(hora, 4, 9);
+  snprintf(b, sizeof(b), "%s KH/s", hash);
+  tft.setTextPadding(150);
+  tft.setTextDatum(TR_DATUM);
+  tft.drawString(b, 316, 9);
+  tft.setTextPadding(0);
+  tft.setTextDatum(TL_DATUM);
+}
+
+// Un paso de animacion. Devuelve true si el disco acaba de aterrizar
+static bool hnPaso(unsigned long now)
+{
+  int vy = 3 + hn.n, vx = 6 + 3 * hn.n;
+  switch (hn.fase)
+  {
+  case 0:
+  {
+    hn.from = hn.lista[hn.mov] >> 2;
+    hn.to = hn.lista[hn.mov] & 3;
+    hn.disco = hn.peg[hn.from][--hn.cnt[hn.from]];
+    hn.x = HN_PX[hn.from];
+    hn.y = hnYNivel(hn.cnt[hn.from]);
+    hn.fase = 1;
+    break;
+  }
+  case 1:
+  {
+    int ny = hn.y - vy;
+    if (ny <= HN_VUELO_Y)
+    {
+      ny = HN_VUELO_Y;
+      hn.fase = 2;
+    }
+    hnMueve(hn.x, ny);
+    break;
+  }
+  case 2:
+  {
+    int dest = HN_PX[hn.to];
+    int nx = (dest > hn.x) ? min(hn.x + vx, dest) : max(hn.x - vx, dest);
+    if (nx == dest)
+      hn.fase = 3;
+    hnMueve(nx, hn.y);
+    break;
+  }
+  case 3:
+  {
+    int dest = hnYNivel(hn.cnt[hn.to]);
+    int ny = hn.y + vy;
+    bool aterriza = (ny >= dest);
+    if (aterriza)
+      ny = dest;
+    hnMueve(hn.x, ny);
+    if (aterriza)
+    {
+      hn.peg[hn.to][hn.cnt[hn.to]++] = hn.disco;
+      hn.mov++;
+      if (hn.mov >= hn.total)
+      {
+        hn.fase = 4;
+        hn.hasta = now + HN_PAUSA_MS;
+      }
+      else
+        hn.fase = 0;
+      return true;
+    }
+    break;
+  }
+  }
+  return false;
+}
+
+void esp32_2432S028R_HanoiScreen(unsigned long mElapsed)
+{
+  mineria = getMiningData(mElapsed);
+  Serial.printf("M8AX - %s >>> Completados %s Share(s), %s Khashes, Prom. Hashrate %s KH/s %s°\n",
+                mineria.currentTime.c_str(), mineria.completedShares.c_str(), mineria.totalKHashes.c_str(), mineria.currentHashRate.c_str(), mineria.temp.c_str());
+
+  bool redraw = hasChangedScreen;
+  if (!hn.init)
+  {
+    hn.init = true;
+    hnNueva(HN_ALEATORIO);
+    redraw = true;
+  }
+
+  if (redraw)
+    hnCampo();
+  printPoolData();
+  hasChangedScreen = false;
+
+  char horaStr[9] = "";
+  char lastHora[9] = "";
+  char hashStr[16];
+  char lastHash[16] = "";
+  uint32_t lastMov = redraw ? 0xFFFFFFFF : hn.mov;
+  int lastN = redraw ? -1 : hn.n;
+
+  unsigned long start = millis();
+  unsigned long lastMiningUpdate = 0;
+  unsigned long lastTouchChk = 0;
+
+  while (millis() - start < HN_SLICE_MS)
+  {
+    unsigned long now = millis();
+
+    if (now - lastTouchChk >= 40 && now - previousTouchMillis >= 500)
+    {
+      lastTouchChk = now;
+      int16_t t_x, t_y;
+      if (touch.getXY(t_x, t_y))
+      {
+        previousTouchMillis = now;
+        autoPantallas = false;
+        bloqueAvisoActivo = false;
+        if (((t_x > 109) && (t_x < 211)) && ((t_y > 185) && (t_y < 241)))
+        {
+          bottomScreenBlue ^= true;
+          hasChangedScreen = true;
+        }
+        else if ((t_x > 235) && ((t_y > 0) && (t_y < 16)))
+        {
+          esp32_2432S028R_AlternateScreenState();
+        }
+        else if (t_x > 160)
+        {
+          currentDisplayDriver->current_cyclic_screen = (currentDisplayDriver->current_cyclic_screen + 1) % currentDisplayDriver->num_cyclic_screens;
+        }
+        else
+        {
+          currentDisplayDriver->current_cyclic_screen = currentDisplayDriver->current_cyclic_screen - 1;
+          if (currentDisplayDriver->current_cyclic_screen < 0)
+            currentDisplayDriver->current_cyclic_screen = currentDisplayDriver->num_cyclic_screens - 1;
+        }
+        break;
+      }
+    }
+
+    // Cambio automático cada 1 minuto
+    if (autoPantallas && millis() - lastAutoChange >= 60000UL)
+    {
+      currentDisplayDriver->current_cyclic_screen =
+          (currentDisplayDriver->current_cyclic_screen + 1) % currentDisplayDriver->num_cyclic_screens;
+      lastAutoChange = millis();
+      break;
+    }
+
+    if (hn.fase == 4)
+    {
+      if (now >= hn.hasta)
+      {
+        hnNueva(HN_ALEATORIO);
+        hnCampo();
+        lastMov = 0xFFFFFFFF;
+      }
+    }
+    else if (hnPaso(now))
+    {
+      int c = hn.disco % 7 + 1;
+      ledFlash(c & 1, c & 2, c & 4, LED_FLASH_MS);
+      if (hn.fase == 4)
+      {
+        tft.setTextFont(1);
+        tft.setTextSize(2);
+        tft.setTextColor(TFT_GREEN, TFT_BLACK);
+        tft.setTextDatum(TC_DATUM);
+        tft.drawString("RESUELTO!", 160, 28);
+        tft.setTextDatum(TL_DATUM);
+      }
+    }
+
+    if (hn.mov != lastMov || hn.n != lastN)
+    {
+      hnTextos();
+      lastMov = hn.mov;
+      lastN = hn.n;
+    }
+
+    if (now - lastMiningUpdate >= 1000)
+    {
+      lastMiningUpdate = now;
+      mineria = getMiningData(mElapsed);
+      snprintf(hashStr, sizeof(hashStr), "%s", mineria.currentHashRate.c_str());
+
+      time_t epoch = (time_t)timeClient.getEpochTime();
+      struct tm *ti = localtime(&epoch);
+      snprintf(horaStr, sizeof(horaStr), "%02d:%02d:%02d", ti->tm_hour, ti->tm_min, ti->tm_sec);
+
+      if (strcmp(horaStr, lastHora) != 0 || strcmp(hashStr, lastHash) != 0)
+      {
+        hnHud(hashStr, horaStr);
+        strcpy(lastHora, horaStr);
+        strcpy(lastHash, hashStr);
+      }
+    }
+    webAtender();
+    delay(10);
+  }
+
+  tft.setTextPadding(0);
+  tft.setTextDatum(TL_DATUM);
+
+  cuentita++;
+  if (cuentita == 15)
+  {
+    ajustarZonaHoraria();
+    obtenerLocYTemp();
+    obtenerVariacionesBTC(variacion1dia, variacion1semana);
+  }
+}
+
 void analiCadaSegundo(unsigned long frame)
 {
   unsigned long epochTime = timeClient.getEpochTime(); // Obtener segundos desde 1970
@@ -19298,22 +20276,19 @@ void analiCadaSegundo(unsigned long frame)
   if (rndnumero <= 10031977 && segundos <= 20 && segundos % 2 == 0 && dia % 2 == 0)
   {
     Serial.printf("M8AX - >>> NerdMinerV2 Dando Ánimos Y Esperanza Al Usuario...\n");
-    tft.fillScreen(TFT_BLACK);
-    tft.setTextDatum(TL_DATUM);
-    tft.setTextPadding(0);
-    tft.setFreeFont(NULL);
-    tft.setTextFont(1);
-    tft.setTextColor(colors[esp_random() % (sizeof(colors) / sizeof(colors[0]))]);
-    tft.setTextSize(3);
-    tft.setCursor(0, 0);
-    const char *mensaje1 = (rndnumero % 2 == 0) ? "La Esperanza Es\nLo Ultimo Que\nSe Pierde...\nLo Conseguiremos!\n\n     VAMOS !" : "Hope Is The Last\nThing To Lose, We\nWill Achieve It!\n\n    COME ON !";
-    tft.println(mensaje1);
-    tft.setTextSize(1);
-    tft.println("");
-    tft.setTextSize(2), tft.setTextColor(TFT_WHITE);
-    tft.println("     ... By M8AX ..."), delay(3000);
-    tft.setTextSize(1);
+    mensajeAnimo(rndnumero);
     hasChangedScreen = true; // repinta la pantalla actual y la barra de abajo
+  }
+
+  // Bloque minado: aviso parpadeante cada 5 s ( ES / EN ) hasta que se toque la pantalla
+  if (bloqueAvisoActivo && millis() - bloqueAvisoUltimo >= BLOQUE_AVISO_CICLO_MS)
+  {
+    bloqueAvisoUltimo = millis();
+    bool tocado = mensajeBloque(bloqueAvisoIngles);
+    bloqueAvisoIngles = !bloqueAvisoIngles;
+    hasChangedScreen = true; // repinta la pantalla actual y la barra de abajo
+    if (tocado)
+      bloqueAvisoActivo = false;
   }
 
   if (startTime == 0)
@@ -19463,6 +20438,7 @@ void esp32_2432S028R_DoLedStuff(unsigned long frame)
     if (pressed)
     {
       autoPantallas = false;
+      bloqueAvisoActivo = false;
       if (((t_x > 109) && (t_x < 211)) && ((t_y > 185) && (t_y < 241)))
       {
         bottomScreenBlue ^= true;
@@ -19509,8 +20485,7 @@ void esp32_2432S028R_DoLedStuff(unsigned long frame)
   {
     hasChangedScreen = true;
     lastAutoChange = currentMillis;
-    ledsLibres();
-    ledUltimoManejo = 0;
+    ledsLibres(), ledUltimoManejo = 0;
   }
   currentScreen = currentDisplayDriver->current_cyclic_screen;
   bool minando = (mMonitor.NerdStatus == NM_hashing) || (ledUltimoManejo != 0 && ledHashRate > 0);
@@ -19533,7 +20508,7 @@ void esp32_2432S028R_DoLedStuff(unsigned long frame)
   }
 }
 
-CyclicScreenFunction esp32_2432S028RCyclicScreens[] = {esp32_2432S028R_MinerScreen, esp32_2432S028R_BTCprice, esp32_2432S028R_ClockScreen, esp32_2432S028R_WeatherScreen, esp32_2432S028R_ECGScreen, tDisplay_granHash, tDisplay_hashGigante, RelojDeNumeros, tDisplay_m8axScreen7, esp32_2432S028R_m8axScreen1, esp32_2432S028R_m8axScreen2, tDisplay_m8axScreenMegaNerd, tDisplay_m8axScreen5, tDisplay_m8axScreen6, esp32_2432S028R_BannerScreen, tDisplay_Primos, esp32_2432S028R_CifrasScreen, esp32_2432S028R_TetrisScreen, esp32_2432S028R_AjedrezScreen, esp32_2432S028R_GalaxianScreen, esp32_2432S028R_AsteroidesScreen, esp32_2432S028R_PongScreen, esp32_2432S028R_KrakoutScreen, esp32_2432S028R_SnakeScreen, esp32_2432S028R_FlappyHashScreen, esp32_2432S028R_DoomScreen, esp32_2432S028R_LifeScreen, esp32_2432S028R_FractalScreen, esp32_2432S028R_Fractal3DScreen, esp32_2432S028R_AtractoresScreen, esp32_2432S028R_GalaxiasScreen, esp32_2432S028R_RainScreen, esp32_2432S028R_DemoScreen, esp32_2432S028R_monedaYdado, esp32_2432S028R_CalcScreen, tDisplay_m8axScreen3, tDisplay_m8axScreen4};
+CyclicScreenFunction esp32_2432S028RCyclicScreens[] = {esp32_2432S028R_MinerScreen, esp32_2432S028R_BTCprice, esp32_2432S028R_ClockScreen, esp32_2432S028R_WeatherScreen, esp32_2432S028R_ECGScreen, tDisplay_granHash, tDisplay_hashGigante, RelojDeNumeros, tDisplay_m8axScreen7, esp32_2432S028R_m8axScreen1, esp32_2432S028R_m8axScreen2, tDisplay_m8axScreenMegaNerd, tDisplay_m8axScreen5, tDisplay_m8axScreen6, esp32_2432S028R_BannerScreen, tDisplay_Primos, esp32_2432S028R_CifrasScreen, esp32_2432S028R_HanoiScreen, esp32_2432S028R_TetrisScreen, esp32_2432S028R_AjedrezScreen, esp32_2432S028R_GalaxianScreen, esp32_2432S028R_AsteroidesScreen, esp32_2432S028R_PongScreen, esp32_2432S028R_KrakoutScreen, esp32_2432S028R_SnakeScreen, esp32_2432S028R_FlappyHashScreen, esp32_2432S028R_DoomScreen, esp32_2432S028R_LifeScreen, esp32_2432S028R_FractalScreen, esp32_2432S028R_Fractal3DScreen, esp32_2432S028R_AtractoresScreen, esp32_2432S028R_GalaxiasScreen, esp32_2432S028R_RainScreen, esp32_2432S028R_DemoScreen, esp32_2432S028R_monedaYdado, esp32_2432S028R_CalcScreen, tDisplay_m8axScreen3, tDisplay_m8axScreen4};
 
 DisplayDriver esp32_2432S028RDriver = {
     esp32_2432S028R_Init,
