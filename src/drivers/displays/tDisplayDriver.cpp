@@ -167,7 +167,8 @@ const char *urlsm8ax[] = {
     "YT - https://youtube.com/m8ax",
     "OS - https://opensea.io/es/m8ax",
     "OC - https://oncyber.io/m8ax",
-    "FW - https://m8ax.github.io/MvIiIaX-NerdMiner_V2-DeV/",
+    "FW - https://m8ax.github.io/MvIiIaX-NerdMiner_V2-DeV",
+    "OD - https://odysee.com/@m8ax",
     "GH - https://github.com/m8ax"};
 String urls[] = {
     "https://cointelegraph.com/rss",
@@ -1228,7 +1229,7 @@ bool recopilaTelegram()
   int horita = timeinfo->tm_hour;                      // Hora
   int minutitos = timeinfo->tm_min;                    // Minutos
   int segundos = timeinfo->tm_sec;                     // Segundos
-  int indice = esp_random() % 5;
+  int indice = esp_random() % 6;
 
   // Formatear la hora en "00:00:00 - UTC+/-X"
   char horaFormateada[23];
@@ -12906,8 +12907,7 @@ void analiCadaSegundo(unsigned long frame)
     tft.setCursor(0, 0);
     const char *mensaje1 = (rndnumero % 2 == 0) ? "La Esperanza Es\nLo Ultimo Que\nSe Pierde...\nLo Conseguiremos!\n\n     VAMOS !" : "Hope Is The Last\nThing To Lose, We\nWill Achieve It!\n\n    COME ON !";
     tft.println(mensaje1);
-    tft.setTextSize(1);
-    tft.println("");
+    tft.setTextSize(1), tft.println("");
     tft.setTextSize(2), tft.setTextColor(TFT_WHITE);
     tft.println("     ... By M8AX ..."), delay(3000);
   }

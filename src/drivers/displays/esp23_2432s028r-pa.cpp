@@ -92,7 +92,7 @@
  *
  *                                 HASHRATE - 380 / 390 KH/S
  *
- *                     Tmp. De Programación 22H - 20550 Líneas De Código
+ *                     Tmp. De Programación 24H - 23020 Líneas De Código
  *                     -------------------------------------------------
  *
  ****************************************************************************************************************/
@@ -115,6 +115,7 @@
 #include <ArduinoJson.h>
 #include <SPI.h>
 #include <SD.h>
+#include "esp_vfs_fat.h"
 #include <qrcode.h>
 #include "rotation.h"
 #include <clientntp.h>
@@ -161,7 +162,8 @@ const char *urlsm8ax[] = {
     "YT - https://youtube.com/m8ax",
     "OS - https://opensea.io/es/m8ax",
     "OC - https://oncyber.io/m8ax",
-    "FW - https://m8ax.github.io/MvIiIaX-NerdMiner_V2-DeV/",
+    "FW - https://m8ax.github.io/MvIiIaX-NerdMiner_V2-DeV",
+    "OD - https://odysee.com/@m8ax",
     "GH - https://github.com/m8ax"};
 String urls[] = {
     "https://cointelegraph.com/rss",
@@ -2165,6 +2167,10 @@ static SPIClass sdSPI(SD_BUS); // bus aparte del de la pantalla (pines 18/19/23/
 static bool sdOk = false;
 static bool sdGuardadoCiclo = false;
 static unsigned long sdFalloEn = 0;
+static bool sdSinTarjeta = false; // true = la ranura está vacía ( no tiene sentido reintentar )
+static String sdPendiente;        // mensajes enviados que no se pudieron grabar, se reintentan cada minuto
+static uint8_t sdPendienteIntentos = 0;
+static unsigned long sdPendienteUltimo = 0;
 
 /**************************************************************************
  *
@@ -2182,24 +2188,69 @@ static void sdPonHora()
   settimeofday(&tv, NULL);
 }
 
-static bool sdMonta()
+// Prueba rápida: manda CMD0 a la tarjeta. Si contesta 0x01 hay tarjeta; si no, la ranura está vacía
+static bool sdHayTarjeta()
+{
+  sdSPI.begin(SD_SCK, SD_MISO, SD_MOSI, SD_CS);
+  pinMode(SD_CS, OUTPUT);
+  digitalWrite(SD_CS, HIGH);
+  sdSPI.beginTransaction(SPISettings(400000, MSBFIRST, SPI_MODE0));
+  for (int i = 0; i < 10; i++)
+    sdSPI.transfer(0xFF); // 80 pulsos con CS alto
+  digitalWrite(SD_CS, LOW);
+  sdSPI.transfer(0xFF);
+  const uint8_t cmd0[6] = {0x40, 0x00, 0x00, 0x00, 0x00, 0x95};
+  for (int i = 0; i < 6; i++)
+    sdSPI.transfer(cmd0[i]);
+  uint8_t r = 0xFF;
+  for (int i = 0; i < 40 && r == 0xFF; i++)
+    r = sdSPI.transfer(0xFF);
+  digitalWrite(SD_CS, HIGH);
+  sdSPI.transfer(0xFF);
+  sdSPI.endTransaction();
+  sdSPI.end();
+  return r == 0x01;
+}
+
+static bool sdMonta(bool forzar = false)
 {
   sdPonHora();
   if (sdOk)
     return true;
-  if (sdFalloEn && millis() - sdFalloEn < 60000UL)
+  if (!forzar && sdFalloEn && millis() - sdFalloEn < 60000UL)
     return false;
   uint32_t antes = ESP.getFreeHeap();
   hSPI.end(); // libera el bus del táctil
+  bool hay = false;
+  for (int k = 0; k < 5 && !hay; k++) // 5 pruebas por si una falla de casualidad
+  {
+    hay = sdHayTarjeta();
+    if (!hay)
+      delay(50);
+  }
+  if (!hay)
+  {
+    Serial.println("M8AX - SD: No Hay Tarjeta En La Ranura");
+    sdSinTarjeta = true;
+    sdFalloEn = millis() | 1;
+    hSPI.begin(TOUCH_CLK, TOUCH_MISO, TOUCH_MOSI, ETOUCH_CS); // devuelve el bus al táctil
+    return false;
+  }
+  sdSinTarjeta = false; // hay tarjeta: si falla el montaje, sí se reintenta
+  // 3 intentos, cada uno más despacio: a 20 MHz alguna tarjeta o cable falla de vez en cuando
+  static const uint32_t VEL[3] = {20000000, 10000000, 4000000};
   for (int i = 0; i < 3 && !sdOk; i++)
   {
+    esp_vfs_fat_unregister_path("/sd");
     sdSPI.begin(SD_SCK, SD_MISO, SD_MOSI, SD_CS);
-    sdOk = SD.begin(SD_CS, sdSPI, 20000000);
+    sdOk = SD.begin(SD_CS, sdSPI, VEL[i]);
     if (!sdOk)
     {
+      Serial.printf("M8AX - SD: Intento %d A %u MHz Falló ( Heap Libre %u | Max Bloque %u )\n", i + 1, (unsigned)(VEL[i] / 1000000), (unsigned)ESP.getFreeHeap(), (unsigned)ESP.getMaxAllocHeap());
       SD.end();
+      esp_vfs_fat_unregister_path("/sd");
       sdSPI.end();
-      delay(30);
+      delay(60);
     }
   }
   if (!sdOk)
@@ -2217,7 +2268,7 @@ static bool sdMonta()
 
 String sdEspacioTexto()
 {
-  if (!sdMonta())
+  if (!sdMonta(true))
     return "Espacio Libre En La MicroSD - SIN TARJETA";
   uint32_t t0 = millis();
   uint64_t total = SD.totalBytes();
@@ -2236,37 +2287,64 @@ bool sdGuardaTelegram(const String &texto)
 {
   time_t epoch = (time_t)timeClient.getEpochTime();
   if (epoch < 1700000000) // aun sin hora de internet, no se guarda
-    return false;
-  if (!sdMonta())
-    return false;
-  struct tm *ti = localtime(&epoch);
-  static const char *MESES[12] = {"Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"};
-  char carpetaAnio[48];
-  snprintf(carpetaAnio, sizeof(carpetaAnio), "/-M8AX-NerdMinerV2-PG-M8AX-Logs/M8AX-%04d", ti->tm_year + 1900);
-  if (!SD.exists(carpetaAnio))
-    SD.mkdir(carpetaAnio);
-  char carpeta[64];
-  snprintf(carpeta, sizeof(carpeta), "%s/M8AX-%s", carpetaAnio, MESES[ti->tm_mon]);
-  if (!SD.exists(carpeta))
-    SD.mkdir(carpeta);
-  char nombre[96];
-  snprintf(nombre, sizeof(nombre), "%s/M8AX-Telegram-%04d%02d%02d.TxT", carpeta, ti->tm_year + 1900, ti->tm_mon + 1, ti->tm_mday);
-  bool ok = false;
-  File w = SD.open(nombre, FILE_APPEND);
-  if (w)
   {
-    w.print(texto);
-    w.print("\n\n");
-    w.close();
-    ok = true;
-    Serial.println("M8AX - Telegram Guardado En La SD...");
+    Serial.println("M8AX - SD: Aún Sin Hora De Internet, No Se Guarda...");
+    return false;
   }
-  else
-    Serial.println("M8AX - No Se Pudo Escribir En La SD...");
-  SD.end();
-  sdSPI.end();
-  hSPI.begin(TOUCH_CLK, TOUCH_MISO, TOUCH_MOSI, ETOUCH_CS); // devuelve el bus al táctil
-  sdOk = false;
+  struct tm *ti = localtime(&epoch);
+  const int anio = ti->tm_year + 1900, mes = ti->tm_mon, dia = ti->tm_mday;
+  static const char *MESES[12] = {"Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"};
+  const size_t esperado = texto.length() + 2;
+  bool ok = false;
+  // Hasta 3 intentos completos: cada uno desmonta, monta de nuevo ( forzado, sin esperar el minuto de castigo ) y escribe
+  for (int intento = 1; intento <= 3 && !ok; intento++)
+  {
+    if (!sdMonta(true))
+    {
+      if (sdSinTarjeta && intento == 3) // ranura vacía en los 3 intentos
+        return false;
+      Serial.printf("M8AX - SD: No Monta ( Intento %d De 3 )\n", intento);
+      delay(200);
+      continue;
+    }
+    char carpetaAnio[64];
+    snprintf(carpetaAnio, sizeof(carpetaAnio), "/-M8AX-NerdMinerV2-PG-M8AX-Logs/M8AX-%04d", anio);
+    char carpeta[96];
+    snprintf(carpeta, sizeof(carpeta), "%s/M8AX-%s", carpetaAnio, MESES[mes]);
+    bool carpetasOk = (SD.exists(carpetaAnio) || SD.mkdir(carpetaAnio)) && (SD.exists(carpeta) || SD.mkdir(carpeta));
+    char nombre[128];
+    nombre[0] = 0;
+    File w; // solo se abre si las carpetas existen: en la raíz de la tarjeta no se escribe nada
+    if (carpetasOk)
+    {
+      snprintf(nombre, sizeof(nombre), "%s/M8AX-Telegram-%04d%02d%02d.TxT", carpeta, anio, mes + 1, dia);
+      w = SD.open(nombre, FILE_APPEND);
+    }
+    if (w)
+    {
+      size_t escritos = w.print(texto);
+      escritos += w.print("\n\n");
+      w.flush();
+      w.close();
+      if (escritos == esperado)
+      {
+        ok = true;
+        Serial.println("M8AX - Telegram Guardado En La SD...");
+      }
+      else
+        Serial.printf("M8AX - SD: Escritura Incompleta ( %u De %u Bytes ) - Intento %d De 3\n", (unsigned)escritos, (unsigned)esperado, intento);
+    }
+    else
+      Serial.printf("M8AX - SD: No Se Pudo Crear La Carpeta O Abrir El Archivo ( Intento %d De 3 )\n", intento);
+    SD.end();
+    sdSPI.end();
+    hSPI.begin(TOUCH_CLK, TOUCH_MISO, TOUCH_MOSI, ETOUCH_CS); // devuelve el bus al táctil
+    sdOk = false;
+    if (!ok)
+      delay(200);
+  }
+  if (!ok)
+    Serial.printf("M8AX - ###### NO SE PUDO GUARDAR EN LA SD ###### ( Heap Libre %u | Max Bloque %u )\n", (unsigned)ESP.getFreeHeap(), (unsigned)ESP.getMaxAllocHeap());
   return ok;
 }
 
@@ -2353,6 +2431,11 @@ static const char WEB_CSS[] PROGMEM =
     ".then(function(r){if(r.ok){n++;s()}else r.text().then(function(m){alert(m);location.reload()})})"
     ".catch(function(){alert('Error');location.reload()})}"
     "s()}"
+    "function rm(){"
+    "if(!confirm('¿Reiniciar El Minero?'))return;"
+    "fetch('/r',{method:'POST'})"
+    ".then(function(){document.body.innerHTML='<p style=padding:20px>Reiniciando... Recarga La Página En Unos 30 Segundos...<br><br><br>Mientras... Si Te Apetece, Puedes Ver Mi Canal De Youtube Y Suscribirte xD - <a href=\"https://youtube.com/m8ax\" target=\"_blank\" rel=\"noopener noreferrer\">https://youtube.com/m8ax</a></p>'})"
+    ".catch(function(){alert('Error')})}"
 
     /* NODOS ANIMADOS */
     "(()=>{"
@@ -2696,13 +2779,12 @@ static void webListar()
   }
   webEnv("</div>");
   webUrl(enc, sizeof(enc), dir);
-  snprintf(l, sizeof(l),
-           "<div class=m data-d='%s'>"
-           "<label class=b>Subir Archivos<input type=file multiple hidden onchange='sb(this)'></label>"
-           "<label class=b>Subir Carpeta<input type=file webkitdirectory hidden onchange='sb(this)'></label>"
-           "<b id=us></b></div>",
-           enc);
+  snprintf(l, sizeof(l), "<div class=m data-d='%s'>", enc);
   webEnv(l);
+  webEnv("<span class=b style='float:right;margin:0;background:#d32f2f;color:#fff' onclick='return rm()'>Reiniciar Minero</span>");
+  webEnv("<label class=b>Subir Archivos<input type=file multiple hidden onchange='sb(this)'></label>"
+         "<label class=b>Subir Carpeta<input type=file webkitdirectory hidden onchange='sb(this)'></label>"
+         "<b id=us></b></div>");
 
   if (strcmp(dir, "/"))
   {
@@ -2814,6 +2896,15 @@ static void webArchivo()
   webSdCierra();
 }
 
+static void webReinicia()
+{
+  if (!web.authenticate(WEB_USER, WEB_PASS))
+    return web.requestAuthentication();
+  web.send(200, "text/plain; charset=utf-8", "Reiniciando");
+  delay(500); // da tiempo a que la respuesta llegue al navegador
+  ESP.restart();
+}
+
 void webAtender()
 {
   if (ESP.getMaxAllocHeap() < WEB_RAM_MIN)
@@ -2827,6 +2918,7 @@ void webAtender()
     web.on("/f", webArchivo);
     web.on("/x", HTTP_POST, webBorrar);
     web.on("/u", HTTP_POST, webSubidaFin, webSubida);
+    web.on("/r", HTTP_POST, webReinicia);
     web.begin();
     iniciado = true;
     Serial.printf("\nM8AX - Servidor Web De La SD En http://%s\n", WiFi.localIP().toString().c_str());
@@ -2851,7 +2943,7 @@ bool recopilaTelegram()
   int horita = timeinfo->tm_hour;                      // Hora
   int minutitos = timeinfo->tm_min;                    // Minutos
   int segundos = timeinfo->tm_sec;                     // Segundos
-  int indice = esp_random() % 5;
+  int indice = esp_random() % 6;
   // Formatear la hora en "00:00:00"
   char horaFormateada[9];
   sprintf(horaFormateada, "%02d:%02d:%02d", horita, minutitos, segundos);
@@ -2967,7 +3059,22 @@ bool recopilaTelegram()
     enviado = enviarMensajeATelegram(cadenaEnvio);
   else
     sumatele += 1;
-  cadenaEnvio = "", cadenaEnvio.reserve(0);
+  // segunda oportunidad para la SD, con la RAM ya liberada de Telegram: solo si antes falló
+  if (!sdGuardadoCiclo && sdGuardaTelegram(cadenaEnvio))
+    sdGuardadoCiclo = true;
+  if (!sdGuardadoCiclo && enviado && !sdSinTarjeta && sdPendiente.length() < 5000)
+  {
+    if (sdPendiente.length())
+      sdPendiente += "\n\n";
+    else
+    {
+      sdPendienteIntentos = 0;
+      sdPendienteUltimo = millis();
+    }
+    sdPendiente += cadenaEnvio;
+    Serial.println("M8AX - SD: Mensaje En Espera, Se Reintentará Cada Minuto...");
+  }
+  cadenaEnvio = "", cadenaEnvio.reserve(0); // ahora sí se libera, ya sin hacer falta
   return enviado;
 }
 
@@ -20151,6 +20258,2348 @@ void esp32_2432S028R_HanoiScreen(unsigned long mElapsed)
   }
 }
 
+/****************************************************************************************************************
+ *
+ *   Escrito por: M8AX
+ *
+ *   Descripción: NEMESIS ( GRADIUS ) - Pantalla para ESP32_2432S028R
+ *   ----------------------------------------------------------------
+ *
+ *   Un matamarcianos de scroll horizontal como el Nemesis del MSX, jugado por la CPU. La nave ( Vic Viper )
+ *   esquiva balas y paredes, recoge las capsulas naranjas y las gasta en la barra de abajo: SPEED, MISSL, DOUBL,
+ *   LASER, OPTION y ?. Cada vez que coge una capsula se ilumina la siguiente casilla, y la CPU decide si la
+ *   activa o espera a la siguiente, como haria un jugador. El ultimo bicho de cada oleada es naranja y suelta
+ *   la capsula, asi que la CPU le da prioridad.
+ *
+ *   Enemigos: FANs en serpiente, GARUNs en onda, RUGALs que te persiguen y CANONES pegados al terreno ( suelo
+ *   y techo ). Montañas y estalactitas con scroll y estrellas en tres capas. Al final de cada fase sale el
+ *   BIG CORE: solo se le hace daño cuando abre el nucleo ( parpadea rojo y amarillo ). Cada fase cambia los
+ *   colores del terreno y es un poco mas dificil. Si te matan pierdes todos los power-ups, igual que en el
+ *   original. Tiene 3 vidas; al perder la ultima sale GAME OVER y empieza otra partida.
+ *
+ *   Arriba a la izquierda la hora y arriba a la derecha el hashrate, como en las demas. Abajo van los puntos,
+ *   la fase, las vidas, el record y la barra de power-ups.
+ *
+ *   LED: capsula = azul, enemigo destruido = verde, y si matan a la nave se encienden los tres a la vez.
+ *
+ *   Memoria: al arrancar el minero no ocupa NADA. Unos 22 KB ( casi todo el buffer de pantalla de 4 bits ) se
+ *   piden con malloc al entrar en la pantalla y se liberan al salir a otra, como el Asteroides. Si no hubiera
+ *   RAM, se salta la pantalla sin pintar nada.
+ *
+ *   Para activarla: pegar este bloque justo antes de analiCadaSegundo, meter esp32_2432S028R_NemesisScreen en el
+ *   array esp32_2432S028RCyclicScreens[] y añadir en analiCadaSegundo, debajo del if de galM, este otro:
+ *   if (nemM && pantallaActual != esp32_2432S028R_NemesisScreen) { free(nemM); nemM = NULL; }
+ *
+ ****************************************************************************************************************/
+
+// >>> NEMESIS MOTOR
+#define NEM_W 320
+#define NEM_H 112
+#define NEM_Y0 28 // el HUD de arriba ocupa hasta la 26
+#define NEM_FRAME_MS 30
+#define NEM_SLICE_MS 5000
+#define NEM_FIN_MS 3500
+#define NEM_VIDAS 10
+#define NEM_MAXE 18
+#define NEM_MAXEB 16
+#define NEM_MAXPB 28
+#define NEM_MAXX 14
+#define NEM_MAXC 3
+#define NEM_NST 40
+#define NEM_HIST 40
+#define NEM_ESC 2        // pixeles que avanza el scroll por fotograma
+#define NEM_FASE_PX 2600 // distancia hasta el jefe
+#define NEM_BW 46
+#define NEM_BH 36
+#define NEM_BOSS_HP 50
+#define NEM_RGB(r, g, b) ((uint16_t)((((r) & 0xF8) << 8) | (((g) & 0xFC) << 3) | ((b) >> 3)))
+
+#define NEM_T_FAN 1
+#define NEM_T_GARUN 2
+#define NEM_T_RUGAL 3
+#define NEM_T_DUCKER 4
+
+// 0 negro | 1-2 estrellas | 3 blanco | 4 gris nave | 5 cian | 6 azul | 7 rojo | 8 naranja | 9 amarillo | 10 verde
+// 11-13 terreno ( cambia por fase ) | 14 magenta | 15 rojo oscuro
+static const uint16_t NEM_PAL0[16] = {
+    NEM_RGB(0, 0, 0), NEM_RGB(30, 34, 80), NEM_RGB(110, 120, 190), NEM_RGB(255, 255, 255),
+    NEM_RGB(185, 195, 225), NEM_RGB(60, 230, 255), NEM_RGB(40, 100, 255), NEM_RGB(255, 50, 40),
+    NEM_RGB(255, 150, 30), NEM_RGB(255, 240, 80), NEM_RGB(60, 255, 100), NEM_RGB(90, 50, 30),
+    NEM_RGB(150, 90, 40), NEM_RGB(215, 150, 70), NEM_RGB(230, 60, 220), NEM_RGB(130, 20, 20)};
+
+static const uint16_t NEM_TER[4][3] = {
+    {NEM_RGB(90, 50, 30), NEM_RGB(150, 90, 40), NEM_RGB(215, 150, 70)},
+    {NEM_RGB(20, 60, 90), NEM_RGB(40, 110, 150), NEM_RGB(110, 200, 230)},
+    {NEM_RGB(60, 20, 70), NEM_RGB(120, 40, 130), NEM_RGB(210, 110, 220)},
+    {NEM_RGB(20, 70, 30), NEM_RGB(50, 130, 60), NEM_RGB(140, 230, 110)}};
+
+// Sprites: cada caracter es un color de la paleta ( 0-9, a-f ), el punto es transparente
+static const char *const NEM_SP_VIC[7] = {
+    "..77............",
+    "..4777..........",
+    "...444444444....",
+    "8644444455533339",
+    "...444444444....",
+    "..4777..........",
+    "..77............"};
+static const char *const NEM_SP_OPC[5] = {
+    ".999.",
+    "98889",
+    "98389",
+    "98889",
+    ".999."};
+static const char *const NEM_SP_CAP[7] = {
+    ".88888.",
+    "8899988",
+    "8999998",
+    "8999998",
+    "8999998",
+    "8899988",
+    ".88888."};
+static const char *const NEM_SP_FAN[7] = {
+    "..66666..",
+    ".6655566.",
+    "665555566",
+    "655333556",
+    "665555566",
+    ".6655566.",
+    "..66666.."};
+static const char *const NEM_SP_FAN2[7] = {
+    "..66666..",
+    ".6633366.",
+    "663555366",
+    "655555556",
+    "663555366",
+    ".6633366.",
+    "..66666.."};
+static const char *const NEM_SP_GAR[5] = {
+    "7.......7",
+    ".77...77.",
+    "..77777..",
+    "...797...",
+    "....7...."};
+static const char *const NEM_SP_RUG[5] = {
+    "....e....",
+    "..eeeee..",
+    "eeeee9eee",
+    "..eeeee..",
+    "....e...."};
+static const char *const NEM_SP_DUC[5] = {
+    "...4...",
+    "..444..",
+    ".44744.",
+    "4444444",
+    "3.....3"};
+
+struct NemEn
+{
+  int16_t x, y, yb;
+  uint16_t t, ret;
+  uint8_t tipo, hp, cap, flip;
+};
+
+struct NemBala
+{
+  float x, y, vx, vy;
+  bool on;
+};
+
+// tipo: 0 normal, 1 diagonal ( DOUBLE ), 2 laser, 3 misil cayendo, 4 misil pegado al suelo
+struct NemPb
+{
+  int16_t x, y;
+  int8_t vx, vy;
+  uint8_t tipo;
+  bool on;
+};
+
+struct NemExp
+{
+  int16_t x, y;
+  uint8_t t, tmax, r, on;
+};
+
+struct NemEst
+{
+  int16_t x;
+  uint8_t y, capa;
+};
+
+struct NemCap
+{
+  float x, y;
+  bool on;
+};
+
+struct NemJefe
+{
+  bool on;
+  int16_t x, y, hp, fin;
+  uint16_t t;
+  uint8_t abierto;
+};
+
+struct NemMem
+{
+  uint8_t fb[NEM_W * NEM_H / 2];
+  uint16_t linea[NEM_W];
+  uint16_t pal[16];
+  uint8_t techo[NEM_W], suelo[NEM_W];
+  NemEn en[NEM_MAXE];
+  NemBala eb[NEM_MAXEB];
+  NemPb pb[NEM_MAXPB];
+  NemExp ex[NEM_MAXX];
+  NemEst es[NEM_NST];
+  NemCap ca[NEM_MAXC];
+  NemJefe jf;
+  int16_t hx[NEM_HIST], hy[NEM_HIST];
+  float sx, sy;
+  int32_t dist, proxOla, mundo;
+  int16_t tRest, tgT, tgS, curT, curS;
+  uint16_t inmune, muerteT, cad, cadMis, retardoAct;
+  uint8_t hi, estado, vidas, fase, vel, miss, doble, laser, opciones, escudo, meterPos, ola;
+  bool sucio, sucioMeter;
+  uint32_t puntos, fr, ledOff;
+  uint8_t ledPrio;
+  unsigned long finAt;
+  char tTxt[64];
+};
+static NemMem *nemM = NULL;
+static uint32_t nemRecord = 0;
+static uint32_t nemPartidas = 0;
+
+// la dificultad deja de subir a partir de la fase 10
+static inline int nemDif() { return (nemM->fase > 10) ? 10 : nemM->fase; }
+
+static inline int nemRnd(int n) { return (int)(esp_random() % (uint32_t)n); }
+
+static inline void nemPx(int x, int y, uint8_t c)
+{
+  if ((unsigned)x >= (unsigned)NEM_W || (unsigned)y >= (unsigned)NEM_H)
+    return;
+  uint8_t *p = &nemM->fb[y * (NEM_W / 2) + (x >> 1)];
+  if (x & 1)
+    *p = (uint8_t)((*p & 0x0F) | (c << 4));
+  else
+    *p = (uint8_t)((*p & 0xF0) | c);
+}
+
+static void nemRect(int x, int y, int w, int h, uint8_t c)
+{
+  for (int j = 0; j < h; j++)
+    for (int i = 0; i < w; i++)
+      nemPx(x + i, y + j, c);
+}
+
+static void nemDisco(int cx, int cy, int r, uint8_t c)
+{
+  for (int dy = -r; dy <= r; dy++)
+  {
+    int dx = (int)sqrtf((float)(r * r - dy * dy) + 0.5f);
+    for (int i = -dx; i <= dx; i++)
+      nemPx(cx + i, cy + dy, c);
+  }
+}
+
+static void nemSpr(const char *const *sp, int w, int h, int x, int y, bool flipY)
+{
+  for (int r = 0; r < h; r++)
+  {
+    const char *fila = sp[flipY ? h - 1 - r : r];
+    for (int i = 0; i < w; i++)
+    {
+      char ch = fila[i];
+      if (ch == '.')
+        continue;
+      nemPx(x + i, y + r, (uint8_t)((ch <= '9') ? (ch - '0') : (ch - 'a' + 10)));
+    }
+  }
+}
+
+static inline bool nemSolapa(int ax, int ay, int aw, int ah, int bx, int by, int bw, int bh)
+{
+  return ax < bx + bw && ax + aw > bx && ay < by + bh && ay + ah > by;
+}
+
+static void nemLed(bool r, bool g, bool b, uint16_t ms, uint8_t prio)
+{
+  unsigned long now = millis();
+  if (nemM->ledOff && now < nemM->ledOff && prio < nemM->ledPrio)
+    return;
+  digitalWrite(LED_PIN, r ? LOW : HIGH);
+  digitalWrite(LED_PIN_G, g ? LOW : HIGH);
+  digitalWrite(LED_PIN_B, b ? LOW : HIGH);
+  nemM->ledOff = now + ms;
+  nemM->ledPrio = prio;
+}
+
+static void nemPaleta()
+{
+  NemMem &m = *nemM;
+  memcpy(m.pal, NEM_PAL0, sizeof(m.pal));
+  int t = (m.fase > 0 ? m.fase - 1 : 0) & 3;
+  m.pal[11] = NEM_TER[t][0];
+  m.pal[12] = NEM_TER[t][1];
+  m.pal[13] = NEM_TER[t][2];
+}
+
+// ---------------------------------------------------------------- terreno
+static void nemColumna(int x)
+{
+  NemMem &m = *nemM;
+  if (m.tRest <= 0)
+  {
+    m.tRest = 30 + nemRnd(60);
+    int modo = (m.jf.on || m.dist > NEM_FASE_PX - 220) ? 0 : nemRnd(5);
+    int ext = 16 + nemDif() * 2;
+    if (ext > 28)
+      ext = 28;
+    switch (modo)
+    {
+    case 1: // montañas
+      m.tgS = 16 + nemRnd(ext);
+      m.tgT = 2 + nemRnd(6);
+      break;
+    case 2: // estalactitas
+      m.tgT = 16 + nemRnd(ext);
+      m.tgS = 2 + nemRnd(6);
+      break;
+    case 3: // tunel
+      m.tgT = 18 + nemRnd(12);
+      m.tgS = 18 + nemRnd(12);
+      break;
+    default: // abierto
+      m.tgT = 2 + nemRnd(8);
+      m.tgS = 2 + nemRnd(8);
+      break;
+    }
+  }
+  m.tRest--;
+  if (m.curT < m.tgT)
+    m.curT++;
+  else if (m.curT > m.tgT)
+    m.curT--;
+  if (m.curS < m.tgS)
+    m.curS++;
+  else if (m.curS > m.tgS)
+    m.curS--;
+  m.techo[x] = (uint8_t)m.curT;
+  m.suelo[x] = (uint8_t)m.curS;
+}
+
+static void nemScroll()
+{
+  NemMem &m = *nemM;
+  memmove(m.techo, m.techo + NEM_ESC, NEM_W - NEM_ESC);
+  memmove(m.suelo, m.suelo + NEM_ESC, NEM_W - NEM_ESC);
+  for (int i = 0; i < NEM_ESC; i++)
+    nemColumna(NEM_W - NEM_ESC + i);
+  m.dist += NEM_ESC;
+  m.mundo += NEM_ESC;
+}
+
+// ---------------------------------------------------------------- explosiones y disparos
+static void nemExplota(int x, int y, int r)
+{
+  NemMem &m = *nemM;
+  for (int i = 0; i < NEM_MAXX; i++)
+    if (!m.ex[i].on)
+    {
+      m.ex[i].x = (int16_t)x;
+      m.ex[i].y = (int16_t)y;
+      m.ex[i].t = 0;
+      m.ex[i].tmax = (uint8_t)(6 + r / 2);
+      m.ex[i].r = (uint8_t)r;
+      m.ex[i].on = 1;
+      return;
+    }
+}
+
+static void nemPb(int x, int y, int vx, int vy, uint8_t tipo)
+{
+  NemMem &m = *nemM;
+  for (int i = 0; i < NEM_MAXPB; i++)
+    if (!m.pb[i].on)
+    {
+      m.pb[i].x = (int16_t)x;
+      m.pb[i].y = (int16_t)y;
+      m.pb[i].vx = (int8_t)vx;
+      m.pb[i].vy = (int8_t)vy;
+      m.pb[i].tipo = tipo;
+      m.pb[i].on = true;
+      return;
+    }
+}
+
+// disparo desde la nave o desde una opcion
+static void nemDispara(int x, int y)
+{
+  NemMem &m = *nemM;
+  if (m.laser)
+    nemPb(x + 15, y + 3, 9, 0, 2);
+  else
+    nemPb(x + 15, y + 3, 6, 0, 0);
+  if (m.doble)
+    nemPb(x + 9, y + 1, 5, -3, 1);
+}
+
+static void nemDisparoEn(float x, float y)
+{
+  NemMem &m = *nemM;
+  if (m.estado != 0)
+    return;
+  float dx = (m.sx + 8.0f) - x, dy = (m.sy + 3.0f) - y;
+  float len = sqrtf(dx * dx + dy * dy);
+  if (len < 1.0f || dx > -20.0f)
+    return;
+  float v = 1.5f + nemDif() * 0.2f;
+  if (v > 3.0f)
+    v = 3.0f;
+  for (int i = 0; i < NEM_MAXEB; i++)
+    if (!m.eb[i].on)
+    {
+      m.eb[i].x = x;
+      m.eb[i].y = y;
+      m.eb[i].vx = dx / len * v;
+      m.eb[i].vy = dy / len * v;
+      m.eb[i].on = true;
+      return;
+    }
+}
+
+static void nemCapsula(float x, float y)
+{
+  NemMem &m = *nemM;
+  for (int i = 0; i < NEM_MAXC; i++)
+    if (!m.ca[i].on)
+    {
+      m.ca[i].x = x;
+      m.ca[i].y = y;
+      m.ca[i].on = true;
+      return;
+    }
+}
+
+// ---------------------------------------------------------------- enemigos
+static NemEn *nemNuevoEn(uint8_t tipo, int x, int y, int ret)
+{
+  NemMem &m = *nemM;
+  for (int i = 0; i < NEM_MAXE; i++)
+    if (m.en[i].hp == 0)
+    {
+      NemEn &e = m.en[i];
+      e.x = (int16_t)x;
+      e.y = (int16_t)y;
+      e.yb = (int16_t)y;
+      e.t = 0;
+      e.ret = (uint16_t)ret;
+      e.tipo = tipo;
+      e.hp = (tipo == NEM_T_DUCKER) ? 2 : 1;
+      e.cap = 0;
+      e.flip = 0;
+      return &e;
+    }
+  return NULL;
+}
+
+// el cañon se pone sobre el terreno que hay justo al entrar en pantalla
+static void nemColocaDucker(NemEn &e)
+{
+  NemMem &m = *nemM;
+  int x0 = NEM_W - 8;
+  int maxS = 0, maxT = 0;
+  for (int i = 0; i < 7; i++)
+  {
+    if (m.suelo[x0 + i] > maxS)
+      maxS = m.suelo[x0 + i];
+    if (m.techo[x0 + i] > maxT)
+      maxT = m.techo[x0 + i];
+  }
+  e.x = (int16_t)x0;
+  if (maxS >= maxT)
+  {
+    e.flip = 0;
+    e.y = (int16_t)(NEM_H - maxS - 5);
+  }
+  else
+  {
+    e.flip = 1;
+    e.y = (int16_t)maxT;
+  }
+}
+
+static void nemOla()
+{
+  NemMem &m = *nemM;
+  int tipo = m.ola % 6;
+  m.ola++;
+  switch (tipo)
+  {
+  case 0:
+  case 3:
+  {
+    int yb = 34 + nemRnd(NEM_H - 70);
+    for (int i = 0; i < 6; i++)
+    {
+      NemEn *e = nemNuevoEn(NEM_T_FAN, NEM_W + 6, yb, i * 9);
+      if (e && i == 5)
+        e->cap = 1;
+    }
+    break;
+  }
+  case 1:
+  {
+    int yb = 36 + nemRnd(NEM_H - 72);
+    for (int i = 0; i < 5; i++)
+    {
+      NemEn *e = nemNuevoEn(NEM_T_GARUN, NEM_W + 6, yb, i * 7);
+      if (e && i == 4)
+        e->cap = 1;
+    }
+    break;
+  }
+  case 2:
+    for (int i = 0; i < 3; i++)
+      nemNuevoEn(NEM_T_RUGAL, NEM_W + 6, 12 + nemRnd(NEM_H - 30), i * 16);
+    break;
+  case 4:
+  {
+    NemEn *a = nemNuevoEn(NEM_T_DUCKER, NEM_W - 8, 0, 1);
+    NemEn *b = nemNuevoEn(NEM_T_DUCKER, NEM_W - 8, 0, 40);
+    if (b)
+      b->cap = 1;
+    (void)a;
+    break;
+  }
+  default:
+  {
+    int yb = 34 + nemRnd(NEM_H - 70);
+    for (int i = 0; i < 4; i++)
+    {
+      NemEn *e = nemNuevoEn(NEM_T_FAN, NEM_W + 6, yb, i * 9);
+      if (e && i == 3)
+        e->cap = 1;
+    }
+    nemNuevoEn(NEM_T_RUGAL, NEM_W + 6, 12 + nemRnd(NEM_H - 30), 20);
+    nemNuevoEn(NEM_T_RUGAL, NEM_W + 6, 12 + nemRnd(NEM_H - 30), 40);
+    break;
+  }
+  }
+}
+
+static void nemMataEn(NemEn &e)
+{
+  NemMem &m = *nemM;
+  static const uint16_t pts[5] = {0, 100, 150, 200, 200};
+  e.hp = 0;
+  m.puntos += pts[e.tipo] * m.fase;
+  m.sucio = true;
+  nemExplota(e.x + 4, e.y + 3, 7);
+  nemLed(false, true, false, 70, 1);
+  if (e.cap)
+    nemCapsula(e.x, e.y);
+}
+
+static void nemEnemigos()
+{
+  NemMem &m = *nemM;
+  for (int i = 0; i < NEM_MAXE; i++)
+  {
+    NemEn &e = m.en[i];
+    if (!e.hp)
+      continue;
+    if (e.ret)
+    {
+      e.ret--;
+      if (e.ret == 0 && e.tipo == NEM_T_DUCKER)
+        nemColocaDucker(e);
+      continue;
+    }
+    e.t++;
+    switch (e.tipo)
+    {
+    case NEM_T_FAN:
+      e.x -= 2;
+      e.y = (int16_t)(e.yb + (int)(sinf(e.t * 0.11f) * 22.0f));
+      break;
+    case NEM_T_GARUN:
+      e.x -= 3;
+      e.y = (int16_t)(e.yb + (int)(sinf(e.t * 0.18f) * 26.0f));
+      if (nemRnd(100 - nemDif() * 6) == 0)
+        nemDisparoEn(e.x + 4, e.y + 2);
+      break;
+    case NEM_T_RUGAL:
+      e.x -= 4;
+      if (m.estado == 0 && e.x > m.sx + 40)
+      {
+        int dy = (int)(m.sy + 3.0f) - (e.y + 2);
+        e.y += (dy > 0) - (dy < 0);
+      }
+      break;
+    default: // cañon
+      e.x -= NEM_ESC;
+      if (e.x > m.sx + 40 && e.x < NEM_W - 10 && nemRnd(80 - nemDif() * 6) == 0)
+        nemDisparoEn(e.x + 3, e.y + (e.flip ? 4 : 0));
+      break;
+    }
+    if (e.x < -14)
+      e.hp = 0;
+  }
+}
+
+// ---------------------------------------------------------------- jefe
+static void nemJefeEntra()
+{
+  NemMem &m = *nemM;
+  m.jf.on = true;
+  m.jf.x = NEM_W + 4;
+  m.jf.y = (NEM_H - NEM_BH) / 2;
+  m.jf.hp = (int16_t)(NEM_BOSS_HP + nemDif() * 10);
+  m.jf.t = 0;
+  m.jf.abierto = 0;
+  m.jf.fin = 0;
+}
+
+static void nemJefeMuere()
+{
+  NemMem &m = *nemM;
+  m.jf.fin = 80;
+  m.puntos += 3000UL * m.fase;
+  m.sucio = true;
+  for (int i = 0; i < NEM_MAXEB; i++)
+    m.eb[i].on = false;
+  nemLed(true, true, true, 500, 2);
+}
+
+static void nemJefe()
+{
+  NemMem &m = *nemM;
+  NemJefe &j = m.jf;
+  if (!j.on)
+    return;
+  if (j.fin > 0)
+  {
+    j.fin--;
+    if ((j.fin & 3) == 0)
+      nemExplota(j.x + nemRnd(NEM_BW), j.y + nemRnd(NEM_BH), 8 + nemRnd(8));
+    if (j.fin == 0)
+    {
+      j.on = false;
+      m.fase++;
+      if (m.fase > 99)
+        m.fase = 99;
+      m.dist = 0;
+      m.proxOla = 160;
+      nemPaleta();
+      nemCapsula(j.x + 10, j.y + 4);
+      nemCapsula(j.x + 10, j.y + 24);
+      m.sucio = true;
+    }
+    return;
+  }
+  j.t++;
+  if (j.x > 232)
+  {
+    j.x -= 2;
+    return;
+  }
+  j.y = (int16_t)((NEM_H - NEM_BH) / 2 + (int)(sinf(j.t * 0.045f) * 30.0f));
+  j.abierto = (j.t % 100) < 55;
+  if (j.t % 45 == 0 && m.estado == 0)
+  {
+    float ox = (float)j.x, oy = (float)(j.y + NEM_BH / 2);
+    float ang = atan2f((m.sy + 3.0f) - oy, (m.sx + 8.0f) - ox);
+    float v = 1.7f + nemDif() * 0.2f;
+    if (v > 3.0f)
+      v = 3.0f;
+    int n = (m.fase >= 3) ? 5 : 3;
+    for (int k = 0; k < n; k++)
+    {
+      float a = ang + (k - n / 2) * 0.3f;
+      for (int i = 0; i < NEM_MAXEB; i++)
+        if (!m.eb[i].on)
+        {
+          m.eb[i].x = ox;
+          m.eb[i].y = oy;
+          m.eb[i].vx = cosf(a) * v;
+          m.eb[i].vy = sinf(a) * v;
+          m.eb[i].on = true;
+          break;
+        }
+    }
+  }
+}
+
+// ---------------------------------------------------------------- nave
+static void nemNaveMuere()
+{
+  NemMem &m = *nemM;
+  nemExplota((int)m.sx + 8, (int)m.sy + 3, 14);
+  nemExplota((int)m.sx + 2, (int)m.sy + 2, 9);
+  nemExplota((int)m.sx + 14, (int)m.sy + 4, 9);
+  m.estado = 1;
+  m.muerteT = 0;
+  if (m.vidas)
+    m.vidas--;
+  m.vel = m.miss = m.doble = m.laser = m.opciones = m.escudo = m.meterPos = 0;
+  m.sucio = true;
+  m.sucioMeter = true;
+  nemLed(true, true, true, 450, 2);
+}
+
+// Que casilla le interesa a la CPU ahora mismo, en este orden: SPEED, LASER, OPTION, MISSL, OPTION, DOUBL, SPEED, OPTION, ?
+static int nemObjetivoPower()
+{
+  NemMem &m = *nemM;
+  if (m.vel < 1)
+    return 0;
+  if (!m.laser)
+    return 3;
+  if (m.opciones < 1)
+    return 4;
+  if (!m.miss)
+    return 1;
+  if (m.opciones < 2)
+    return 4;
+  if (!m.doble)
+    return 2;
+  if (m.vel < 3)
+    return 0;
+  if (m.opciones < 3)
+    return 4;
+  if (!m.escudo)
+    return 5;
+  return -1;
+}
+
+static void nemActivaPower()
+{
+  NemMem &m = *nemM;
+  if (m.meterPos == 0)
+    return;
+  if (m.retardoAct)
+  {
+    m.retardoAct--;
+    return;
+  }
+  int s = m.meterPos - 1;
+  if (s != nemObjetivoPower())
+    return;
+  switch (s)
+  {
+  case 0:
+    m.vel++;
+    break;
+  case 1:
+    m.miss = 1;
+    break;
+  case 2:
+    m.doble = 1;
+    break;
+  case 3:
+    m.laser = 1;
+    break;
+  case 4:
+    m.opciones++;
+    break;
+  default:
+    m.escudo = 6;
+    break;
+  }
+  m.meterPos = 0;
+  m.sucioMeter = true;
+}
+
+// Un peligro previsto: dentro de t fotogramas habra algo a la altura y, a menos de thr pixeles de la nave
+struct NemPeligro
+{
+  float t, y, thr;
+};
+
+// Donde estara un enemigo dentro de dt fotogramas
+static float nemEnY(const NemEn &e, float dt)
+{
+  switch (e.tipo)
+  {
+  case NEM_T_FAN:
+    return e.yb + sinf((e.t + dt) * 0.11f) * 22.0f + 3.0f;
+  case NEM_T_GARUN:
+    return e.yb + sinf((e.t + dt) * 0.18f) * 26.0f + 2.0f;
+  case NEM_T_RUGAL:
+  {
+    float d = (nemM->sy + 3.0f) - (e.y + 2.0f);
+    if (d > dt)
+      d = dt;
+    if (d < -dt)
+      d = -dt;
+    return e.y + 2.0f + d;
+  }
+  default:
+    return e.y + 2.5f;
+  }
+}
+
+// Lista de peligros vistos desde una nave puesta en la columna sxc: cada bala o enemigo se mira cuando entra,
+// a mitad de camino y cuando sale de la nave
+static int nemPeligros(float sxc, NemPeligro *pel)
+{
+  NemMem &m = *nemM;
+  int np = 0;
+  for (int i = 0; i < NEM_MAXEB; i++)
+  {
+    NemBala &b = m.eb[i];
+    if (!b.on || b.vx > -0.1f)
+      continue;
+    float tIn = (b.x - (sxc + 13.0f)) / -b.vx;
+    float tOut = (b.x - (sxc + 3.0f)) / -b.vx;
+    if (tOut < 0.0f || tIn > 45.0f)
+      continue;
+    if (tIn < 0.0f)
+      tIn = 0.0f;
+    float tm = (tIn + tOut) * 0.5f;
+    pel[np++] = {tIn, b.y + b.vy * tIn, 8.0f};
+    pel[np++] = {tm, b.y + b.vy * tm, 8.0f};
+    pel[np++] = {tOut, b.y + b.vy * tOut, 8.0f};
+  }
+  for (int i = 0; i < NEM_MAXE; i++)
+  {
+    NemEn &e = m.en[i];
+    if (!e.hp || e.ret)
+      continue;
+    float sp = (e.tipo == NEM_T_GARUN) ? 3.0f : (e.tipo == NEM_T_RUGAL ? 4.0f : 2.0f);
+    float tIn = (e.x - (sxc + 13.0f)) / sp;
+    float tOut = (e.x + 9.0f - (sxc + 3.0f)) / sp;
+    if (tOut < 0.0f || tIn > 45.0f)
+      continue;
+    if (tIn < 0.0f)
+      tIn = 0.0f;
+    float tm = (tIn + tOut) * 0.5f;
+    float thr = (e.tipo == NEM_T_FAN) ? 9.5f : 8.5f;
+    pel[np++] = {tIn, nemEnY(e, tIn), thr};
+    pel[np++] = {tm, nemEnY(e, tm), thr};
+    pel[np++] = {tOut, nemEnY(e, tOut), thr};
+  }
+  return np;
+}
+
+// Aqui decide la CPU: elige la altura mas segura y que mejor apunta, y se mueve hacia ella.
+// Los peligros se miran en el momento en que llegarian a la nave, con la nave ya movida hacia esa altura.
+static void nemIA()
+{
+  NemMem &m = *nemM;
+  int vel = 2 + m.vel;
+  int sxi = (int)m.sx, syi = (int)m.sy;
+  int tx = 18, ty = NEM_H / 2;
+
+  int cap = -1;
+  float cd = 1e9f;
+  for (int c = 0; c < NEM_MAXC; c++)
+    if (m.ca[c].on && m.ca[c].x > sxi - 4 && m.ca[c].x < 250 && m.ca[c].x < cd)
+    {
+      cd = m.ca[c].x;
+      cap = c;
+    }
+  if (cap >= 0)
+  {
+    tx = (int)m.ca[cap].x - 6;
+    if (tx > 170)
+      tx = 170;
+    ty = (int)m.ca[cap].y + 3;
+  }
+  else if (m.jf.on && m.jf.fin == 0)
+  {
+    // el jefe sube y baja: se apunta a donde estara cuando llegue la bala
+    float vuelo = (m.jf.x - m.sx) / 6.0f;
+    ty = (NEM_H - NEM_BH) / 2 + (int)(sinf((m.jf.t + vuelo) * 0.045f) * 30.0f) + NEM_BH / 2;
+    tx = 100;
+  }
+  else
+  {
+    int best = -1, bd = 9999;
+    for (int i = 0; i < NEM_MAXE; i++)
+    {
+      NemEn &e = m.en[i];
+      if (e.hp && !e.ret && e.x > sxi + 14 && e.x < NEM_W)
+      {
+        int d = e.x - sxi - (e.cap ? 70 : 0);
+        if (d < bd)
+        {
+          bd = d;
+          best = i;
+        }
+      }
+    }
+    if (best >= 0)
+      ty = (int)nemEnY(m.en[best], (m.en[best].x - sxi) / 8.0f);
+  }
+
+  NemPeligro pel[NEM_MAXEB * 3 + NEM_MAXE * 3];
+  int mejorY = syi, mejorX = sxi;
+  long mejorC = 2000000000L;
+  int tope = (m.jf.on ? m.jf.x - 40 : 190);
+  if (tope > 190)
+    tope = 190;
+  // tres columnas posibles: la actual, un paso atras y un paso adelante ( retroceder da tiempo para esquivar )
+  for (int k = 0; k < 2; k++)
+  {
+    int cx = sxi + (k == 1 ? -14 : 0);
+    if (cx < 4 || cx > tope)
+      continue;
+    int np = nemPeligros((float)cx, pel);
+    for (int cy = 2; cy <= NEM_H - 9; cy += 3)
+    {
+      long c = 0;
+      // terreno: lo de justo debajo y lo que viene
+      for (int col = cx; col < cx + 46 && col < NEM_W; col += 3)
+        if (cy < m.techo[col] + 3 || cy + 7 > NEM_H - m.suelo[col] - 3)
+          c += 6000 - (col - cx) * 40;
+      int dyc = cy - syi;
+      for (int j = 0; j < np; j++)
+      {
+        int mov = vel * (int)pel[j].t;
+        int ye = syi + (dyc > mov ? mov : (dyc < -mov ? -mov : dyc));
+        float d = fabsf(pel[j].y - (ye + 3.5f));
+        if (d < pel[j].thr)
+          c += (long)((pel[j].thr - d) * 90.0f) + (long)((45.0f - pel[j].t) * 8.0f);
+      }
+      c += (long)abs(cy + 3 - ty) * 4;
+      c += abs(cy - syi);
+      c += (long)abs(cx - tx) * 2 + (k ? 6 : 0);
+      if (c < mejorC)
+      {
+        mejorC = c;
+        mejorY = cy;
+        mejorX = cx;
+      }
+    }
+  }
+  int dy = mejorY - syi;
+  if (dy > vel)
+    dy = vel;
+  if (dy < -vel)
+    dy = -vel;
+  m.sy += dy;
+  int dx = mejorX - sxi;
+  if (dx > vel)
+    dx = vel;
+  if (dx < -vel)
+    dx = -vel;
+  m.sx += dx;
+  if (m.sx < 4)
+    m.sx = 4;
+  if (m.sx > 190)
+    m.sx = 190;
+  if (m.jf.on && m.sx > m.jf.x - 40)
+    m.sx = (float)(m.jf.x - 40);
+}
+
+static void nemOpcion(int i, int &ox, int &oy)
+{
+  NemMem &m = *nemM;
+  int idx = (m.hi + NEM_HIST - (i + 1) * 7) % NEM_HIST;
+  ox = m.hx[idx];
+  oy = m.hy[idx];
+}
+
+static void nemNueva()
+{
+  NemMem &m = *nemM;
+  memset(&m, 0, sizeof(NemMem));
+  m.vidas = NEM_VIDAS;
+  m.fase = 1;
+  nemPaleta();
+  m.curT = m.tgT = 4;
+  m.curS = m.tgS = 4;
+  for (int x = 0; x < NEM_W; x++)
+    nemColumna(x);
+  m.dist = 0;
+  m.proxOla = 200;
+  for (int i = 0; i < NEM_NST; i++)
+  {
+    m.es[i].x = (int16_t)nemRnd(NEM_W);
+    m.es[i].y = (uint8_t)nemRnd(NEM_H);
+    m.es[i].capa = (uint8_t)nemRnd(3);
+  }
+  m.sx = 30;
+  m.sy = NEM_H / 2 - 3;
+  for (int i = 0; i < NEM_HIST; i++)
+  {
+    m.hx[i] = (int16_t)m.sx;
+    m.hy[i] = (int16_t)m.sy;
+  }
+  m.inmune = 60;
+  m.sucio = true;
+  m.sucioMeter = true;
+  m.tTxt[0] = 0;
+  digitalWrite(LED_PIN, HIGH);
+  digitalWrite(LED_PIN_G, HIGH);
+  digitalWrite(LED_PIN_B, HIGH);
+}
+
+static void nemFin(unsigned long now)
+{
+  NemMem &m = *nemM;
+  m.estado = 2;
+  m.finAt = now;
+  if (m.puntos > nemRecord)
+    nemRecord = m.puntos;
+  nemPartidas++;
+  Serial.printf("M8AX - Nemesis: Partida %lu | Puntos %lu | Fase %u | Record %lu\n",
+                (unsigned long)nemPartidas, (unsigned long)m.puntos, (unsigned)m.fase, (unsigned long)nemRecord);
+}
+
+// ---------------------------------------------------------------- un fotograma de logica
+static void nemActualiza(unsigned long now)
+{
+  NemMem &m = *nemM;
+  nemScroll();
+
+  for (int i = 0; i < NEM_NST; i++)
+  {
+    m.es[i].x -= m.es[i].capa + 1;
+    if (m.es[i].x < 0)
+    {
+      m.es[i].x = NEM_W - 1;
+      m.es[i].y = (uint8_t)nemRnd(NEM_H);
+    }
+  }
+
+  // oleadas y jefe
+  if (!m.jf.on)
+  {
+    if (m.dist < NEM_FASE_PX)
+    {
+      if (m.dist >= m.proxOla)
+      {
+        nemOla();
+        int gap = 190 - nemDif() * 18;
+        if (gap < 90)
+          gap = 90;
+        m.proxOla = m.dist + gap + nemRnd(80);
+      }
+    }
+    else
+    {
+      bool libre = true;
+      for (int i = 0; i < NEM_MAXE; i++)
+        if (m.en[i].hp)
+          libre = false;
+      if (libre)
+        nemJefeEntra();
+    }
+  }
+
+  // nave
+  if (m.estado == 0)
+  {
+    nemIA();
+    nemActivaPower();
+    m.hi = (uint8_t)((m.hi + 1) % NEM_HIST);
+    m.hx[m.hi] = (int16_t)m.sx;
+    m.hy[m.hi] = (int16_t)m.sy;
+    if (m.cad)
+      m.cad--;
+    else
+    {
+      m.cad = 7;
+      nemDispara((int)m.sx, (int)m.sy);
+      for (int i = 0; i < m.opciones; i++)
+      {
+        int ox, oy;
+        nemOpcion(i, ox, oy);
+        nemDispara(ox, oy);
+      }
+    }
+    if (m.miss)
+    {
+      if (m.cadMis)
+        m.cadMis--;
+      else
+      {
+        m.cadMis = 24;
+        nemPb((int)m.sx + 6, (int)m.sy + 6, 2, 2, 3);
+        for (int i = 0; i < m.opciones; i++)
+        {
+          int ox, oy;
+          nemOpcion(i, ox, oy);
+          nemPb(ox + 6, oy + 6, 2, 2, 3);
+        }
+      }
+    }
+    if (m.inmune)
+      m.inmune--;
+    else
+    {
+      for (int col = (int)m.sx + 2; col <= (int)m.sx + 14; col += 2)
+        if ((int)m.sy + 1 < m.techo[col] || (int)m.sy + 6 >= NEM_H - m.suelo[col])
+        {
+          nemNaveMuere();
+          break;
+        }
+    }
+  }
+  else if (m.estado == 1)
+  {
+    if (++m.muerteT >= 50)
+    {
+      if (m.vidas > 0)
+      {
+        m.estado = 0;
+        m.sx = 30;
+        m.sy = NEM_H / 2 - 3;
+        for (int i = 0; i < NEM_HIST; i++)
+        {
+          m.hx[i] = (int16_t)m.sx;
+          m.hy[i] = (int16_t)m.sy;
+        }
+        m.inmune = 80;
+        for (int i = 0; i < NEM_MAXEB; i++)
+          m.eb[i].on = false;
+      }
+      else
+        nemFin(now);
+    }
+  }
+
+  // balas de la nave
+  for (int i = 0; i < NEM_MAXPB; i++)
+  {
+    NemPb &b = m.pb[i];
+    if (!b.on)
+      continue;
+    if (b.tipo == 3)
+    {
+      b.x += b.vx;
+      b.y += b.vy;
+      int col = b.x < 0 ? 0 : (b.x >= NEM_W ? NEM_W - 1 : b.x);
+      if (b.y + 3 >= NEM_H - m.suelo[col])
+      {
+        b.tipo = 4;
+        b.vx = 3;
+        b.vy = 0;
+      }
+    }
+    else if (b.tipo == 4)
+    {
+      b.x += b.vx;
+      int col = b.x < 0 ? 0 : (b.x >= NEM_W ? NEM_W - 1 : b.x);
+      b.y = (int16_t)(NEM_H - m.suelo[col] - 3);
+    }
+    else
+    {
+      b.x += b.vx;
+      b.y += b.vy;
+    }
+    if (b.x > NEM_W + 24 || b.y < -4 || b.y > NEM_H)
+      b.on = false;
+  }
+
+  nemEnemigos();
+  nemJefe();
+
+  // balas de los enemigos
+  for (int i = 0; i < NEM_MAXEB; i++)
+  {
+    NemBala &b = m.eb[i];
+    if (!b.on)
+      continue;
+    b.x += b.vx;
+    b.y += b.vy;
+    if (b.x < -4 || b.x > NEM_W + 4 || b.y < -4 || b.y > NEM_H + 4)
+      b.on = false;
+  }
+
+  // capsulas
+  for (int i = 0; i < NEM_MAXC; i++)
+  {
+    NemCap &c = m.ca[i];
+    if (!c.on)
+      continue;
+    c.x -= 1.5f;
+    if (c.x < -8)
+    {
+      c.on = false;
+      continue;
+    }
+    if (m.estado == 0 && nemSolapa((int)c.x, (int)c.y, 7, 7, (int)m.sx, (int)m.sy, 16, 7))
+    {
+      c.on = false;
+      m.meterPos = (uint8_t)(m.meterPos % 6 + 1);
+      m.retardoAct = 14;
+      m.puntos += 50;
+      m.sucio = true;
+      m.sucioMeter = true;
+      nemLed(false, false, true, 120, 1);
+    }
+  }
+
+  // balas de la nave contra enemigos y jefe
+  for (int i = 0; i < NEM_MAXPB; i++)
+  {
+    NemPb &b = m.pb[i];
+    if (!b.on)
+      continue;
+    int rx, ry, rw, rh;
+    if (b.tipo == 2)
+    {
+      rx = b.x - 20;
+      ry = b.y - 1;
+      rw = 21;
+      rh = 3;
+    }
+    else if (b.tipo == 1)
+    {
+      rx = b.x - 1;
+      ry = b.y - 1;
+      rw = 3;
+      rh = 3;
+    }
+    else
+    {
+      rx = b.x - 3;
+      ry = b.y - 1;
+      rw = 4;
+      rh = 3;
+    }
+    bool gastada = false;
+    for (int k = 0; k < NEM_MAXE && !gastada; k++)
+    {
+      NemEn &e = m.en[k];
+      if (!e.hp || e.ret)
+        continue;
+      int ew = (e.tipo == NEM_T_DUCKER) ? 7 : 9;
+      int eh = (e.tipo == NEM_T_FAN) ? 7 : 5;
+      if (nemSolapa(rx, ry, rw, rh, e.x, e.y, ew, eh))
+      {
+        e.hp--;
+        if (e.hp == 0)
+          nemMataEn(e);
+        if (b.tipo != 2)
+          gastada = true;
+      }
+    }
+    if (!gastada && m.jf.on && m.jf.fin == 0 && nemSolapa(rx, ry, rw, rh, m.jf.x, m.jf.y, NEM_BW, NEM_BH))
+    {
+      int cy = ry + rh / 2;
+      if (m.jf.abierto && cy >= m.jf.y + 11 && cy < m.jf.y + 25)
+      {
+        m.jf.hp--;
+        m.puntos += 10;
+        m.sucio = true;
+        nemExplota(rx + 2, ry, 5);
+        if (m.jf.hp <= 0)
+          nemJefeMuere();
+      }
+      gastada = true;
+    }
+    if (gastada)
+      b.on = false;
+  }
+
+  // la nave contra balas, enemigos y jefe
+  if (m.estado == 0 && !m.inmune)
+  {
+    bool muere = false;
+    for (int i = 0; i < NEM_MAXEB && !muere; i++)
+    {
+      NemBala &b = m.eb[i];
+      if (!b.on)
+        continue;
+      if (m.escudo && nemSolapa((int)b.x - 1, (int)b.y - 1, 3, 3, (int)m.sx + 15, (int)m.sy - 3, 5, 13))
+      {
+        b.on = false;
+        m.escudo--;
+        m.sucioMeter = true;
+        continue;
+      }
+      if (nemSolapa((int)b.x - 1, (int)b.y - 1, 3, 3, (int)m.sx + 3, (int)m.sy + 1, 10, 5))
+      {
+        b.on = false;
+        muere = true;
+      }
+    }
+    for (int k = 0; k < NEM_MAXE && !muere; k++)
+    {
+      NemEn &e = m.en[k];
+      if (!e.hp || e.ret)
+        continue;
+      int ew = (e.tipo == NEM_T_DUCKER) ? 7 : 9;
+      int eh = (e.tipo == NEM_T_FAN) ? 7 : 5;
+      bool toca = nemSolapa(e.x, e.y, ew, eh, (int)m.sx + 3, (int)m.sy + 1, 10, 5);
+      bool tocaEsc = m.escudo && nemSolapa(e.x, e.y, ew, eh, (int)m.sx + 15, (int)m.sy - 3, 5, 13);
+      if (tocaEsc && !toca)
+      {
+        m.escudo--;
+        m.sucioMeter = true;
+        nemMataEn(e);
+      }
+      else if (toca)
+        muere = true;
+    }
+    if (!muere && m.jf.on && m.jf.fin == 0 && nemSolapa(m.jf.x, m.jf.y - 5, NEM_BW, NEM_BH + 10, (int)m.sx + 3, (int)m.sy + 1, 10, 5))
+      muere = true;
+    if (muere)
+      nemNaveMuere();
+  }
+
+  // explosiones
+  for (int i = 0; i < NEM_MAXX; i++)
+    if (m.ex[i].on && ++m.ex[i].t >= m.ex[i].tmax)
+      m.ex[i].on = 0;
+}
+
+// ---------------------------------------------------------------- dibujo
+static void nemJefeDib()
+{
+  NemMem &m = *nemM;
+  NemJefe &j = m.jf;
+  if (!j.on)
+    return;
+  int x = j.x, y = j.y;
+  nemRect(x + NEM_BW, y + 8, 3 + (m.fr & 3), 4, 8);
+  nemRect(x + NEM_BW, y + NEM_BH - 12, 3 + ((m.fr >> 1) & 3), 4, 8);
+  nemRect(x + 14, y - 5, 26, 5, 4);
+  nemRect(x + 14, y + NEM_BH, 26, 5, 4);
+  nemRect(x + 6, y, NEM_BW - 6, NEM_BH, 4);
+  nemRect(x + 6, y, NEM_BW - 6, 2, 3);
+  nemRect(x + 6, y + NEM_BH - 2, NEM_BW - 6, 2, 3);
+  nemRect(x + 20, y + 4, 4, NEM_BH - 8, 6);
+  nemRect(x + 30, y + 4, 4, NEM_BH - 8, 6);
+  nemRect(x, y, 8, 11, 6);
+  nemRect(x, y + 25, 8, 11, 6);
+  nemRect(x + 1, y + 1, 6, 2, 5);
+  nemRect(x + 1, y + 26, 6, 2, 5);
+  if (j.abierto && j.fin == 0)
+  {
+    nemRect(x + 2, y + 11, 12, 14, 15);
+    nemRect(x + 4, y + 14, 8, 8, (m.fr & 2) ? 9 : 7);
+  }
+  else
+  {
+    nemRect(x, y + 11, 8, 14, 6);
+    nemRect(x + 2, y + 13, 4, 10, 5);
+  }
+  if (j.fin > 0 && (m.fr & 2))
+    nemRect(x + 10, y + 6, 22, 12, 7);
+}
+
+static void nemDibuja()
+{
+  NemMem &m = *nemM;
+  memset(m.fb, 0, sizeof(m.fb));
+
+  // estrellas
+  for (int i = 0; i < NEM_NST; i++)
+    nemPx(m.es[i].x, m.es[i].y, (uint8_t)(1 + m.es[i].capa));
+
+  // terreno
+  for (int x = 0; x < NEM_W; x++)
+  {
+    int t = m.techo[x], s = m.suelo[x];
+    int w = x + m.mundo;
+    for (int y = 0; y < t; y++)
+      nemPx(x, y, (y == t - 1) ? 13 : (y == t - 2 ? 12 : ((((w * 7) + y * 13) & 15) == 0 ? 12 : 11)));
+    for (int y = NEM_H - s; y < NEM_H; y++)
+    {
+      int d = y - (NEM_H - s);
+      nemPx(x, y, (d == 0) ? 13 : (d == 1 ? 12 : ((((w * 7) + y * 13) & 15) == 0 ? 12 : 11)));
+    }
+  }
+
+  // enemigos
+  for (int i = 0; i < NEM_MAXE; i++)
+  {
+    NemEn &e = m.en[i];
+    if (!e.hp || e.ret)
+      continue;
+    switch (e.tipo)
+    {
+    case NEM_T_FAN:
+      nemSpr((m.fr & 4) ? NEM_SP_FAN : NEM_SP_FAN2, 9, 7, e.x, e.y, false);
+      break;
+    case NEM_T_GARUN:
+      nemSpr(NEM_SP_GAR, 9, 5, e.x, e.y, false);
+      break;
+    case NEM_T_RUGAL:
+      nemSpr(NEM_SP_RUG, 9, 5, e.x, e.y, false);
+      break;
+    default:
+      nemSpr(NEM_SP_DUC, 7, 5, e.x, e.y, e.flip != 0);
+      break;
+    }
+    if (e.cap && (m.fr & 4)) // el portador de capsula parpadea en naranja
+      nemRect(e.x + 3, e.y + 1, 3, 2, 8);
+  }
+
+  nemJefeDib();
+
+  // capsulas
+  for (int i = 0; i < NEM_MAXC; i++)
+    if (m.ca[i].on)
+      nemSpr(NEM_SP_CAP, 7, 7, (int)m.ca[i].x, (int)m.ca[i].y, false);
+
+  // balas enemigas
+  for (int i = 0; i < NEM_MAXEB; i++)
+    if (m.eb[i].on)
+    {
+      int bx = (int)m.eb[i].x, by = (int)m.eb[i].y;
+      nemRect(bx - 1, by - 1, 3, 3, 8);
+      nemPx(bx, by, 9);
+    }
+
+  // balas de la nave
+  for (int i = 0; i < NEM_MAXPB; i++)
+  {
+    NemPb &b = m.pb[i];
+    if (!b.on)
+      continue;
+    if (b.tipo == 2)
+    {
+      nemRect(b.x - 20, b.y - 1, 21, 3, 5);
+      nemRect(b.x - 20, b.y, 21, 1, 3);
+    }
+    else if (b.tipo == 1)
+      nemRect(b.x - 1, b.y - 1, 3, 3, 9);
+    else if (b.tipo == 0)
+      nemRect(b.x - 3, b.y - 1, 4, 2, 3);
+    else
+    {
+      nemRect(b.x - 3, b.y - 1, 4, 3, 8);
+      nemPx(b.x, b.y, 9);
+    }
+  }
+
+  // opciones y nave
+  if (m.estado == 0)
+  {
+    for (int i = 0; i < m.opciones; i++)
+    {
+      int ox, oy;
+      nemOpcion(i, ox, oy);
+      nemSpr(NEM_SP_OPC, 5, 5, ox + 5, oy + 1, false);
+    }
+    if (!m.inmune || (m.fr & 2))
+    {
+      nemSpr(NEM_SP_VIC, 16, 7, (int)m.sx, (int)m.sy, false);
+      if (m.fr & 1)
+        nemPx((int)m.sx - 1, (int)m.sy + 3, 8);
+    }
+    if (m.escudo && (m.escudo > 1 || (m.fr & 2)))
+    {
+      int ex = (int)m.sx + 17, ey = (int)m.sy;
+      nemRect(ex, ey - 2, 2, 11, 5);
+      nemRect(ex + 1, ey, 1, 7, 3);
+      nemRect(ex - 2, ey - 3, 3, 1, 5);
+      nemRect(ex - 2, ey + 9, 3, 1, 5);
+    }
+  }
+
+  // explosiones
+  for (int i = 0; i < NEM_MAXX; i++)
+  {
+    NemExp &x = m.ex[i];
+    if (!x.on)
+      continue;
+    int rr = 2 + (int)x.t * x.r / x.tmax;
+    uint8_t col = (x.t * 3 < x.tmax) ? 9 : ((x.t * 3 < x.tmax * 2) ? 8 : 7);
+    nemDisco(x.x, x.y, rr, col);
+    if (x.t * 3 < x.tmax)
+      nemDisco(x.x, x.y, rr / 2, 3);
+  }
+}
+
+// vuelca el buffer de 4 bits a la pantalla pasando por la paleta
+static void nemEmpuja()
+{
+  NemMem &m = *nemM;
+  tft.startWrite();
+  tft.setAddrWindow(0, NEM_Y0, NEM_W, NEM_H);
+  for (int y = 0; y < NEM_H; y++)
+  {
+    const uint8_t *s = &m.fb[y * (NEM_W / 2)];
+    uint16_t *d = m.linea;
+    for (int x = 0; x < NEM_W / 2; x++)
+    {
+      uint8_t b = s[x];
+      d[0] = m.pal[b & 15];
+      d[1] = m.pal[b >> 4];
+      d += 2;
+    }
+    tft.pushColors(m.linea, NEM_W, true);
+  }
+  tft.endWrite();
+}
+
+static void nemTexto(bool forzar)
+{
+  NemMem &m = *nemM;
+  char b[64];
+  uint32_t rec = (m.puntos > nemRecord) ? m.puntos : nemRecord;
+  snprintf(b, sizeof(b), "PTS %06lu   FASE %02u   VIDAS %u   REC %06lu",
+           (unsigned long)m.puntos, (unsigned)m.fase, (unsigned)m.vidas, (unsigned long)rec);
+  if (!forzar && strcmp(b, m.tTxt) == 0)
+    return;
+  strcpy(m.tTxt, b);
+  tft.setFreeFont(NULL);
+  tft.setTextFont(1);
+  tft.setTextSize(1);
+  tft.setTextColor(TFT_WHITE, TFT_BLACK);
+  tft.setTextDatum(TC_DATUM);
+  tft.setTextPadding(312);
+  tft.drawString(b, 160, 142);
+  tft.setTextPadding(0);
+  tft.setTextDatum(TL_DATUM);
+}
+
+// la barra de power-ups de abajo: SPEED, MISSL, DOUBL, LASER, OPTION, ?
+static void nemMeter()
+{
+  NemMem &m = *nemM;
+  static const char *const nom[6] = {"SPEED", "MISSL", "DOUBL", "LASER", "OPTION", "  ?  "};
+  bool tiene[6] = {m.vel > 0, m.miss != 0, m.doble != 0, m.laser != 0, m.opciones > 0, m.escudo > 0};
+  tft.setFreeFont(NULL);
+  tft.setTextFont(1);
+  tft.setTextSize(1);
+  tft.setTextPadding(0);
+  tft.setTextDatum(MC_DATUM);
+  for (int i = 0; i < 6; i++)
+  {
+    int x = 4 + i * 52;
+    bool sel = (m.meterPos == i + 1);
+    uint16_t fondo = sel ? TFT_YELLOW : TFT_NAVY;
+    uint16_t txt = sel ? TFT_BLACK : (tiene[i] ? TFT_GREEN : TFT_WHITE);
+    tft.fillRect(x, 153, 50, 14, fondo);
+    tft.drawRect(x, 153, 50, 14, sel ? TFT_WHITE : TFT_BLUE);
+    tft.setTextColor(txt, fondo);
+    tft.drawString(nom[i], x + 25, 160);
+  }
+  tft.setTextDatum(TL_DATUM);
+}
+
+static void nemTextoFin()
+{
+  tft.setFreeFont(NULL);
+  tft.setTextFont(1);
+  tft.setTextSize(3);
+  tft.setTextColor(TFT_RED, TFT_BLACK);
+  tft.setTextDatum(MC_DATUM);
+  tft.drawString("GAME OVER", 160, NEM_Y0 + 56);
+  tft.setTextDatum(TL_DATUM);
+  tft.setTextSize(1);
+}
+
+static void nemPintaTodo()
+{
+  nemDibuja();
+  nemEmpuja();
+  nemTexto(true);
+  nemMeter();
+  nemM->sucioMeter = false;
+  if (nemM->estado == 2)
+    nemTextoFin();
+}
+
+static void nemFrame(unsigned long now)
+{
+  NemMem &m = *nemM;
+  m.fr++;
+  if (m.estado == 2)
+  {
+    if (now - m.finAt >= NEM_FIN_MS)
+    {
+      nemNueva();
+      nemPintaTodo();
+    }
+    return;
+  }
+  nemActualiza(now);
+  nemDibuja();
+  nemEmpuja();
+  nemTexto(false);
+  if (m.sucioMeter)
+  {
+    nemMeter();
+    m.sucioMeter = false;
+  }
+  if (m.estado == 2)
+    nemTextoFin();
+}
+// <<< NEMESIS MOTOR
+
+void esp32_2432S028R_NemesisScreen(unsigned long mElapsed)
+{
+  mineria = getMiningData(mElapsed);
+  Serial.printf("M8AX - %s >>> Completados %s Share(s), %s Khashes, Prom. Hashrate %s KH/s %s°\n",
+                mineria.currentTime.c_str(), mineria.completedShares.c_str(), mineria.totalKHashes.c_str(), mineria.currentHashRate.c_str(), mineria.temp.c_str());
+
+  bool redraw = hasChangedScreen;
+  if (!nemM)
+  {
+    nemM = (NemMem *)malloc(sizeof(NemMem));
+    if (!nemM)
+    {
+      Serial.println("M8AX - Nemesis: No Hay RAM Libre");
+      delay(1000);
+      return;
+    }
+    nemNueva();
+    redraw = true;
+  }
+  const int nemMiPantalla = currentDisplayDriver->current_cyclic_screen;
+  if (redraw)
+  {
+    tft.fillRect(0, 0, 320, 170, TFT_BLACK);
+    nemPintaTodo();
+  }
+  printPoolData(); // barra de abajo, solo se repinta cuando toca
+  hasChangedScreen = false;
+
+  char horaStr[9] = "";
+  char lastHora[9] = "";
+  char hashStr[16];
+  char lastHash[16] = "";
+
+  unsigned long start = millis();
+  unsigned long lastMiningUpdate = 0;
+  unsigned long lastTouchChk = 0;
+  unsigned long siguiente = start;
+  pongLeds(false);
+  nemM->ledOff = 0;
+
+  while (millis() - start < NEM_SLICE_MS)
+  {
+    unsigned long now = millis();
+
+    // ---- Táctil (misma lógica que el Pong) ----
+    if (now - lastTouchChk >= 40 && now - previousTouchMillis >= 500)
+    {
+      lastTouchChk = now;
+      int16_t t_x, t_y;
+      if (touch.getXY(t_x, t_y))
+      {
+        previousTouchMillis = now;
+        autoPantallas = false;
+        bloqueAvisoActivo = false;
+        if (((t_x > 109) && (t_x < 211)) && ((t_y > 185) && (t_y < 241)))
+        {
+          bottomScreenBlue ^= true;
+          hasChangedScreen = true;
+        }
+        else if ((t_x > 235) && ((t_y > 0) && (t_y < 16)))
+        {
+          esp32_2432S028R_AlternateScreenState();
+        }
+        else if (t_x > 160)
+        {
+          currentDisplayDriver->current_cyclic_screen = (currentDisplayDriver->current_cyclic_screen + 1) % currentDisplayDriver->num_cyclic_screens;
+        }
+        else
+        {
+          currentDisplayDriver->current_cyclic_screen = currentDisplayDriver->current_cyclic_screen - 1;
+          if (currentDisplayDriver->current_cyclic_screen < 0)
+            currentDisplayDriver->current_cyclic_screen = currentDisplayDriver->num_cyclic_screens - 1;
+        }
+        break;
+      }
+    }
+    // Cambio automático cada 1 minuto
+    if (autoPantallas && millis() - lastAutoChange >= 60000UL)
+    {
+      currentDisplayDriver->current_cyclic_screen =
+          (currentDisplayDriver->current_cyclic_screen + 1) % currentDisplayDriver->num_cyclic_screens;
+      lastAutoChange = millis();
+      break;
+    }
+    if (nemM->ledOff && now >= nemM->ledOff)
+    {
+      pongLeds(false);
+      nemM->ledOff = 0;
+      nemM->ledPrio = 0;
+    }
+
+    if (now >= siguiente)
+    {
+      nemFrame(now);
+      siguiente += NEM_FRAME_MS; // paso fijo: si un fotograma tarda, el siguiente no espera 30 ms mas
+      if (millis() > siguiente + NEM_FRAME_MS)
+        siguiente = millis(); // si va muy atrasado no acumula
+    }
+
+    // ---- Hora (izquierda) y hashrate (derecha), arriba como en las demás ----
+    if (now - lastMiningUpdate >= 1000)
+    {
+      lastMiningUpdate = now;
+      mineria = getMiningData(mElapsed);
+      snprintf(hashStr, sizeof(hashStr), "%s", mineria.currentHashRate.c_str());
+      time_t epoch = (time_t)timeClient.getEpochTime();
+      struct tm *ti = localtime(&epoch);
+      snprintf(horaStr, sizeof(horaStr), "%02d:%02d:%02d", ti->tm_hour, ti->tm_min, ti->tm_sec);
+      if (strcmp(horaStr, lastHora) != 0 || strcmp(hashStr, lastHash) != 0)
+      {
+        pongDrawHud(hashStr, horaStr);
+        strcpy(lastHora, horaStr);
+        strcpy(lastHash, hashStr);
+      }
+    }
+    webAtender();
+    delay(2);
+  }
+
+  pongLeds(false);
+  tft.setTextPadding(0);
+  tft.setTextDatum(TL_DATUM);
+
+  if (currentDisplayDriver->current_cyclic_screen != nemMiPantalla)
+  {
+    free(nemM);
+    nemM = NULL;
+  }
+
+  cuentita++;
+  if (cuentita == 15)
+  {
+    ajustarZonaHoraria();
+    obtenerLocYTemp();
+    obtenerVariacionesBTC(variacion1dia, variacion1semana);
+  }
+}
+
+/****************************************************************************************************************
+ *
+ *   Escrito por: M8AX
+ *
+ *   Descripción: CONECTA 4 M8AX - El 4 en raya de toda la vida, tú contra la CPU, para ESP32_2432S028R
+ *   --------------------------------------------------------------------------------------------------
+ *
+ *   Tablero de 7 columnas por 6 filas. Tú juegas con las fichas rojas y la CPU con las amarillas. Tocas la
+ *   columna donde quieres soltar la ficha y cae hasta el fondo. Gana el primero que junte cuatro seguidas,
+ *   en horizontal, en vertical o en diagonal, y esas cuatro fichas parpadean. Si el tablero se llena sin
+ *   que nadie gane, tablas. La primera partida la abres tú y después se van alternando.
+ *
+ *   A la derecha están los marcadores ( tú, CPU y tablas ) y dos botones: Nivel, que va rotando entre Facil,
+ *   Normal y Dificil, y Nueva, para empezar otra partida cuando quieras. Cuando una partida ha terminado,
+ *   tocar el tablero también empieza la siguiente. Arriba, igual que en la calculadora: < y > para cambiar
+ *   de pantalla, LUZ para apagar y encender la pantalla, y junto a ellos la hora y el hashrate.
+ *
+ *   La CPU piensa con minimax y poda alfa-beta sobre bitboards ( cada jugador cabe en un número de 64 bits ).
+ *   Va mirando una jugada más por delante cada vuelta y se para cuando se le acaba el tiempo, así que siempre
+ *   mueve: 0,1 segundos en Facil ( y una de cada cuatro veces tira al azar ), 0,6 en Normal y 1,5 en Dificil.
+ *   Si ve que puede ganar ya, gana, y si tú tienes una línea a punto de cerrarse, la tapa.
+ *
+ *   LEDs: rojo corto al soltar tú la ficha, azul corto cuando la suelta la CPU, verde si ganas, rojo largo si
+ *   gana la CPU y los tres a la vez en las tablas.
+ *
+ *   Memoria: nada de heap, solo unos 60 bytes con la partida. Si cambias de pantalla y vuelves, la partida
+ *   sigue donde la dejaste ( mientras no se reinicie el minero ).
+ *
+ *   Para activarla: pegar este bloque justo antes del array esp32_2432S028RCyclicScreens[] y meter
+ *   esp32_2432S028R_Conecta4Screen en ese array. En analiCadaSegundo no hay que añadir nada porque no pide memoria.
+ *
+ ****************************************************************************************************************/
+
+#define C4_SLICE_MS 5000
+#define C4_HH 20 // alto de la cabecera
+#define C4_CS 30 // lado de cada casilla
+#define C4_X0 4
+#define C4_Y0 24
+#define C4_PX 222 // donde empieza el panel de la derecha
+#define C4_PW 96
+#define C4_AZUL 0x0016
+#define C4_MARCO 0x041F
+
+struct C4Estado
+{
+  bool init;
+  uint8_t turno;   // 0 = tú, 1 = CPU
+  uint8_t fin;     // 0 jugando, 1 ganas tú, 2 gana la CPU, 3 tablas
+  uint8_t nivel;   // 0 facil, 1 normal, 2 dificil
+  uint8_t empieza; // quién abrió esta partida
+  uint8_t jugadas;
+  uint16_t marc[3]; // tú, CPU, tablas
+  uint64_t fich[2];
+  uint64_t cuatro; // casillas de la línea ganadora
+};
+static C4Estado c4 = {false};
+
+// >>> CONECTA 4 MOTOR
+#define C4_GANA 100000
+#define C4_INF 1000000
+
+static uint32_t c4Nodos;
+static unsigned long c4Limite;
+static bool c4Corte;
+static const uint8_t C4_ORDEN[7] = {3, 2, 4, 1, 5, 0, 6};
+
+static inline uint64_t c4Fondo(int c) { return 1ULL << (c * 7); }
+static inline uint64_t c4Col(int c) { return 0x3FULL << (c * 7); }
+
+static bool c4Cuatro(uint64_t p)
+{
+  uint64_t m = p & (p >> 7);
+  if (m & (m >> 14))
+    return true;
+  m = p & (p >> 6);
+  if (m & (m >> 12))
+    return true;
+  m = p & (p >> 8);
+  if (m & (m >> 16))
+    return true;
+  m = p & (p >> 1);
+  return (m & (m >> 2)) != 0;
+}
+
+// todas las casillas que forman alguna linea de 4 ( para hacerlas parpadear )
+static uint64_t c4Linea(uint64_t p)
+{
+  static const uint8_t D[4] = {1, 6, 7, 8};
+  uint64_t r = 0;
+  for (int i = 0; i < 4; i++)
+  {
+    int d = D[i];
+    uint64_t m = p & (p >> d) & (p >> (2 * d)) & (p >> (3 * d));
+    r |= m | (m << d) | (m << (2 * d)) | (m << (3 * d));
+  }
+  return r;
+}
+
+// tres fichas de p y un hueco libre en la misma linea de 4
+static int c4Treses(uint64_t p, uint64_t libre)
+{
+  static const uint8_t D[4] = {1, 6, 7, 8};
+  int n = 0;
+  for (int i = 0; i < 4; i++)
+  {
+    int d = D[i];
+    uint64_t p1 = p >> d, p2 = p >> (2 * d), p3 = p >> (3 * d);
+    uint64_t l1 = libre >> d, l2 = libre >> (2 * d), l3 = libre >> (3 * d);
+    n += __builtin_popcountll((p & p1 & p2 & l3) | (libre & p1 & p2 & p3) | (p & l1 & p2 & p3) | (p & p1 & l2 & p3));
+  }
+  return n;
+}
+
+// valor para quien mueve ( yo = sus fichas, todo = fichas de los dos )
+static int c4Eval(uint64_t yo, uint64_t todo)
+{
+  uint64_t el = yo ^ todo;
+  uint64_t libre = 0;
+  for (int c = 0; c < 7; c++)
+    libre |= c4Col(c);
+  libre &= ~todo;
+  const uint64_t cen = c4Col(3), lat = c4Col(2) | c4Col(4);
+  int s = 24 * (c4Treses(yo, libre) - c4Treses(el, libre));
+  s += 3 * (__builtin_popcountll(yo & cen) - __builtin_popcountll(el & cen));
+  s += __builtin_popcountll(yo & lat) - __builtin_popcountll(el & lat);
+  return s;
+}
+
+static int c4Neg(uint64_t pos, uint64_t todo, int prof, int alfa, int beta, int ply)
+{
+  if ((++c4Nodos & 511) == 0 && millis() >= c4Limite)
+    c4Corte = true;
+  if (c4Corte)
+    return 0;
+  if (prof <= 0)
+    return c4Eval(pos, todo);
+
+  uint64_t el = pos ^ todo;
+  uint64_t nb[7];
+  uint64_t forzada = 0;
+  int n = 0, nf = 0;
+  for (int i = 0; i < 7; i++)
+  {
+    int c = C4_ORDEN[i];
+    if (todo & (1ULL << (c * 7 + 5)))
+      continue;
+    uint64_t b = (todo + c4Fondo(c)) & c4Col(c);
+    if (c4Cuatro(pos | b))
+      return C4_GANA - ply;
+    if (c4Cuatro(el | b))
+    {
+      forzada = b;
+      nf++;
+    }
+    nb[n++] = b;
+  }
+  if (n == 0)
+    return 0;
+  if (nf >= 2)
+    return -(C4_GANA - ply - 1);
+  if (nf == 1)
+  {
+    nb[0] = forzada;
+    n = 1;
+  }
+
+  int mejor = -C4_INF;
+  for (int i = 0; i < n; i++)
+  {
+    int v = -c4Neg(el, todo | nb[i], prof - 1, -beta, -alfa, ply + 1);
+    if (c4Corte)
+      return 0;
+    if (v > mejor)
+    {
+      mejor = v;
+      if (v > alfa)
+      {
+        alfa = v;
+        if (alfa >= beta)
+          break;
+      }
+    }
+  }
+  return mejor;
+}
+
+// columna que juega la CPU. nivel 0 facil, 1 normal, 2 dificil
+static int c4Piensa(uint64_t yo, uint64_t el, int nivel)
+{
+  static const uint8_t PROF[3] = {2, 5, 14};
+  static const uint16_t MS[3] = {120, 600, 1500};
+  uint64_t todo = yo | el;
+  int libres[7], nl = 0;
+  for (int i = 0; i < 7; i++)
+    if (!(todo & (1ULL << (C4_ORDEN[i] * 7 + 5))))
+      libres[nl++] = C4_ORDEN[i];
+  if (nl <= 1)
+    return nl ? libres[0] : 3;
+  if (nivel == 0 && (esp_random() & 3) == 0)
+    return libres[esp_random() % nl];
+
+  c4Limite = millis() + MS[nivel];
+  c4Nodos = 0;
+  c4Corte = false;
+  int mejor = libres[0];
+  for (int prof = 1; prof <= PROF[nivel]; prof++)
+  {
+    int ord[7], no = 0;
+    ord[no++] = mejor;
+    for (int i = 0; i < nl; i++)
+      if (libres[i] != mejor)
+        ord[no++] = libres[i];
+    int mc = -1, mv = -C4_INF, alfa = -C4_INF;
+    for (int k = 0; k < no; k++)
+    {
+      int c = ord[k];
+      uint64_t b = (todo + c4Fondo(c)) & c4Col(c);
+      if (c4Cuatro(yo | b))
+        return c;
+      int v = -c4Neg(el, todo | b, prof - 1, -C4_INF, -alfa, 1);
+      if (c4Corte)
+        break;
+      if (v > mv)
+      {
+        mv = v;
+        mc = c;
+        if (v > alfa)
+          alfa = v;
+      }
+    }
+    if (c4Corte)
+      break;
+    mejor = mc;
+    if (mv >= C4_GANA - 100 || mv <= -C4_GANA + 100)
+      break;
+  }
+  return mejor;
+}
+
+static void c4Celda(int c, int r, int quien, bool resalta)
+{
+  int x = C4_X0 + c * C4_CS, y = C4_Y0 + (5 - r) * C4_CS;
+  int cx = x + C4_CS / 2, cy = y + C4_CS / 2;
+  tft.fillRect(x, y, C4_CS, C4_CS, C4_AZUL);
+  if (quien == 0)
+  {
+    tft.fillCircle(cx, cy, 12, TFT_BLACK);
+    return;
+  }
+  uint16_t col = quien == 1 ? TFT_RED : TFT_YELLOW;
+  uint16_t borde = quien == 1 ? 0xA000 : 0xBD80;
+  tft.fillCircle(cx, cy, 12, borde);
+  tft.fillCircle(cx, cy, 10, col);
+  tft.fillCircle(cx - 3, cy - 3, 3, quien == 1 ? 0xFC10 : 0xFFF0);
+  if (resalta)
+  {
+    tft.drawCircle(cx, cy, 13, TFT_WHITE);
+    tft.drawCircle(cx, cy, 14, TFT_WHITE);
+  }
+}
+
+static int c4Dueno(int c, int r)
+{
+  uint64_t b = 1ULL << (c * 7 + r);
+  if (c4.fich[0] & b)
+    return 1;
+  if (c4.fich[1] & b)
+    return 2;
+  return 0;
+}
+
+static void c4PintaTablero()
+{
+  tft.fillRect(C4_X0 - 3, C4_Y0 - 3, 7 * C4_CS + 6, 6 * C4_CS + 6, C4_MARCO);
+  for (int c = 0; c < 7; c++)
+    for (int r = 0; r < 6; r++)
+      c4Celda(c, r, c4Dueno(c, r), false);
+}
+
+static void c4Ganadoras(bool on)
+{
+  for (int c = 0; c < 7; c++)
+    for (int r = 0; r < 6; r++)
+      if (c4.cuatro & (1ULL << (c * 7 + r)))
+        c4Celda(c, r, c4Dueno(c, r), on);
+}
+
+static void c4Mensaje(const char *t, uint16_t col)
+{
+  tft.setFreeFont(NULL);
+  tft.setTextFont(1);
+  tft.setTextSize(2);
+  tft.setTextColor(col, TFT_BLACK);
+  tft.setTextDatum(MC_DATUM);
+  tft.setTextPadding(320);
+  tft.drawString(t, 160, 226);
+  tft.setTextPadding(0);
+  tft.setTextDatum(TL_DATUM);
+}
+
+static void c4Marcadores()
+{
+  char b[20];
+  tft.setFreeFont(NULL);
+  tft.setTextFont(1);
+  tft.setTextDatum(TL_DATUM);
+  tft.setTextColor(TFT_WHITE, TFT_BLACK);
+  tft.setTextSize(3);
+  tft.setTextPadding(C4_PW - 8);
+  snprintf(b, sizeof(b), "%u", c4.marc[0]);
+  tft.drawString(b, C4_PX + 6, 44);
+  snprintf(b, sizeof(b), "%u", c4.marc[1]);
+  tft.drawString(b, C4_PX + 6, 94);
+  tft.setTextSize(1);
+  tft.setTextPadding(C4_PW);
+  snprintf(b, sizeof(b), "Tablas: %u", c4.marc[2]);
+  tft.drawString(b, C4_PX + 6, 126);
+  tft.setTextPadding(0);
+}
+
+static void c4BotonNivel()
+{
+  static const char *const N[3] = {"Facil", "Normal", "Dificil"};
+  static const uint16_t C[3] = {0x03E0, 0xFD20, 0xB000};
+  tft.fillRoundRect(C4_PX, 140, C4_PW, 26, 5, C[c4.nivel]);
+  tft.setFreeFont(NULL);
+  tft.setTextFont(1);
+  tft.setTextSize(2);
+  tft.setTextPadding(0);
+  tft.setTextDatum(MC_DATUM);
+  tft.setTextColor(TFT_WHITE, C[c4.nivel]);
+  tft.drawString(N[c4.nivel], C4_PX + C4_PW / 2, 153);
+  tft.setTextDatum(TL_DATUM);
+}
+
+static void c4Cab(const char *hash, const char *hora)
+{
+  char b[24];
+  tft.setFreeFont(NULL);
+  tft.setTextFont(1);
+  tft.setTextSize(1);
+  tft.setTextPadding(56);
+  tft.setTextDatum(TL_DATUM);
+  tft.setTextColor(TFT_WHITE, TFT_BLACK);
+  tft.drawString(hora, 102, 7);
+  snprintf(b, sizeof(b), "%s KH/s", hash);
+  tft.setTextColor(TFT_CYAN, TFT_BLACK);
+  tft.setTextPadding(90);
+  tft.setTextDatum(TR_DATUM);
+  tft.drawString(b, 250, 7);
+  tft.setTextPadding(0);
+  tft.setTextDatum(TL_DATUM);
+}
+
+static void c4Hora(char *o)
+{
+  time_t epoch = (time_t)timeClient.getEpochTime();
+  struct tm *ti = localtime(&epoch);
+  snprintf(o, 9, "%02d:%02d:%02d", ti->tm_hour, ti->tm_min, ti->tm_sec);
+}
+
+static void c4TextoTurno()
+{
+  if (c4.fin == 1)
+    c4Mensaje("Has Ganado! Toca Nueva", TFT_GREEN);
+  else if (c4.fin == 2)
+    c4Mensaje("Gana La CPU! Toca Nueva", TFT_RED);
+  else if (c4.fin == 3)
+    c4Mensaje("Empate! Toca Nueva", TFT_WHITE);
+  else if (c4.turno == 0)
+    c4Mensaje("Tu Turno: Elige Columna", TFT_CYAN);
+  else
+    c4Mensaje("La CPU Piensa...", TFT_YELLOW);
+}
+
+static void c4PintaTodo()
+{
+  tft.fillRect(0, 0, 320, 240, TFT_BLACK);
+  tft.setFreeFont(NULL);
+  tft.setTextFont(1);
+  tft.setTextPadding(0);
+  tft.setTextDatum(MC_DATUM);
+  tft.setTextSize(2);
+  tft.fillRoundRect(2, 1, 44, 18, 4, 0x0416);
+  tft.setTextColor(TFT_WHITE, 0x0416);
+  tft.drawString("<", 24, 10);
+  tft.fillRoundRect(50, 1, 44, 18, 4, 0x0416);
+  tft.drawString(">", 72, 10);
+  tft.fillRoundRect(256, 1, 62, 18, 4, 0x4208);
+  tft.setTextColor(TFT_WHITE, 0x4208);
+  tft.drawString("LUZ", 287, 10);
+  tft.setTextDatum(TL_DATUM);
+
+  c4PintaTablero();
+
+  tft.fillCircle(C4_PX + 10, 33, 8, TFT_RED);
+  tft.fillCircle(C4_PX + 10, 83, 8, TFT_YELLOW);
+  tft.setTextColor(TFT_WHITE, TFT_BLACK);
+  tft.setTextSize(2);
+  tft.drawString("Tu", C4_PX + 26, 26);
+  tft.drawString("CPU", C4_PX + 26, 76);
+  c4Marcadores();
+  c4BotonNivel();
+  tft.fillRoundRect(C4_PX, 172, C4_PW, 26, 5, 0x0416);
+  tft.setTextDatum(MC_DATUM);
+  tft.setTextColor(TFT_WHITE, 0x0416);
+  tft.drawString("Nueva", C4_PX + C4_PW / 2, 185);
+  tft.setTextDatum(TL_DATUM);
+  c4TextoTurno();
+}
+
+static void c4Nueva()
+{
+  c4.fich[0] = c4.fich[1] = 0;
+  c4.cuatro = 0;
+  c4.fin = 0;
+  c4.jugadas = 0;
+  c4.empieza ^= 1;
+  c4.turno = c4.empieza;
+}
+
+static void c4Cae(int c, int rFin, int quien)
+{
+  for (int r = 5; r > rFin; r--)
+  {
+    c4Celda(c, r, quien, false);
+    delay(20);
+    c4Celda(c, r, 0, false);
+  }
+  c4Celda(c, rFin, quien, false);
+}
+
+// quien: 1 = tú, 2 = CPU. La columna tiene que tener hueco
+static void c4Suelta(int c, int quien)
+{
+  uint64_t todo = c4.fich[0] | c4.fich[1];
+  uint64_t nb = (todo + c4Fondo(c)) & c4Col(c);
+  int r = __builtin_ctzll(nb) - c * 7;
+  c4Cae(c, r, quien);
+  c4.fich[quien - 1] |= nb;
+  c4.jugadas++;
+  if (quien == 1)
+    ledFlash(true, false, false, 30);
+  else
+    ledFlash(false, false, true, 30);
+
+  if (c4Cuatro(c4.fich[quien - 1]))
+  {
+    c4.fin = quien;
+    c4.cuatro = c4Linea(c4.fich[quien - 1]);
+    if (c4.marc[quien - 1] < 999)
+      c4.marc[quien - 1]++;
+    c4Marcadores();
+    c4TextoTurno();
+    if (quien == 1)
+      ledFlash(false, true, false, 400);
+    else
+      ledFlash(true, false, false, 400);
+  }
+  else if (c4.jugadas >= 42)
+  {
+    c4.fin = 3;
+    if (c4.marc[2] < 999)
+      c4.marc[2]++;
+    c4Marcadores();
+    c4TextoTurno();
+    ledFlash(true, true, true, 300);
+  }
+  else
+  {
+    c4.turno = quien == 1 ? 1 : 0;
+    c4TextoTurno();
+  }
+}
+
+void esp32_2432S028R_Conecta4Screen(unsigned long mElapsed)
+{
+  mineria = getMiningData(mElapsed);
+  Serial.printf("M8AX - %s >>> Completados %s Share(s), %s Khashes, Prom. Hashrate %s KH/s %s°\n",
+                mineria.currentTime.c_str(), mineria.completedShares.c_str(), mineria.totalKHashes.c_str(), mineria.currentHashRate.c_str(), mineria.temp.c_str());
+
+  bool redraw = hasChangedScreen;
+  if (!c4.init)
+  {
+    memset(&c4, 0, sizeof(c4));
+    c4.init = true;
+    c4.nivel = 1;
+    c4.empieza = 1; // c4Nueva lo da la vuelta y abres tú
+    c4Nueva();
+    redraw = true;
+  }
+  hasChangedScreen = false;
+  if (redraw)
+    c4PintaTodo();
+
+  char hashStr[16], horaStr[9];
+  char lastHash[16] = "";
+  snprintf(hashStr, sizeof(hashStr), "%s", mineria.currentHashRate.c_str());
+  c4Hora(horaStr);
+  c4Cab(hashStr, horaStr);
+  strcpy(lastHash, hashStr);
+
+  int16_t t_x, t_y;
+  bool wasDown = touch.getXY(t_x, t_y); // si venimos de un toque, no cuenta
+  bool salir = false, parp = false;
+  unsigned long start = millis();
+  unsigned long lastTouchChk = 0;
+  unsigned long lastMiningUpdate = 0;
+  unsigned long lastParp = 0;
+  pongLeds(false);
+
+  while (!salir && millis() - start < C4_SLICE_MS)
+  {
+    unsigned long now = millis();
+
+    // ---- Táctil: solo cuenta al pulsar, no mientras se mantiene ----
+    if (now - lastTouchChk >= 15)
+    {
+      lastTouchChk = now;
+      bool down = touch.getXY(t_x, t_y);
+      if (down && !wasDown)
+      {
+        previousTouchMillis = now;
+        autoPantallas = false;
+        bloqueAvisoActivo = false;
+        if (t_y < C4_HH)
+        {
+          if (t_x < 48)
+          {
+            currentDisplayDriver->current_cyclic_screen = currentDisplayDriver->current_cyclic_screen - 1;
+            if (currentDisplayDriver->current_cyclic_screen < 0)
+              currentDisplayDriver->current_cyclic_screen = currentDisplayDriver->num_cyclic_screens - 1;
+            salir = true;
+          }
+          else if (t_x < 96)
+          {
+            currentDisplayDriver->current_cyclic_screen = (currentDisplayDriver->current_cyclic_screen + 1) % currentDisplayDriver->num_cyclic_screens;
+            salir = true;
+          }
+          else if (t_x >= 250)
+          {
+            esp32_2432S028R_AlternateScreenState();
+          }
+        }
+        else if (t_x >= C4_PX && t_y >= 140 && t_y < 168)
+        {
+          c4.nivel = (c4.nivel + 1) % 3;
+          c4BotonNivel();
+        }
+        else if (t_x >= C4_PX && t_y >= 170 && t_y < 200)
+        {
+          c4Nueva();
+          c4PintaTablero();
+          c4TextoTurno();
+        }
+        else if (t_x >= C4_X0 && t_x < C4_X0 + 7 * C4_CS && t_y >= C4_Y0 && t_y < C4_Y0 + 6 * C4_CS + 8)
+        {
+          if (c4.fin)
+          {
+            c4Nueva();
+            c4PintaTablero();
+            c4TextoTurno();
+          }
+          else if (c4.turno == 0)
+          {
+            int c = (t_x - C4_X0) / C4_CS;
+            if (!((c4.fich[0] | c4.fich[1]) & (1ULL << (c * 7 + 5))))
+              c4Suelta(c, 1);
+            else
+              ledFlash(true, false, false, 120); // columna llena
+          }
+        }
+      }
+      wasDown = down;
+    }
+
+    if (autoPantallas && millis() - lastAutoChange >= 60000UL)
+    {
+      currentDisplayDriver->current_cyclic_screen =
+          (currentDisplayDriver->current_cyclic_screen + 1) % currentDisplayDriver->num_cyclic_screens;
+      lastAutoChange = millis();
+      break;
+    }
+
+    // ---- Le toca a la CPU ----
+    if (!salir && c4.fin == 0 && c4.turno == 1)
+    {
+      unsigned long t0 = millis();
+      int col = c4Piensa(c4.fich[1], c4.fich[0], c4.nivel);
+      while (millis() - t0 < 450) // que no parezca instantáneo
+      {
+        webAtender();
+        delay(5);
+      }
+      c4Suelta(col, 2);
+      wasDown = touch.getXY(t_x, t_y); // lo que tocaras mientras pensaba no vale
+    }
+
+    // ---- Parpadeo de la línea ganadora ----
+    if (c4.fin == 1 || c4.fin == 2)
+    {
+      if (now - lastParp >= 350)
+      {
+        lastParp = now;
+        parp = !parp;
+        c4Ganadoras(parp);
+      }
+    }
+
+    // ---- Hora y hashrate, cada segundo ----
+    if (now - lastMiningUpdate >= 1000)
+    {
+      lastMiningUpdate = now;
+      mineria = getMiningData(mElapsed);
+      snprintf(hashStr, sizeof(hashStr), "%s", mineria.currentHashRate.c_str());
+      c4Hora(horaStr);
+      c4Cab(hashStr, horaStr);
+    }
+    webAtender();
+    delay(8);
+  }
+
+  pongLeds(false);
+  tft.setTextPadding(0);
+  tft.setTextDatum(TL_DATUM);
+  previousTouchMillis = millis(); // que DoLedStuff no se coma un toque justo entre tandas
+
+  cuentita++;
+  if (cuentita == 15)
+  {
+    ajustarZonaHoraria();
+    obtenerLocYTemp();
+    obtenerVariacionesBTC(variacion1dia, variacion1semana);
+  }
+}
+
 void analiCadaSegundo(unsigned long frame)
 {
   unsigned long epochTime = timeClient.getEpochTime(); // Obtener segundos desde 1970
@@ -20170,6 +22619,12 @@ void analiCadaSegundo(unsigned long frame)
   {
     free(nbd);
     nbd = NULL;
+  }
+
+  if (nemM && pantallaActual != esp32_2432S028R_NemesisScreen)
+  {
+    free(nemM);
+    nemM = NULL;
   }
 
   if (galM && pantallaActual != esp32_2432S028R_GalaxianScreen)
@@ -20341,6 +22796,11 @@ void analiCadaSegundo(unsigned long frame)
       free(nbd);
       nbd = NULL;
     }
+    if (nemM)
+    {
+      free(nemM);
+      nemM = NULL;
+    }
     if (galM)
     {
       free(galM);
@@ -20404,6 +22864,16 @@ void analiCadaSegundo(unsigned long frame)
       fallosSeguidos = 0;
       sdGuardadoCiclo = false;
       lastTelegramEpochTime = epochTime; // 4 fallos seguidos: espera las 2 horas normales
+    }
+  }
+
+  if (sdPendiente.length() && millis() - sdPendienteUltimo >= 60000UL)
+  {
+    sdPendienteUltimo = millis();
+    if (sdGuardaTelegram(sdPendiente) || ++sdPendienteIntentos >= 10)
+    {
+      sdPendiente = "", sdPendiente.reserve(0);
+      sdPendienteIntentos = 0;
     }
   }
 }
@@ -20508,7 +22978,7 @@ void esp32_2432S028R_DoLedStuff(unsigned long frame)
   }
 }
 
-CyclicScreenFunction esp32_2432S028RCyclicScreens[] = {esp32_2432S028R_MinerScreen, esp32_2432S028R_BTCprice, esp32_2432S028R_ClockScreen, esp32_2432S028R_WeatherScreen, esp32_2432S028R_ECGScreen, tDisplay_granHash, tDisplay_hashGigante, RelojDeNumeros, tDisplay_m8axScreen7, esp32_2432S028R_m8axScreen1, esp32_2432S028R_m8axScreen2, tDisplay_m8axScreenMegaNerd, tDisplay_m8axScreen5, tDisplay_m8axScreen6, esp32_2432S028R_BannerScreen, tDisplay_Primos, esp32_2432S028R_CifrasScreen, esp32_2432S028R_HanoiScreen, esp32_2432S028R_TetrisScreen, esp32_2432S028R_AjedrezScreen, esp32_2432S028R_GalaxianScreen, esp32_2432S028R_AsteroidesScreen, esp32_2432S028R_PongScreen, esp32_2432S028R_KrakoutScreen, esp32_2432S028R_SnakeScreen, esp32_2432S028R_FlappyHashScreen, esp32_2432S028R_DoomScreen, esp32_2432S028R_LifeScreen, esp32_2432S028R_FractalScreen, esp32_2432S028R_Fractal3DScreen, esp32_2432S028R_AtractoresScreen, esp32_2432S028R_GalaxiasScreen, esp32_2432S028R_RainScreen, esp32_2432S028R_DemoScreen, esp32_2432S028R_monedaYdado, esp32_2432S028R_CalcScreen, tDisplay_m8axScreen3, tDisplay_m8axScreen4};
+CyclicScreenFunction esp32_2432S028RCyclicScreens[] = {esp32_2432S028R_MinerScreen, esp32_2432S028R_BTCprice, esp32_2432S028R_ClockScreen, esp32_2432S028R_WeatherScreen, esp32_2432S028R_ECGScreen, tDisplay_granHash, tDisplay_hashGigante, RelojDeNumeros, tDisplay_m8axScreen7, esp32_2432S028R_m8axScreen1, esp32_2432S028R_m8axScreen2, tDisplay_m8axScreenMegaNerd, tDisplay_m8axScreen5, tDisplay_m8axScreen6, esp32_2432S028R_BannerScreen, tDisplay_Primos, esp32_2432S028R_CifrasScreen, esp32_2432S028R_HanoiScreen, esp32_2432S028R_TetrisScreen, esp32_2432S028R_AjedrezScreen, esp32_2432S028R_GalaxianScreen, esp32_2432S028R_NemesisScreen, esp32_2432S028R_AsteroidesScreen, esp32_2432S028R_PongScreen, esp32_2432S028R_KrakoutScreen, esp32_2432S028R_SnakeScreen, esp32_2432S028R_FlappyHashScreen, esp32_2432S028R_DoomScreen, esp32_2432S028R_LifeScreen, esp32_2432S028R_FractalScreen, esp32_2432S028R_Fractal3DScreen, esp32_2432S028R_AtractoresScreen, esp32_2432S028R_GalaxiasScreen, esp32_2432S028R_RainScreen, esp32_2432S028R_DemoScreen, esp32_2432S028R_monedaYdado, esp32_2432S028R_CalcScreen, esp32_2432S028R_Conecta4Screen, tDisplay_m8axScreen3, tDisplay_m8axScreen4};
 
 DisplayDriver esp32_2432S028RDriver = {
     esp32_2432S028R_Init,

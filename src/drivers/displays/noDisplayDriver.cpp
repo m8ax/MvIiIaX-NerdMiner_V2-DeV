@@ -71,7 +71,7 @@
  *   5 - "Forma De Almacenar Valor Que No Depende De Gobiernos Ni Instituciones." – Barry Silbert, CEO De Digital Currency Group.
  *
  *
- *              ///\\\ --- Minimizando Código, Maximizando Funcionalidad. Solo 2380 Líneas De Código En 9h --- ///\\\
+ *              ///\\\ --- Minimizando Código, Maximizando Funcionalidad. Solo 2385 Líneas De Código En 9h --- ///\\\
  *
  *                                                     .M8AX Corp. - ¡A Minar!
  *
@@ -125,7 +125,8 @@ const char *urlsm8ax[] = {
     "YT - https://youtube.com/m8ax",
     "OS - https://opensea.io/es/m8ax",
     "OC - https://oncyber.io/m8ax",
-    "FW - https://m8ax.github.io/MvIiIaX-NerdMiner_V2-DeV/",
+    "FW - https://m8ax.github.io/MvIiIaX-NerdMiner_V2-DeV",
+    "OD - https://odysee.com/@m8ax",
     "GH - https://github.com/m8ax"};
 const char *meses[] = {
     "ENERITO", "FEBRERITO", "MARZITO", "ABRILITO", "MAYITO", "JUNITO", "JULITO", "AGOSTITO", "SEPTIEMBRITO", "OCTUBRITO", "NOVIEMBRITO", "DICIEMBRITO"};
@@ -1583,7 +1584,7 @@ bool enviarMensajeATelegram(String &mensaje)
 bool recopilaTelegram()
 {
   int horas, minutos, segundos, dia, mes, anio;
-  int indice = esp_random() % 5;
+  int indice = esp_random() % 6;
   time_t now;
   struct tm timeinfo;
   time(&now);
@@ -2090,7 +2091,7 @@ void noDisplay_NoScreen(unsigned long mElapsed)
     Serial.printf(">>> M8AX - Pool De Minería - %s\n", Settings.PoolAddress.c_str());
     Serial.printf(">>> M8AX - Puerto Del Pool - %d\n", Settings.PoolPort);
     Serial.printf(">>> M8AX - Wallet De BTC - %s\n", Settings.BtcWallet);
-    int indiceex = esp_random() % 5;
+    int indiceex = esp_random() % 6;
     Serial.printf(">>> M8AX - URL Aleatoria - %s\n", urlsm8ax[indiceex]);
     if (data.valids.toInt() > 0)
     {
@@ -2315,6 +2316,10 @@ void noDisplay_SetupScreen(void)
     Serial.println("... M8AX - GRÁCIAS POR USAR MI FIRMWARE ...");
     Serial.println("... M8AX - NO TE OLVIDES DE VISITAR MI CANAL DE YOUTUBE ...");
     Serial.println("... M8AX - HTTPS://YOUTUBE.COM/M8AX ...");
+    Serial.println("... M8AX - TAMPOCO TE OLVIDES DE VISITAR MI CANAL EN ODYSEE ...");
+    Serial.println("... M8AX - HTTPS://ODYSEE.COM/@M8AX ...");
+    Serial.println("... M8AX - TAMPOCO TE OLVIDES DE HACERME UNA DONACIÓN xD ...");
+    Serial.println("... M8AX - HTTPS://PAYPAL.ME/M8AX/5 ...");
     Serial.println("-----------------------------------------------------------------");
     for (int i = 1; i <= 30; i++)
     {
