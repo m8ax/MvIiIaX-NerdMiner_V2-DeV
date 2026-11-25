@@ -47,7 +47,7 @@
  *
  *                              PARA MÁS INFORMACIÓN LEER PDF
  *
- *                     Tmp. De Programación 25H - 12990 Líneas De Código
+ *                     Tmp. De Programación 26H - 13005 Líneas De Código
  *                     -------------------------------------------------
  *
  ********************************************************************************************/
@@ -100,11 +100,8 @@ extern nvMemory nvMem;
 
 #define WIDTH 340
 #define HEIGHT 170
-#define MIN_KH 0
-#define MAX_KH 360
 #define MAX_RESULT_LENGTH 500
 #define MAX_NUMBERS 6
-#define MAX_DEPTH 4
 #define MAX_GEN_COUNT 1000
 #define GRIDX 160
 #define GRIDY 85
@@ -118,12 +115,11 @@ TFT_eSPI tft = TFT_eSPI();
 TFT_eSprite background = TFT_eSprite(&tft);
 uint8_t grid[GRIDX][GRIDY], newgrid[GRIDX][GRIDY];
 uint16_t colors[] = {TFT_WHITE, TFT_RED, TFT_GREEN, TFT_BLUE, TFT_YELLOW, TFT_CYAN, TFT_MAGENTA, TFT_ORANGE, TFT_GREENYELLOW, TFT_PINK, TFT_LIGHTGREY, TFT_SKYBLUE, TFT_OLIVE, TFT_GOLD, TFT_SILVER};
-uint16_t coloris[] = {TFT_WHITE, TFT_YELLOW, TFT_CYAN, TFT_GREENYELLOW, TFT_LIGHTGREY, TFT_BLACK, TFT_ORANGE, TFT_GOLD, TFT_SILVER}, genCount = 0;
+uint16_t coloris[] = {TFT_WHITE, TFT_YELLOW, TFT_CYAN, TFT_GREENYELLOW, TFT_LIGHTGREY, TFT_BLACK, TFT_ORANGE, TFT_GOLD, TFT_SILVER};
 int columna = 0, secondCounter = 0, random_number = 1, limite = 0, aciertos = 0, fallos = 0, totalci = 0, colorIndex = 0, colorI = 0;
 int mirarTiempo = 0, sumatele = 1, abortar = 0, alertatemp = 0, maxtemp = 0, mintemp = 1000, diadecambios, zonilla, colorrrr = esp_random() % 9;
 float anterBTC = 0.0, maxkh = 0.00, minkh = 1000.00, porcentaje = 0.00;
 const char *nombrecillo;
-const char *apiUrl = "http://ip-api.com/json/";
 const char *serverName = "https://dummyjson.com/quotes/random";
 
 // Criptomonedas De Binance, Todas De Golpe
@@ -158,11 +154,6 @@ CriptoInfo criptomonedas[NUM_CRIPTOS] = {
     {"ATOMUSDT", "ATOM", 0},
     {"AAVEUSDT", "AAVE", 0},
     {"FILUSDT", "FIL", 0}};
-const char *ciudades[] = {
-    "Nueva York", "Londres", "Paris", "Tokio", "Sidney",
-    "Los Angeles", "Beijing", "Moscu", "Delhi", "Buenos Aires",
-    "Berlin", "Mexico", "Madrid", "Seul", "Roma",
-    "El Cairo", "Amsterdam", "Toronto", "Sao Paulo", "Cape Town"};
 const char *urlsm8ax[] = {
     "YT - https://youtube.com/m8ax",
     "OS - https://opensea.io/es/m8ax",
@@ -180,18 +171,10 @@ String urls[] = {
     "https://cointelegraph.com/rss/tag/ethereum",
     "https://cointelegraph.com/rss/tag/nft",
     "https://cointelegraph.com/rss/tag/stablecoin"};
-int zonasHorarias[] = {
-    -5, 0, 1, 9, 11, // Nueva York, Londres, Paris, Tokio, Sidney
-    -8, 8, 3, 5, -3, // Los Angeles, Beijing, Moscu, Delhi, Buenos Aires
-    1, -6, 1, 9, 1,  // Berlin, Mexico, Madrid, Seul, Roma
-    2, 1, -5, -3, 2  // El Cairo, Amsterdam, Toronto, Sao Paulo, Cape Town
-};
 bool mensajeEnviado = false;
 char result[MAX_RESULT_LENGTH];
 String textoFinalm8ax1, textoFinalm8ax2, textoFinalm8ax3, textoFinalm8ax4, cadenanoti = "", ciudad = "", tempciudad = "", BOT_TOKEN, CHAT_ID, subebaja = ". ESPERANDO .";
 uint32_t rndnumero = 0, rndnumero2 = 0, actualizarcalen = 0, actuanot = 0, actualizarc = 0, actual = 0, correccion = 0, numfrases = 0, numnotis = 0, ContadorEspecial = 0, uncontadormas = 0;
-WiFiUDP udp;
-HTTPClient http;
 mining_data mineria;
 clock_data relojete;
 coin_data monedilla;
@@ -202,13 +185,6 @@ unsigned long startTime = 0;                   // Para guardar Epoch de inicio
 unsigned long arrankito = 0;                   // Para guardar millis al arrancar
 const unsigned long interval = 60 * 2 * 60;    // 2 horas en segundos (2 horas * 60 minutos * 60 segundos)
 const unsigned long minStartupTime = interval; // Segundos para que no envíe mensaje a telegram si esta configurado, nada más arrancar
-
-template <typename T, typename T2>
-
-inline T map(T2 val, T2 in_min, T2 in_max, T out_min, T out_max)
-{
-  return (val - in_min) * (out_max - out_min) / (in_max - in_min) + out_min;
-}
 
 void tDisplay_Init(void)
 {
@@ -307,6 +283,7 @@ int obtenHoraPorIP(const String &ip)
   for (int intento = 1; intento <= 5; intento++)
   {
     HTTPClient http;
+    http.useHTTP10(true);
     http.setTimeout(2000);
     http.begin(api_url);
     int httpCode = http.GET();
@@ -351,25 +328,11 @@ int obtenHoraPorIP(const String &ip)
     }
   }
   if (!success)
+  {
     Serial.println("M8AX - No Se Pudo Obtener La Zona Horaria Tras ( 5 Intentos )\n");
+    return 1000;
+  }
   return offset;
-}
-
-/**
- * Convierte un número `float` en un entero sin signo de 32 bits (`uint32_t`), redondeándolo
- * al entero más cercano.
- *
- * Si el valor es negativo devuelve 0, y si supera el máximo de `uint32_t` devuelve
- * `UINT32_MAX`, de modo que el resultado siempre queda dentro del rango válido.
- */
-
-uint32_t floatToUint32(float num)
-{
-  if (num < 0)
-    return 0;
-  if (num > UINT32_MAX)
-    return UINT32_MAX;
-  return static_cast<uint32_t>(round(num));
 }
 
 /**
@@ -441,18 +404,18 @@ void ajustarZonaHoraria()
   int nueva = obtenHoraPorIP(getPublicIP());
   if (nueva == 1000)
     return;
-  zonilla = nueva;
-  int timezoneDifference = abs(Settings.Timezone - zonilla);
+  int timezoneDifference = abs(Settings.Timezone - nueva);
   if (timezoneDifference <= 1)
   {
-    if (Settings.Timezone != zonilla)
+    if (Settings.Timezone != nueva)
     {
-      Settings.Timezone = zonilla;
+      Settings.Timezone = nueva;
       nvMem.saveConfig(&Settings);
       Serial.println(String("M8AX - Cambiando TimeZone... Actualmente Es UTC ") + (Settings.Timezone >= 0 ? "+" : "") + String(Settings.Timezone));
       timeClient.setTimeOffset(3600 * Settings.Timezone);
     }
   }
+  zonilla = Settings.Timezone;
   Serial.println("M8AX - Combrobación De Ajuste De Hora ( TimeZone ), Correcta...");
 }
 
@@ -653,17 +616,6 @@ String quitarAcentos(String str)
   str.replace("¿", ""); // Eliminar signos de interrogación al principio de la frase
   str.replace("¡", ""); // Eliminar signos de exclamación al principio de la frase
   return str;
-}
-
-// Funcion para cortar una cadena desde el ultimo guión ( - )
-
-void borrarDesdeUltimoGuion(char *str)
-{
-  char *pos = strrchr(str, '-'); // Encuentra el último '-'
-  if (pos)
-  {
-    *pos = '\0'; // Corta la cadena en ese punto
-  }
 }
 
 // Tiempo máximo en milisegundos que dejo al buscador para encontrar la mejor cuenta.
@@ -1316,15 +1268,6 @@ bool recopilaTelegram()
 
 void datosPantallaTextoPlano()
 {
-  unsigned long epochTime = timeClient.getEpochTime(); // Obtener segundos desde 1970
-  time_t epoch = (time_t)epochTime;                    // Convertir a time_t
-  struct tm *timeinfo = localtime(&epoch);             // Convertir a una estructura de tiempo local
-  int dia = timeinfo->tm_mday;                         // Día del mes (1 a 31)
-  int mes = timeinfo->tm_mon + 1;                      // Mes (1 a 12)
-  int anio = timeinfo->tm_year + 1900;                 // Año (por defecto es desde 1900)
-  int horita = timeinfo->tm_hour;                      // Hora
-  int minutitos = timeinfo->tm_min;                    // Minutos
-  int segundos = timeinfo->tm_sec;                     // Segundos
   String telrb = monedilla.remainingBlocks;
   String cadenaEnvio2;
   cadenaEnvio2.reserve(5000);
@@ -1954,8 +1897,7 @@ void nevar3()
 
 void cortinas2()
 {
-  int centerX = tft.width() / 2;  // Centro de la pantalla en X
-  int centerY = tft.height() / 2; // Centro de la pantalla en Y
+  int centerX = tft.width() / 2; // Centro de la pantalla en X
 
   for (int i = 0; i <= centerX; i++)
   {
@@ -2142,33 +2084,6 @@ void dibujaQR(String data, int xPos, int yPos, int qrSize, int color)
       // Si es un módulo blanco, NO hacer nada (deja el fondo transparente)
     }
   }
-}
-
-/**
- * Verifica si es horario de verano.
- *
- * Esta función determina si una fecha específica (mes y día) cae dentro del horario de verano.
- *
- * @param mes Mes del año (1-12).
- * @param dia Día del mes.
- * @return true si es horario de verano, false en caso contrario.
- */
-
-bool EsHVerano(int mes, int dia)
-{
-  if (mes > 3 && mes < 10)
-  {
-    return true;
-  }
-  if (mes == 3 && dia >= 25)
-  {
-    return true;
-  }
-  if (mes == 10 && dia <= 31)
-  {
-    return false;
-  }
-  return false;
 }
 
 /**
@@ -2822,8 +2737,6 @@ void dibujarReloj(int horas, int minutos, int segundos, String dia, String mes, 
 
 String generarNumerosPrimitiva()
 {
-  const int MIN = 1;
-  const int MAX = 49;
   const int NUM_COUNT = 6;
   int numeros[NUM_COUNT];
   int contador = 0;
@@ -4454,8 +4367,7 @@ void tDisplay_m8axScreen7(unsigned long mElapsed)
     timeClient.update();
   }
   unsigned long segundo = timeClient.getSeconds();
-  int horas = dataa.currentTime.substring(0, 2).toInt();
-  int horras = horas;
+  int horras = dataa.currentTime.substring(0, 2).toInt();
   int minutos = dataa.currentTime.substring(3, 5).toInt();
   int segundos = segundo % 60;
   Serial.printf("M8AX - >>> Completados %s Share(s), %s Khashes, Prom. Hashrate %s KH/s %s°\n",
@@ -4464,12 +4376,6 @@ void tDisplay_m8axScreen7(unsigned long mElapsed)
   String dia = dataa.currentDate.substring(0, 2);
   String mes = dataa.currentDate.substring(3, 5);
   String anio = dataa.currentDate.substring(6, 10);
-
-  // Ajusta al formato de 12 horas
-  if (horas >= 12)
-  {
-    horas -= 12;
-  }
 
   // Llama a la función para dibujar el reloj
   actualizarcalen++;
@@ -4543,7 +4449,6 @@ void tDisplay_m8axScreen8(unsigned long mElapsed)
       background.pushImage(0, 0, M8AXQuote2Width, M8AXQuote2Height, M8AXQuote2);
       background.pushSprite(0, 0);
     }
-    HTTPClient http;
     String quote = getQuote();
     displayQuote(quote);
     quote = "";
@@ -4685,7 +4590,7 @@ void tDisplay_m8axScreen9(unsigned long mElapsed)
   colorI = esp_random() % (sizeof(colors) / sizeof(colors[0]));
   tft.setTextColor(colors[colorI]);
   tft.print(String(data.currentHashRate.c_str()) + " KH/s");
-  if (millonario == 1)
+  if (millonario > 0)
   {
     tft.setCursor(250, 72);
     colorI = esp_random() % (sizeof(colors) / sizeof(colors[0]));
@@ -4829,7 +4734,7 @@ void tDisplay_m8axScreen10(unsigned long mElapsed)
   colorI = esp_random() % (sizeof(colors) / sizeof(colors[0]));
   tft.setTextColor(colors[colorI]);
   tft.print(String(data.currentHashRate.c_str()) + " KH/s");
-  if (millonario == 1)
+  if (millonario > 0)
   {
     tft.setCursor(240, 72);
     colorI = esp_random() % (sizeof(colors) / sizeof(colors[0]));
@@ -4985,7 +4890,7 @@ void tDisplay_m8axScreen11(unsigned long mElapsed)
   colorI = esp_random() % (sizeof(colors) / sizeof(colors[0]));
   tft.setTextColor(colors[colorI]);
   tft.print(String(data.currentHashRate.c_str()) + " KH/s");
-  if (millonario == 1)
+  if (millonario > 0)
   {
     tft.setCursor(240, 80);
     colorI = esp_random() % (sizeof(colors) / sizeof(colors[0]));
@@ -5045,7 +4950,6 @@ void tDisplay_m8axScreen11(unsigned long mElapsed)
 void tDisplay_m8axScreen12(unsigned long mElapsed)
 {
   mining_data data = getMiningData(mElapsed);
-  clock_data dataa = getClockData(mElapsed);
   monedilla = getCoinData(mElapsed);
   relojete = getClockData(mElapsed);
   mineria = getMiningData(mElapsed);
@@ -5353,7 +5257,7 @@ void tDisplay_m8axScreen14(unsigned long mElapsed)
  *  8. Muestra datos adicionales como:
  *      - Hashes por segundo.
  *      - Operaciones por segundo.
- *      - TFLOPS, GOPS, MOPS, TOPS.
+ *      - GH/DIA, GOPS, MOPS, TOPS.
  *  9. Muestra la temperatura de la minería en la pantalla.
  * 10. Dibuja tres barras de progreso:
  *      - Una para los segundos (basada en `segundos`).
@@ -5450,23 +5354,23 @@ void tDisplay_m8axScreen15(unsigned long mElapsed)
   tft.setTextColor(colors[colorI]);
   tft.print("+-/Ops_Simp/Seg");
   tft.setTextColor(TFT_WHITE);
-  float opsseg = (hashRa * 1000) * 2560;
+  uint64_t opsseg = (uint64_t)(hashRa * 1000) * 2560;
   tft.setCursor(4, 75);
-  tft.print((uint32_t)opsseg);
+  tft.print((unsigned long long)opsseg);
   tft.setCursor(4, 90);
   tft.setTextColor(colors[colorI]);
-  tft.print("TFLOPS");
+  tft.print("GH/Dia");
   tft.setTextColor(TFT_WHITE);
-  float tflops = ((hashRa * 1000) * 2560) / 1000000000000;
+  float ghdia = hashRa * 86400.0f / 1000000.0f;
   tft.setCursor(4, 100);
-  char buffer[20];               // Buffer para almacenar el número formateado
-  dtostrf(tflops, 8, 6, buffer); // (valor, ancho mínimo, decimales, buffer)
+  char buffer[20];              // Buffer para almacenar el número formateado
+  dtostrf(ghdia, 1, 3, buffer); // (valor, ancho mínimo, decimales, buffer)
   tft.print(buffer);
   tft.setCursor(4, 115);
   tft.setTextColor(colors[colorI]);
   tft.print("GOPS");
   tft.setTextColor(TFT_WHITE);
-  float gops = ((hashRa * 1000) * 2560) / 1000000;
+  float gops = ((hashRa * 1000) * 2560) / 1e9f;
   tft.setCursor(4, 125);
   tft.print(gops);
   tft.setTextColor(colors[colorI]);
@@ -5493,7 +5397,7 @@ void tDisplay_m8axScreen15(unsigned long mElapsed)
   tft.setTextColor(colors[colorI]);
   tft.print("TOPS");
   tft.setTextColor(TFT_WHITE);
-  float Tops = ((hashRa * 1000) * 2560) / 1000000000;
+  float Tops = ((hashRa * 1000) * 2560) / 1e12f;
   tft.setCursor(230, 75);
   char bufferr[20];
   dtostrf(Tops, 8, 6, bufferr);
@@ -5536,23 +5440,134 @@ void tDisplay_m8axScreen15(unsigned long mElapsed)
   actuanot = 0;
 }
 
-// Función tDisplay_m8axScreen16: Actualiza la pantalla con datos de minería, hora mundial, y datos de configuración del sistema.
-// Utiliza imágenes de fondo que cambian aleatoriamente cada 30 segundos y muestra la hora de 20 ciudades en varias columnas.
-// Además, incluye la visualización de los datos de minería, temperatura y estado actual.
+// ===== Relojes mundiales: logica de hora por ciudad (sin dependencias de hardware) =====
+enum DstRegla : uint8_t
+{
+  DST_NINGUNO = 0,
+  DST_UE,
+  DST_EEUU,
+  DST_AUSTRALIA,
+  DST_EGIPTO
+};
+
+struct CiudadHora
+{
+  const char *nombre;
+  int16_t offMin; // desfase estandar (invierno) en minutos respecto a UTC
+  DstRegla dst;
+};
+
+// Dia de la semana (0=domingo) de una fecha civil. Algoritmo de Sakamoto.
+static int wcDiaSemana(int y, int m, int d)
+{
+  static const int t[] = {0, 3, 2, 5, 0, 3, 5, 1, 4, 6, 2, 4};
+  if (m < 3)
+    y -= 1;
+  return (y + y / 4 - y / 100 + y / 400 + t[m - 1] + d) % 7;
+}
+
+static int wcDiasMes(int y, int m)
+{
+  static const int dm[] = {31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
+  if (m == 2 && ((y % 4 == 0 && y % 100 != 0) || y % 400 == 0))
+    return 29;
+  return dm[m - 1];
+}
+
+// Ultimo dia del mes con dia de semana "dow" (0=dom ... 6=sab)
+static int wcUltimo(int y, int m, int dow)
+{
+  int d = wcDiasMes(y, m);
+  return d - ((wcDiaSemana(y, m, d) - dow + 7) % 7);
+}
+
+// n-esimo dia del mes (n=1..4) con dia de semana "dow"
+static int wcEnesimo(int y, int m, int dow, int n)
+{
+  int primero = 1 + ((dow - wcDiaSemana(y, m, 1) + 7) % 7);
+  return primero + 7 * (n - 1);
+}
+
+// Dias desde 1970-01-01 de una fecha civil (algoritmo de Howard Hinnant)
+static int64_t wcDias(int y, int m, int d)
+{
+  y -= m <= 2;
+  int64_t era = (y >= 0 ? y : y - 399) / 400;
+  int64_t yoe = y - era * 400;
+  int64_t doy = (153 * (m + (m > 2 ? -3 : 9)) + 2) / 5 + d - 1;
+  int64_t doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+  return era * 146097 + doe - 719468;
+}
+
+// Instante UTC (epoch) de una fecha y hora dadas en UTC
+static int64_t wcEpoch(int y, int m, int d, int hh)
+{
+  return wcDias(y, m, d) * 86400LL + hh * 3600LL;
+}
+
+// true si en el instante UTC "utc" la ciudad esta en horario de verano
+static bool wcEsVerano(int64_t utc, int16_t offMin, DstRegla r)
+{
+  if (r == DST_NINGUNO)
+    return false;
+  time_t t = (time_t)utc;
+  struct tm g;
+  gmtime_r(&t, &g);
+  int y = g.tm_year + 1900;
+  switch (r)
+  {
+  case DST_UE: // ultimo domingo de marzo 01:00 UTC -> ultimo domingo de octubre 01:00 UTC
+    return utc >= wcEpoch(y, 3, wcUltimo(y, 3, 0), 1) && utc < wcEpoch(y, 10, wcUltimo(y, 10, 0), 1);
+  case DST_EEUU: // 2o domingo de marzo 02:00 local -> 1er domingo de noviembre 02:00 local (hora de verano)
+  {
+    int64_t ini = wcEpoch(y, 3, wcEnesimo(y, 3, 0, 2), 2) - offMin * 60LL;
+    int64_t fin = wcEpoch(y, 11, wcEnesimo(y, 11, 0, 1), 2) - (offMin + 60) * 60LL;
+    return utc >= ini && utc < fin;
+  }
+  case DST_AUSTRALIA: // hemisferio sur: 1er domingo de octubre 02:00 local -> 1er domingo de abril 03:00 local (verano)
+  {
+    int64_t finAnio = wcEpoch(y, 4, wcEnesimo(y, 4, 0, 1), 3) - (offMin + 60) * 60LL;
+    int64_t iniAnio = wcEpoch(y, 10, wcEnesimo(y, 10, 0, 1), 2) - offMin * 60LL;
+    return utc < finAnio || utc >= iniAnio;
+  }
+  case DST_EGIPTO: // ultimo viernes de abril 00:00 local -> ultimo jueves de octubre 24:00 local (verano)
+  {
+    int64_t ini = wcEpoch(y, 4, wcUltimo(y, 4, 5), 0) - offMin * 60LL;
+    int64_t fin = wcEpoch(y, 10, wcUltimo(y, 10, 4), 0) + 86400LL - (offMin + 60) * 60LL;
+    return utc >= ini && utc < fin;
+  }
+  default:
+    return false;
+  }
+}
+
+// Convierte UTC a hora local de la ciudad. Devuelve true si esta en horario de verano.
+static bool wcHoraLocal(int64_t utc, const CiudadHora &c, struct tm *out)
+{
+  bool v = wcEsVerano(utc, c.offMin, c.dst);
+  time_t t = (time_t)(utc + (c.offMin + (v ? 60 : 0)) * 60LL);
+  gmtime_r(&t, out);
+  return v;
+}
+
+static const CiudadHora wcCiudades[20] = {
+    {"Nueva York", -300, DST_EEUU}, {"Londres", 0, DST_UE}, {"Paris", 60, DST_UE}, {"Tokio", 540, DST_NINGUNO}, {"Sidney", 600, DST_AUSTRALIA}, {"Los Angeles", -480, DST_EEUU}, {"Beijing", 480, DST_NINGUNO}, {"Moscu", 180, DST_NINGUNO}, {"Delhi", 330, DST_NINGUNO}, {"Buenos Aires", -180, DST_NINGUNO}, {"Berlin", 60, DST_UE}, {"Mexico", -360, DST_NINGUNO}, {"Madrid", 60, DST_UE}, {"Seul", 540, DST_NINGUNO}, {"Roma", 60, DST_UE}, {"El Cairo", 120, DST_EGIPTO}, {"Amsterdam", 60, DST_UE}, {"Toronto", -300, DST_EEUU}, {"Sao Paulo", -180, DST_NINGUNO}, {"Cape Town", 120, DST_NINGUNO}};
+
+// Función tDisplay_m8axScreen16: Pantalla de relojes mundiales con datos de minería.
+// Muestra la hora de 20 ciudades en 4 columnas x 5 filas, con día de la semana y marca '*' si esa ciudad
+// está en horario de verano. La hora se calcula siempre desde UTC ( la hora NTP menos el desfase configurado
+// en Settings.Timezone ), y cada ciudad aplica su propio desfase y su propia regla de horario de verano
+// ( UE, EEUU, Australia, Egipto, o ninguna ), así que funciona igual esté el minero en la zona que esté.
+// Delhi usa su desfase real de +5:30. El fondo cambia aleatoriamente cada 30 segundos.
 
 void tDisplay_m8axScreen16(unsigned long mElapsed)
 {
   mining_data data = getMiningData(mElapsed);
   clock_data dataa = getClockData(mElapsed);
   monedilla = getCoinData(mElapsed);
-  relojete = getClockData(mElapsed);
-  mineria = getMiningData(mElapsed);
+  relojete = dataa;
+  mineria = data;
   unsigned long segundo = timeClient.getSeconds();
-  int segundos = segundo % 60;
-  int horita = dataa.currentTime.substring(0, 2).toInt();
-  int minutitos = dataa.currentTime.substring(3, 5).toInt();
-  int currentDay = dataa.currentDate.substring(0, 2).toInt();
-  int currentMonth = dataa.currentDate.substring(3, 5).toInt();
   incrementCounter();
   if (actualizarcalen == 0)
   {
@@ -5587,55 +5602,67 @@ void tDisplay_m8axScreen16(unsigned long mElapsed)
       background.pushSprite(0, 0);
     }
   }
-  int y = 30; // Coordenada Y inicial
-  int horitaUTC = horita - (EsHVerano(currentMonth, currentDay) ? 2 : 1);
-  for (int i = 0; i < 20; i++)
+
+  // La hora NTP ya lleva sumado el desfase local, así que se resta para volver a UTC
+
+  int64_t epochLocal = (int64_t)timeClient.getEpochTime();
+  int64_t utc = epochLocal - 3600LL * Settings.Timezone;
+  const int numColores = sizeof(colors) / sizeof(colors[0]);
+
+  // La paleta cambia cada 30 segundos, no en cada fotograma, para que no parpadee
+
+  static int64_t ultimoBloque = -1;
+  static int desfaseColor = 0;
+  int64_t bloque = epochLocal / 30;
+  if (bloque != ultimoBloque)
   {
-    // Calcula la hora local para cada ciudad, ajustando con la zona horaria de cada ciudad
-    int ciudadHora = horitaUTC + zonasHorarias[i]; // Ajusta la hora sumando la zona horaria de cada ciudad
+    ultimoBloque = bloque;
+    desfaseColor = esp_random() % numColores;
+  }
 
-    // Ajusta la hora si excede 24 horas o es menor a 0
-    if (ciudadHora < 0)
-    {
-      ciudadHora += 24;
-    }
-    if (ciudadHora >= 24)
-    {
-      ciudadHora -= 24;
-    }
-    // Formatea la hora (sin segundos)
-    char timeStr[9];
-    sprintf(timeStr, "%02d:%02d:%02d", ciudadHora, minutitos, segundos);
+  // Cabecera ( se dibuja una sola vez, no una vez por ciudad )
 
-    // Calcula la posición X en base a la columna (4 columnas)
-    int x = (i % 4) * 80; // Las ciudades se distribuyen en 4 columnas
+  tft.drawLine(0, 20, 320, 20, colors[desfaseColor % numColores]);
+  tft.setTextSize(1);
+  tft.setTextColor(TFT_WHITE);
+  tft.setCursor(1, 6);
+  if (epochLocal < 1700000000LL)
+  {
+    tft.print("Sincronizando hora con NTP...");
+  }
+  else
+  {
+    time_t tl = (time_t)epochLocal;
+    struct tm loc;
+    gmtime_r(&tl, &loc);
+    char cab[80];
+    snprintf(cab, sizeof(cab), "%02d:%02d:%02d - %02d/%02d/%04d - %s KH/s - %sC - %s",
+             loc.tm_hour, loc.tm_min, loc.tm_sec, loc.tm_mday, loc.tm_mon + 1, loc.tm_year + 1900,
+             data.currentHashRate.c_str(), data.temp.c_str(),
+             (atoi(data.valids.c_str()) == 0) ? "NO RICO" : "SI RICO");
+    tft.print(cab);
+  }
 
-    // Muestra la ciudad y la hora
-    colorI = esp_random() % (sizeof(colors) / sizeof(colors[0]));
-    tft.drawLine(0, 20, 320, 20, colors[colorI]); // Dibujar línea de (0, y) a (320, y)
-    tft.setTextColor(colors[colorI]);
-    tft.setTextSize(1);
-    tft.setCursor(x + 5, y);
-    tft.print(ciudades[i]);
-    tft.setCursor(x + 5, y + 10); // Posición de la hora
-    tft.print(timeStr);
-    tft.setTextColor(TFT_WHITE);
-    tft.setCursor(1, 6);
-    tft.setTextSize(1);
-    int millonario = atoi(data.valids.c_str());
-    if (millonario == 0)
+  if (epochLocal >= 1700000000LL)
+  {
+    static const char *diasSem[] = {"Dom", "Lun", "Mar", "Mie", "Jue", "Vie", "Sab"};
+    for (int i = 0; i < 20; i++)
     {
-      tft.print(data.currentTime + " - " + dataa.currentDate + " - " + data.currentHashRate + " KH/s - " + data.temp + " Grados." + " NO RICO");
-    }
-    else
-    {
-      tft.print(data.currentTime + " - " + dataa.currentDate + " - " + data.currentHashRate + " KH/s - " + data.temp + " Grados." + " SI RICO");
-    }
-
-    // Cambia la posición Y para la siguiente fila (5 filas)
-    if ((i + 1) % 4 == 0)
-    {          // Se cambia después de cada 4 columnas
-      y += 30; // Aumenta la posición Y después de cada 4 ciudades
+      struct tm t;
+      bool verano = wcHoraLocal(utc, wcCiudades[i], &t);
+      char horaStr[12];
+      snprintf(horaStr, sizeof(horaStr), "%02d:%02d:%02d", t.tm_hour, t.tm_min, t.tm_sec);
+      char diaStr[12];
+      snprintf(diaStr, sizeof(diaStr), "%s %02d%s", diasSem[t.tm_wday], t.tm_mday, verano ? " *" : "");
+      int x = (i % 4) * 80;
+      int y = 25 + (i / 4) * 28;
+      tft.setTextColor(colors[(i + desfaseColor) % numColores]);
+      tft.setCursor(x + 5, y);
+      tft.print(wcCiudades[i].nombre);
+      tft.setCursor(x + 5, y + 9);
+      tft.print(horaStr);
+      tft.setCursor(x + 5, y + 18);
+      tft.print(diaStr);
     }
   }
   actualizarc = 0;
@@ -6093,7 +6120,6 @@ void tDisplay_m8axvida(unsigned long mElapsed)
     tft.setCursor(0, 0);
     tft.fillScreen(TFT_BLACK);
     initGrid();
-    genCount = MAX_GEN_COUNT;
     drawGrid();
   }
   unsigned long start = millis();
@@ -6262,7 +6288,7 @@ void RelojDeNumeros(unsigned long mElapsed)
   colorI = esp_random() % (sizeof(colors) / sizeof(colors[0]));
   tft.setTextColor(colors[colorI]);
   tft.print(String(data.currentHashRate.c_str()) + " KH/s");
-  if (millonario == 1)
+  if (millonario > 0)
   {
     tft.setCursor(250, 72);
     colorI = esp_random() % (sizeof(colors) / sizeof(colors[0]));
@@ -6359,7 +6385,6 @@ void RelojDeNumeros(unsigned long mElapsed)
 void datoTextPlano(unsigned long mElapsed)
 {
   mining_data data = getMiningData(mElapsed);
-  clock_data dataa = getClockData(mElapsed);
   monedilla = getCoinData(mElapsed);
   relojete = getClockData(mElapsed);
   mineria = getMiningData(mElapsed);
@@ -10891,8 +10916,7 @@ struct AstMem
   int8_t ctlRot, shx, shy, shk;
   uint8_t ctlEmp, empuje, viva, vidas, cadencia, planCnt, planCada, ipt;
   uint16_t inmune, reaparece, pausaOla, finTimer, ola;
-  uint32_t puntos, mejor, frame, ledOff;
-  uint8_t ledPrio;
+  uint32_t puntos, mejor, frame;
   char tIzq[16], tCen[12], tDer[12];
 };
 static AstMem *astM = NULL;
@@ -11067,17 +11091,6 @@ static void astDibNave(float x, float y, float ang, uint8_t col, bool llama, boo
   }
 }
 
-// Esta placa no tiene LEDs: el motor sigue llamando a astLed pero no hace nada
-static void astLed(uint8_t prio, bool r, bool g, bool b, uint16_t ms, uint32_t now)
-{
-  (void)prio;
-  (void)r;
-  (void)g;
-  (void)b;
-  (void)ms;
-  (void)now;
-}
-
 static void astChispas(float x, float y, int n, float vel, uint8_t tipo)
 {
   AstMem &m = *astM;
@@ -11203,8 +11216,6 @@ static void astInit()
   m.mejor = 0;
   m.planCada = 4;
   m.frame = 0;
-  m.ledOff = 0;
-  m.ledPrio = 0;
   m.shk = m.shx = m.shy = 0;
   m.tIzq[0] = m.tCen[0] = m.tDer[0] = 0;
   for (int i = 0; i < AST_NSTAR; i++)
@@ -11233,7 +11244,6 @@ static void astRomper(int i, uint32_t now)
     if (m.shk < 3)
       m.shk = 3;
   }
-  astLed(2, false, true, false, 40, now);
   if (r.tam > 1)
   {
     for (int h = 0; h < 2; h++)
@@ -11272,7 +11282,6 @@ static void astMuereNave(uint32_t now)
   astChispas(m.nx, m.ny, 14, 3.0f, 1);
   astOnda(m.nx, m.ny);
   m.shk = 7;
-  astLed(3, true, true, true, 140, now);
   if (m.vidas)
     m.vidas--;
   if (m.vidas)
@@ -11548,7 +11557,6 @@ static void astActualizar(uint32_t now)
           m.ba[i].vy = m.nvy + hy * AST_BVEL;
           m.ba[i].vida = AST_BVIDA;
           m.cadencia = 7;
-          astLed(1, true, false, false, 25, now);
           break;
         }
     }
@@ -12721,7 +12729,8 @@ void tDisplay_FlappyHash(unsigned long mElapsed)
 void analiCadaSegundo(unsigned long frame)
 {
   unsigned long epochTime = timeClient.getEpochTime();
-  struct tm *t = localtime((time_t *)&epochTime);
+  time_t epochT = (time_t)epochTime;
+  struct tm *t = localtime(&epochT);
   int dia = t->tm_mday;
   int mes = t->tm_mon + 1;
   int anio = t->tm_year + 1900;
@@ -12821,6 +12830,7 @@ void analiCadaSegundo(unsigned long frame)
   {
     BOT_TOKEN = Settings.botTelegram;
     CHAT_ID = Settings.ChanelIDTelegram;
+    zonilla = Settings.Timezone;
     startTime = (epochTime > 1700000000UL && epochTime < 4102444800UL) ? epochTime : 0;
     diadecambios = dia;
     anterBTC = monedilla.btcPrice.toFloat();
@@ -12865,8 +12875,11 @@ void analiCadaSegundo(unsigned long frame)
 
     // Ajustar la zona horaria solo en meses de cambio de hora y de madrugada
 
-    if ((mes == 3 || mes == 4 || mes == 10 || mes == 11) && horita >= 0 && horita <= 5)
+    if ((mes == 3 || mes == 4 || mes == 9 || mes == 10 || mes == 11) && horita >= 0 && horita <= 5)
+    {
       ajustarZonaHoraria();
+      epochTime = timeClient.getEpochTime();
+    }
 
     // Verificar si los datos de Telegram están configurados
 
@@ -12907,8 +12920,10 @@ void analiCadaSegundo(unsigned long frame)
     tft.setCursor(0, 0);
     const char *mensaje1 = (rndnumero % 2 == 0) ? "La Esperanza Es\nLo Ultimo Que\nSe Pierde...\nLo Conseguiremos!\n\n     VAMOS !" : "Hope Is The Last\nThing To Lose, We\nWill Achieve It!\n\n    COME ON !";
     tft.println(mensaje1);
-    tft.setTextSize(1), tft.println("");
-    tft.setTextSize(2), tft.setTextColor(TFT_WHITE);
+    tft.setTextSize(1);
+    tft.println("");
+    tft.setTextSize(2);
+    tft.setTextColor(TFT_WHITE);
     tft.println("     ... By M8AX ..."), delay(3000);
   }
 }

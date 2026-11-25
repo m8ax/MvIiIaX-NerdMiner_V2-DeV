@@ -1337,7 +1337,6 @@ void sincronizarTiempo()
   int nueva = obtenHoraPorIP(ipPublica);
   if (nueva != 1000)
   {
-    zonilla = nueva;
     if (abs(Settings.Timezone - nueva) <= 1 && Settings.Timezone != nueva)
     {
       Settings.Timezone = nueva;
@@ -1345,6 +1344,7 @@ void sincronizarTiempo()
       Serial.println(String("M8AX - Cambiando TimeZone... Actualmente Es UTC ") + (Settings.Timezone >= 0 ? "+" : "") + String(Settings.Timezone));
     }
   }
+  zonilla = Settings.Timezone;
   int offset = Settings.Timezone * 3600;
   timeClient.setTimeOffset(3600 * Settings.Timezone);
   configTime(offset, 0, "pool.ntp.org", "time.nist.gov");
@@ -2222,7 +2222,7 @@ void noDisplay_NoScreen(unsigned long mElapsed)
   {
     ipPublica = getPublicIP();
     vTaskDelay(pdMS_TO_TICKS(250));
-    if ((mes == 3 || mes == 4 || mes == 10 || mes == 11) && horas >= 0 && horas <= 5)
+    if ((mes == 3 || mes == 4 || mes == 9 || mes == 10 || mes == 11) && horas >= 0 && horas <= 5)
     {
       sincronizarTiempo();
       vTaskDelay(pdMS_TO_TICKS(250));
@@ -2318,7 +2318,7 @@ void noDisplay_SetupScreen(void)
     Serial.println("... M8AX - HTTPS://YOUTUBE.COM/M8AX ...");
     Serial.println("... M8AX - TAMPOCO TE OLVIDES DE VISITAR MI CANAL EN ODYSEE ...");
     Serial.println("... M8AX - HTTPS://ODYSEE.COM/@M8AX ...");
-    Serial.println("... M8AX - TAMPOCO TE OLVIDES DE HACERME UNA DONACIÓN xD ...");
+    Serial.println("... M8AX - Y TAMPOCO TE OLVIDES DE HACERME UNA DONACIÓN xD ...");
     Serial.println("... M8AX - HTTPS://PAYPAL.ME/M8AX/5 ...");
     Serial.println("-----------------------------------------------------------------");
     for (int i = 1; i <= 30; i++)

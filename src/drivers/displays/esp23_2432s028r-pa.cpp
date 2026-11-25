@@ -92,7 +92,7 @@
  *
  *                                 HASHRATE - 380 / 390 KH/S
  *
- *                     Tmp. De Programación 24H - 23020 Líneas De Código
+ *                     Tmp. De Programación 25H - 23810 Líneas De Código
  *                     -------------------------------------------------
  *
  ****************************************************************************************************************/
@@ -2157,6 +2157,7 @@ String lunitaporc(String currentDate, String currentTime)
   return "Luna Iluminada Al - " + String(porcentajeTexto);
 }
 
+#include <new>
 #define SD_CS 5
 #define SD_SCK 18
 #define SD_MISO 19
@@ -2168,9 +2169,12 @@ static bool sdOk = false;
 static bool sdGuardadoCiclo = false;
 static unsigned long sdFalloEn = 0;
 static bool sdSinTarjeta = false; // true = la ranura está vacía ( no tiene sentido reintentar )
-static String sdPendiente;        // mensajes enviados que no se pudieron grabar, se reintentan cada minuto
-static uint8_t sdPendienteIntentos = 0;
-static unsigned long sdPendienteUltimo = 0;
+#define SD_COLA_MAX 2             // mensajes que esperan a la SD en RAM ( si la SD no vuelve, se pierde el más antiguo )
+static String *sdCola[SD_COLA_MAX] = {nullptr, nullptr};
+static uint8_t sdColaN = 0;
+static unsigned long sdColaUltimo = 0;
+static uint8_t sdUltimoCMD0 = 0xFF; // última respuesta de la tarjeta al CMD0 ( 0x01 = bien, 0xFF = no contesta )
+static uint8_t sdFallosN = 0;       // fallos seguidos de "no hay tarjeta": solo tras 3 se da por ranura vacía
 
 /**************************************************************************
  *
@@ -2198,17 +2202,21 @@ static bool sdHayTarjeta()
   for (int i = 0; i < 10; i++)
     sdSPI.transfer(0xFF); // 80 pulsos con CS alto
   digitalWrite(SD_CS, LOW);
-  sdSPI.transfer(0xFF);
+  // si la tarjeta sigue ocupada escribiendo, MISO está a 0: espero a que suelte ( máx. 500 ms )
+  uint32_t t0 = millis();
+  while (sdSPI.transfer(0xFF) != 0xFF && millis() - t0 < 500)
+    ;
   const uint8_t cmd0[6] = {0x40, 0x00, 0x00, 0x00, 0x00, 0x95};
   for (int i = 0; i < 6; i++)
     sdSPI.transfer(cmd0[i]);
   uint8_t r = 0xFF;
-  for (int i = 0; i < 40 && r == 0xFF; i++)
+  for (int i = 0; i < 100 && (r & 0x80); i++) // un R1 válido tiene el bit 7 a 0
     r = sdSPI.transfer(0xFF);
   digitalWrite(SD_CS, HIGH);
   sdSPI.transfer(0xFF);
   sdSPI.endTransaction();
   sdSPI.end();
+  sdUltimoCMD0 = r;
   return r == 0x01;
 }
 
@@ -2230,15 +2238,21 @@ static bool sdMonta(bool forzar = false)
   }
   if (!hay)
   {
-    Serial.println("M8AX - SD: No Hay Tarjeta En La Ranura");
-    sdSinTarjeta = true;
+    Serial.printf("M8AX - SD: No Hay Tarjeta En La Ranura ( CMD0 Respuesta 0x%02X )\n", sdUltimoCMD0);
+    if (++sdFallosN >= 3) // un fallo suelto no cuenta como ranura vacía
+      sdSinTarjeta = true;
     sdFalloEn = millis() | 1;
-    hSPI.begin(TOUCH_CLK, TOUCH_MISO, TOUCH_MOSI, ETOUCH_CS); // devuelve el bus al táctil
+    hSPI.begin(TOUCH_CLK, TOUCH_MISO, TOUCH_MOSI, ETOUCH_CS);
+    pinMode(SD_CS, OUTPUT);
+    digitalWrite(SD_CS, HIGH); // devuelve el bus al táctil
     return false;
   }
   sdSinTarjeta = false; // hay tarjeta: si falla el montaje, sí se reintenta
+  sdFallosN = 0;
   // 3 intentos, cada uno más despacio: a 20 MHz alguna tarjeta o cable falla de vez en cuando
-  static const uint32_t VEL[3] = {20000000, 10000000, 4000000};
+  static const uint32_t VEL_RAPIDA[3] = {20000000, 10000000, 4000000}; // servidor web ( sdMonta() sin forzar ): descargas rápidas
+  static const uint32_t VEL_LENTA[3] = {4000000, 4000000, 1000000};    // grabar Telegram ( sdMonta(true) ): pocos KB, manda la fiabilidad
+  const uint32_t *VEL = forzar ? VEL_LENTA : VEL_RAPIDA;
   for (int i = 0; i < 3 && !sdOk; i++)
   {
     esp_vfs_fat_unregister_path("/sd");
@@ -2257,6 +2271,8 @@ static bool sdMonta(bool forzar = false)
   {
     sdFalloEn = millis() | 1;
     hSPI.begin(TOUCH_CLK, TOUCH_MISO, TOUCH_MOSI, ETOUCH_CS);
+    pinMode(SD_CS, OUTPUT);
+    digitalWrite(SD_CS, HIGH);
   }
   else
     sdFalloEn = 0;
@@ -2278,7 +2294,9 @@ String sdEspacioTexto()
   String r = "Espacio Libre En La MicroSD - " + String((unsigned long)(libre / 1048576ULL)) + "/" + String((unsigned long)(total / 1048576ULL)) + " MB";
   SD.end(); // se desmonta antes de enviar a Telegram: no ocupa RAM durante la conexión segura
   sdSPI.end();
-  hSPI.begin(TOUCH_CLK, TOUCH_MISO, TOUCH_MOSI, ETOUCH_CS); // devuelve el bus al táctil
+  hSPI.begin(TOUCH_CLK, TOUCH_MISO, TOUCH_MOSI, ETOUCH_CS);
+  pinMode(SD_CS, OUTPUT);
+  digitalWrite(SD_CS, HIGH); // devuelve el bus al táctil
   sdOk = false;
   return r;
 }
@@ -2297,11 +2315,12 @@ bool sdGuardaTelegram(const String &texto)
   const size_t esperado = texto.length() + 2;
   bool ok = false;
   // Hasta 3 intentos completos: cada uno desmonta, monta de nuevo ( forzado, sin esperar el minuto de castigo ) y escribe
-  for (int intento = 1; intento <= 3 && !ok; intento++)
+  const int maxInt = sdSinTarjeta ? 1 : 3; // la última vez la ranura estaba vacía: un solo intento, sin parones
+  for (int intento = 1; intento <= maxInt && !ok; intento++)
   {
     if (!sdMonta(true))
     {
-      if (sdSinTarjeta && intento == 3) // ranura vacía en los 3 intentos
+      if (sdSinTarjeta && intento == maxInt) // ranura vacía
         return false;
       Serial.printf("M8AX - SD: No Monta ( Intento %d De 3 )\n", intento);
       delay(200);
@@ -2338,7 +2357,9 @@ bool sdGuardaTelegram(const String &texto)
       Serial.printf("M8AX - SD: No Se Pudo Crear La Carpeta O Abrir El Archivo ( Intento %d De 3 )\n", intento);
     SD.end();
     sdSPI.end();
-    hSPI.begin(TOUCH_CLK, TOUCH_MISO, TOUCH_MOSI, ETOUCH_CS); // devuelve el bus al táctil
+    hSPI.begin(TOUCH_CLK, TOUCH_MISO, TOUCH_MOSI, ETOUCH_CS);
+    pinMode(SD_CS, OUTPUT);
+    digitalWrite(SD_CS, HIGH); // devuelve el bus al táctil
     sdOk = false;
     if (!ok)
       delay(200);
@@ -2346,6 +2367,45 @@ bool sdGuardaTelegram(const String &texto)
   if (!ok)
     Serial.printf("M8AX - ###### NO SE PUDO GUARDAR EN LA SD ###### ( Heap Libre %u | Max Bloque %u )\n", (unsigned)ESP.getFreeHeap(), (unsigned)ESP.getMaxAllocHeap());
   return ok;
+}
+
+// Cola de mensajes que esperan a la SD. Cada mensaje vive en el heap solo hasta que se graba
+static void sdEncola(const String &t)
+{
+  if (sdColaN >= SD_COLA_MAX)
+  {
+    Serial.println("M8AX - SD: Cola Llena, Se Descarta El Mensaje Más Antiguo...");
+    delete sdCola[0];
+    for (uint8_t i = 1; i < SD_COLA_MAX; i++)
+      sdCola[i - 1] = sdCola[i];
+    sdCola[--sdColaN] = nullptr;
+  }
+  String *p = new (std::nothrow) String(t);
+  if (!p || p->length() != t.length())
+  {
+    Serial.println("M8AX - SD: Sin RAM Para La Cola, Mensaje Perdido...");
+    delete p;
+    return;
+  }
+  sdCola[sdColaN++] = p;
+}
+
+// Graba lo que haya en cola, el más antiguo primero. Se para en el primer fallo y se reintenta luego
+static void sdVuelcaCola()
+{
+  while (sdColaN)
+  {
+    if (!sdGuardaTelegram(*sdCola[0]))
+    {
+      sdColaUltimo = millis();
+      Serial.printf("M8AX - SD: %u Mensaje(s) En Cola, Se Reintentará...\n", (unsigned)sdColaN);
+      return;
+    }
+    delete sdCola[0];
+    for (uint8_t i = 1; i < sdColaN; i++)
+      sdCola[i - 1] = sdCola[i];
+    sdCola[--sdColaN] = nullptr;
+  }
 }
 
 /***************************************************************************
@@ -2493,7 +2553,9 @@ static void webSdCierra()
 {
   SD.end();
   sdSPI.end();
-  hSPI.begin(TOUCH_CLK, TOUCH_MISO, TOUCH_MOSI, ETOUCH_CS); // devuelve el bus al táctil
+  hSPI.begin(TOUCH_CLK, TOUCH_MISO, TOUCH_MOSI, ETOUCH_CS);
+  pinMode(SD_CS, OUTPUT);
+  digitalWrite(SD_CS, HIGH); // devuelve el bus al táctil
   sdOk = false;
 }
 
@@ -3052,28 +3114,20 @@ bool recopilaTelegram()
   cadenaEnvio += F("\n------------------------------------------------------------------------------------------------");
   bool botOk = (BOT_TOKEN != "NO CONFIGURADO" && CHAT_ID != "NO CONFIGURADO");
   bool enviado = true;
-  if (!sdGuardadoCiclo && sdGuardaTelegram(cadenaEnvio))
+  if (!sdGuardadoCiclo) // el mensaje del ciclo entra en la cola una sola vez: ya no se pierde aunque la SD falle
+  {
+    sdEncola(cadenaEnvio);
     sdGuardadoCiclo = true;
+  }
+  sdVuelcaCola();
   Serial.printf("M8AX - Tamaño Del Mensaje: %u Caracteres\n", (unsigned)cadenaEnvio.length());
   if (botOk)
     enviado = enviarMensajeATelegram(cadenaEnvio);
   else
     sumatele += 1;
   // segunda oportunidad para la SD, con la RAM ya liberada de Telegram: solo si antes falló
-  if (!sdGuardadoCiclo && sdGuardaTelegram(cadenaEnvio))
-    sdGuardadoCiclo = true;
-  if (!sdGuardadoCiclo && enviado && !sdSinTarjeta && sdPendiente.length() < 5000)
-  {
-    if (sdPendiente.length())
-      sdPendiente += "\n\n";
-    else
-    {
-      sdPendienteIntentos = 0;
-      sdPendienteUltimo = millis();
-    }
-    sdPendiente += cadenaEnvio;
-    Serial.println("M8AX - SD: Mensaje En Espera, Se Reintentará Cada Minuto...");
-  }
+  if (sdColaN && !sdSinTarjeta) // ranura vacía: un solo intento por ciclo
+    sdVuelcaCola();
   cadenaEnvio = "", cadenaEnvio.reserve(0); // ahora sí se libera, ya sin hacer falta
   return enviado;
 }
@@ -3091,6 +3145,7 @@ int obtenHoraPorIP(const String &ip)
   for (int intento = 1; intento <= 5; intento++)
   {
     HTTPClient http;
+    http.useHTTP10(true);
     http.setTimeout(2000);
     http.begin(api_url);
     int httpCode = http.GET();
@@ -3144,18 +3199,14 @@ void ajustarZonaHoraria()
   int nueva = obtenHoraPorIP(getPublicIP());
   if (nueva == 1000)
     return;
-  zonilla = nueva;
-  int timezoneDifference = abs(Settings.Timezone - zonilla);
-  if (timezoneDifference <= 1)
+  if (abs(Settings.Timezone - nueva) <= 1 && Settings.Timezone != nueva)
   {
-    if (Settings.Timezone != zonilla)
-    {
-      Settings.Timezone = zonilla;
-      nvMem.saveConfig(&Settings);
-      Serial.println(String("M8AX - Cambiando TimeZone... Actualmente Es UTC ") + (Settings.Timezone >= 0 ? "+" : "") + String(Settings.Timezone));
-      timeClient.setTimeOffset(3600 * Settings.Timezone);
-    }
+    Settings.Timezone = nueva;
+    nvMem.saveConfig(&Settings);
+    Serial.println(String("M8AX - Cambiando TimeZone... Actualmente Es UTC ") + (Settings.Timezone >= 0 ? "+" : "") + String(Settings.Timezone));
+    timeClient.setTimeOffset(3600 * Settings.Timezone);
   }
+  zonilla = Settings.Timezone;
   Serial.println("M8AX - Combrobación De Ajuste De Hora ( TimeZone ), Correcta...");
 }
 
@@ -3185,6 +3236,8 @@ void esp32_2432S028R_Init(void)
     tft.writedata(1);
   }
   hSPI.begin(TOUCH_CLK, TOUCH_MISO, TOUCH_MOSI, ETOUCH_CS);
+  pinMode(SD_CS, OUTPUT);
+  digitalWrite(SD_CS, HIGH);
   touch.init();
   TFT_eTouchBase::Calibation calibation = {233, 3785, 3731, 120, 2};
   touch.setCalibration(calibation);
@@ -3983,7 +4036,7 @@ void esp32_2432S028R_MinerScreen(unsigned long mElapsed)
   X_FINAL = 316;
   Y_POS = 165;
   longitud_total = X_FINAL - X_INICIO;
-  longitud_pintada = (longitud_total * segundosDelAno) / segundosTotalesDelAno;
+  longitud_pintada = (longitud_total * (segundosDelAno / 60)) / (segundosTotalesDelAno / 60);
   colorI = esp_random() % (sizeof(colors) / sizeof(colors[0]));
   tft.fillRect(X_INICIO, Y_POS - 1, longitud_total + 1, 3, TFT_DARKGREY);
   tft.drawLine(X_INICIO, Y_POS, X_INICIO + longitud_pintada, Y_POS, colors[colorI]);
@@ -4087,7 +4140,7 @@ void esp32_2432S028R_ClockScreen(unsigned long mElapsed)
   int X_FINAL = 312;
   int Y_POS = 117;
   int longitud_total = X_FINAL - X_INICIO;
-  int longitud_pintada = (longitud_total * segundosDelAno) / segundosTotalesDelAno;
+  int longitud_pintada = (longitud_total * (segundosDelAno / 60)) / (segundosTotalesDelAno / 60);
   colorI = esp_random() % (sizeof(colors) / sizeof(colors[0]));
   tft.fillRect(X_INICIO, Y_POS - 1, longitud_total + 1, 4, TFT_DARKGREY);
   tft.fillRect(X_INICIO, Y_POS - 1, longitud_pintada, 4, colors[colorI]);
@@ -5093,8 +5146,6 @@ void tDisplay_m8axScreenMegaNerd(unsigned long mElapsed)
   colorI = esp_random() % (sizeof(colors) / sizeof(colors[0]));
   Serial.printf("M8AX - %s >>> Completados %s Share(s), %s Khashes, Prom. Hashrate %s KH/s %s°\n",
                 mineria.currentTime.c_str(), mineria.completedShares.c_str(), mineria.totalKHashes.c_str(), mineria.currentHashRate.c_str(), mineria.temp.c_str());
-  if (hasChangedScreen)
-    tft.pushImage(0, 0, initWidth, initHeight, M8AXRelojLunar);
   printPoolData();
   refresca++;
   if (refresca > 0)
@@ -5146,23 +5197,23 @@ void tDisplay_m8axScreenMegaNerd(unsigned long mElapsed)
   tft.setTextColor(colors[colorI]);
   tft.print("+-/Ops_Simp/Seg");
   tft.setTextColor(TFT_WHITE);
-  float opsseg = (hashRa * 1000) * 2560;
+  uint64_t opsseg = (uint64_t)(hashRa * 1000) * 2560;
   tft.setCursor(4, 75);
-  tft.print((uint32_t)opsseg);
+  tft.print((unsigned long long)opsseg);
   tft.setCursor(4, 90);
   tft.setTextColor(colors[colorI]);
-  tft.print("TFLOPS");
+  tft.print("GH/Dia");
   tft.setTextColor(TFT_WHITE);
-  float tflops = ((hashRa * 1000) * 2560) / 1000000000000;
+  float ghdia = hashRa * 86400.0f / 1000000.0f;
   tft.setCursor(4, 100);
-  char buffer[20];               // Buffer para almacenar el número formateado
-  dtostrf(tflops, 8, 6, buffer); // (valor, ancho mínimo, decimales, buffer)
+  char buffer[20];              // Buffer para almacenar el número formateado
+  dtostrf(ghdia, 1, 3, buffer); // (valor, ancho mínimo, decimales, buffer)
   tft.print(buffer);
   tft.setCursor(4, 115);
   tft.setTextColor(colors[colorI]);
   tft.print("GOPS");
   tft.setTextColor(TFT_WHITE);
-  float gops = ((hashRa * 1000) * 2560) / 1000000;
+  float gops = ((hashRa * 1000) * 2560) / 1e9f;
   tft.setCursor(4, 125);
   tft.print(gops);
   tft.setTextColor(colors[colorI]);
@@ -5189,7 +5240,7 @@ void tDisplay_m8axScreenMegaNerd(unsigned long mElapsed)
   tft.setTextColor(colors[colorI]);
   tft.print("TOPS");
   tft.setTextColor(TFT_WHITE);
-  float Tops = ((hashRa * 1000) * 2560) / 1000000000;
+  float Tops = ((hashRa * 1000) * 2560) / 1e12f;
   tft.setCursor(230, 75);
   char bufferr[20];
   dtostrf(Tops, 8, 6, bufferr);
@@ -5437,7 +5488,7 @@ void tDisplay_granHash(unsigned long mElapsed)
   X_FINAL = 308;
   Y_POS = 35;
   longitud_total = X_FINAL - X_INICIO;
-  longitud_pintada = (longitud_total * segundosDelAno) / segundosTotalesDelAno;
+  longitud_pintada = (longitud_total * (segundosDelAno / 60)) / (segundosTotalesDelAno / 60);
   colorI = esp_random() % (sizeof(colors) / sizeof(colors[0]));
   tft.fillRect(X_INICIO, Y_POS - 1, longitud_total + 1, 7, TFT_DARKGREY);
   tft.fillRect(X_INICIO, Y_POS - 1, longitud_pintada, 7, colors[colorI]);
@@ -22600,6 +22651,744 @@ void esp32_2432S028R_Conecta4Screen(unsigned long mElapsed)
   }
 }
 
+// ---------------------------------------------------------------------------------------------------------
+//  ACUARIO
+// ---------------------------------------------------------------------------------------------------------
+
+#define AQ_TOP 28    // arriba quedan 28 px negros para la hora y el hashrate
+#define AQ_BOT 170   // el agua llega hasta la barra de precios
+#define AQ_SANDY 153 // altura media de la arena
+#define AQ_CRABY 162 // por donde pasea el cangrejo
+#define AQ_YMIN 48   // los peces nadan entre estas dos alturas
+#define AQ_YMAX 126
+#define AQ_NFISH 7  // peces ( baja a 5 si quieres aun mas fluidez )
+#define AQ_NBUB 9   // burbujas
+#define AQ_NPLANT 6 // algas
+#define AQ_SLICE_MS 5000
+#define AQ_FRAME_MS 33  // ms entre fotogramas de peces y burbujas
+#define AQ_PLANT_MS 110 // ms entre fotogramas del vaiven de las algas
+
+#define AQ_RGB(r, g, b) ((uint16_t)((((r) & 0xF8) << 8) | (((g) & 0xFC) << 3) | ((b) >> 3)))
+
+// a,b = semiejes del cuerpo | tl = largo de cola | th = media altura de la cola | fh = alto de aletas
+struct AqSp
+{
+  uint8_t a, b, tl, th, fh;
+  uint16_t body, belly, fin, tail;
+  uint8_t style;
+};
+static const AqSp AQ_SP[5] = {
+    {13, 8, 7, 5, 4, AQ_RGB(255, 140, 0), AQ_RGB(255, 180, 90), AQ_RGB(230, 100, 0), AQ_RGB(255, 140, 0), 0},  // payaso
+    {15, 10, 8, 7, 6, AQ_RGB(0, 90, 255), AQ_RGB(0, 120, 255), AQ_RGB(255, 225, 0), AQ_RGB(255, 225, 0), 1},   // cirujano azul
+    {12, 9, 6, 5, 5, AQ_RGB(255, 235, 0), AQ_RGB(255, 250, 190), AQ_RGB(255, 225, 0), AQ_RGB(255, 235, 0), 2}, // mariposa
+    {8, 3, 4, 3, 2, AQ_RGB(90, 180, 255), AQ_RGB(190, 190, 190), AQ_RGB(230, 0, 0), AQ_RGB(230, 0, 0), 3},     // neon
+    {10, 9, 6, 5, 4, AQ_RGB(255, 210, 0), AQ_RGB(255, 255, 255), AQ_RGB(255, 165, 0), AQ_RGB(255, 165, 0), 4}  // globo
+};
+
+struct AqFish
+{
+  float x, y, vx, ty, ph;
+  int8_t dir, wag;
+  uint8_t sp;
+};
+struct AqBub
+{
+  float x, y, sp, ph;
+  int16_t cx, cy;
+  uint8_t r;
+  bool on;
+  uint32_t wait;
+};
+struct AqCrab
+{
+  float x;
+  int8_t dir;
+  uint32_t pausa;
+};
+struct AqPlant
+{
+  int16_t x;
+  uint8_t h;
+  uint16_t c1, c2;
+};
+struct AqRect
+{
+  int16_t l, t, r, b;
+};
+
+static const AqPlant AQ_PL[AQ_NPLANT] = {
+    {16, 56, AQ_RGB(0, 120, 40), AQ_RGB(40, 190, 70)},
+    {58, 40, AQ_RGB(20, 140, 60), AQ_RGB(90, 210, 90)},
+    {122, 62, AQ_RGB(0, 105, 55), AQ_RGB(30, 170, 100)},
+    {196, 46, AQ_RGB(30, 150, 30), AQ_RGB(120, 215, 60)},
+    {252, 58, AQ_RGB(0, 120, 40), AQ_RGB(40, 190, 70)},
+    {298, 42, AQ_RGB(20, 140, 60), AQ_RGB(90, 210, 90)}};
+
+struct AqState
+{
+  bool init;
+  float ph; // fase del vaiven de las algas
+  unsigned long lastPlant;
+  AqFish fish[AQ_NFISH];
+  AqBub bub[AQ_NBUB];
+  AqCrab crab;
+};
+static AqState aq = {false};
+
+static inline uint16_t aqC(int r, int g, int b)
+{
+  if (r < 0)
+    r = 0;
+  else if (r > 255)
+    r = 255;
+  if (g < 0)
+    g = 0;
+  else if (g > 255)
+    g = 255;
+  if (b < 0)
+    b = 0;
+  else if (b > 255)
+    b = 255;
+  return AQ_RGB(r, g, b);
+}
+
+// ---- Un pixel de un pez, calculado con matematicas ( nada de sprites ): ojo, cuerpo, aletas y cola ----
+static bool aqFishPix(const AqFish &f, int fx, int fy, int px, int py, uint16_t &col)
+{
+  const AqSp &s = AQ_SP[f.sp];
+  int dx = px - fx;
+  int u = f.dir > 0 ? dx : -dx; // u > 0 hacia la cabeza
+  int v = py - fy;
+  int a = s.a, b = s.b;
+
+  // Ojo
+  int ex = (a * 5) / 9, ey = -(b / 4);
+  int d2 = (u - ex) * (u - ex) + (v - ey) * (v - ey);
+  if (a >= 10)
+  {
+    if (d2 <= 1)
+    {
+      col = 0x0000;
+      return true;
+    }
+    if (d2 <= 5)
+    {
+      col = 0xFFFF;
+      return true;
+    }
+  }
+  else if (d2 <= 1)
+  {
+    col = 0x0000;
+    return true;
+  }
+
+  // Cuerpo ( elipse )
+  if (u * u * b * b + v * v * a * a <= a * a * b * b)
+  {
+    uint16_t c = s.body;
+    switch (s.style)
+    {
+    case 0: // payaso: dos bandas blancas con borde negro
+    {
+      int d = abs(u - a / 4);
+      int d3 = abs(u + a / 2);
+      if (d3 < d)
+        d = d3;
+      if (d <= 1)
+        c = 0xFFFF;
+      else if (d == 2)
+        c = 0x0000;
+      else if (v > b / 2)
+        c = s.belly;
+      break;
+    }
+    case 1: // cirujano azul: franja oscura en el lomo
+      if (v >= -(b / 2) - 1 && v <= -(b / 2) + 1 && u > -(a / 2) && u < a / 2 + 3)
+        c = AQ_RGB(0, 10, 90);
+      else if (v > b / 2)
+        c = s.belly;
+      break;
+    case 2: // mariposa: barra negra que cruza el ojo
+      if (abs(u - ex) <= 1 && v > -b + 1)
+        c = 0x0000;
+      else if (v > b / 2)
+        c = s.belly;
+      break;
+    case 3: // neon: franja celeste arriba, roja abajo
+      if (v >= -1 && v <= 0 && u > -a + 2 && u < a - 1)
+        c = AQ_RGB(0, 255, 255);
+      else if (v >= 1)
+        c = AQ_RGB(230, 0, 0);
+      break;
+    default: // globo: barriga blanca y manchitas
+      if (v > b / 3)
+        c = s.belly;
+      else if ((((u + 24) * 17 + (v + 24) * 29) % 13) == 0)
+        c = AQ_RGB(200, 90, 0);
+      break;
+    }
+    col = c;
+    return true;
+  }
+
+  // Aleta dorsal ( triangulo apoyado en el lomo )
+  int hw = a / 2, uc = -(a / 8);
+  int du = abs(u - uc);
+  if (du <= hw)
+  {
+    int base = (6 * b) / 10;
+    int top = base + (((4 * b) / 10 + s.fh) * (hw - du)) / hw;
+    int mv = -v;
+    if (mv >= base && mv <= top)
+    {
+      col = s.fin;
+      return true;
+    }
+  }
+  // Aleta de la barriga ( mas pequeña )
+  int hw2 = a / 3, uc2 = -(a / 4);
+  du = abs(u - uc2);
+  if (hw2 > 0 && du <= hw2)
+  {
+    int base = (6 * b) / 10;
+    int top = base + (((4 * b) / 10 + s.fh / 2) * (hw2 - du)) / hw2;
+    if (v >= base && v <= top)
+    {
+      col = s.fin;
+      return true;
+    }
+  }
+
+  // Cola con vaiven y muesca en la punta
+  int n = (-a + 2) - u;
+  int L = s.tl + 2;
+  if (n >= 0 && n <= L)
+  {
+    int cv = (f.wag * n) / L;
+    int hh = 1 + ((s.th - 1) * n) / L;
+    int dv = abs(v - cv);
+    if (dv <= hh && !(n >= s.tl + 1 && dv <= 1))
+    {
+      col = s.tail;
+      return true;
+    }
+  }
+  return false;
+}
+
+// ---- Cangrejo ----
+static bool aqCrabPix(int cx, int step, int px, int py, uint16_t &col)
+{
+  int dx = px - cx, dy = py - AQ_CRABY;
+  int ax = abs(dx);
+  if (ax == 2 && dy >= -6 && dy <= -5) // ojos
+  {
+    col = (dy == -6) ? 0xFFFF : AQ_RGB(200, 30, 20);
+    return true;
+  }
+  int sx = dx > 0 ? 8 : -8; // pinzas
+  int pdx = dx - sx, pdy = dy + 4;
+  if (pdx * pdx + pdy * pdy <= 5)
+  {
+    col = AQ_RGB(240, 70, 40);
+    return true;
+  }
+  if (dx * dx * 16 + dy * dy * 36 <= 576) // caparazon
+  {
+    col = (dy < -1) ? AQ_RGB(235, 60, 35) : AQ_RGB(190, 35, 25);
+    return true;
+  }
+  if ((ax == 3 || ax == 5) && dy >= 4 && dy <= 5 + (((ax >> 1) + step) & 1)) // patas
+  {
+    col = AQ_RGB(170, 30, 20);
+    return true;
+  }
+  return false;
+}
+
+// ---- Una linea de w pixeles ya compuesta: fondo + algas + cangrejo + peces + burbujas ----
+static void aqRow(int x0, int y, int w, uint16_t *buf)
+{
+  const int x1 = x0 + w;
+
+  // Fondo: degradado de agua con rayos de luz que se apagan con la profundidad, y arena abajo
+  {
+    int t = ((y - AQ_TOP) * 256) / (AQ_SANDY - AQ_TOP);
+    if (t > 256)
+      t = 256;
+    int r = 40 - ((40 * t) >> 8), g = 150 - ((115 * t) >> 8), b = 200 - ((100 * t) >> 8);
+    uint16_t cn = aqC(r, g, b);
+    int amt = 16 - (y - AQ_TOP) / 7;
+    uint16_t cr = (amt > 0) ? aqC(r + amt / 2, g + amt, b + amt) : cn;
+    for (int i = 0; i < w; i++)
+    {
+      int px = x0 + i;
+      if (y >= AQ_SANDY - 1)
+      {
+        int tw = px & 63;
+        if (tw > 31)
+          tw = 63 - tw;
+        if (y >= AQ_SANDY - 1 + (tw >> 3)) // arena
+        {
+          int k = y - (AQ_SANDY - 1);
+          int n = (px * 37 + y * 91 + px * y) & 31;
+          int sr = 214 - k * 4, sg = 190 - k * 4, sb = 128 - k * 3;
+          if (n == 0)
+          {
+            sr -= 45;
+            sg -= 45;
+            sb -= 40;
+          }
+          else if (n == 1)
+          {
+            sr += 25;
+            sg += 25;
+            sb += 25;
+          }
+          buf[i] = aqC(sr, sg, sb);
+        }
+        else
+          buf[i] = cn;
+      }
+      else
+      {
+        int ph = (px + ((y * 3) >> 2)) & 127;
+        buf[i] = (ph < 20 || (ph >= 64 && ph < 78)) ? cr : cn;
+      }
+    }
+  }
+
+  // Algas ( dos hojas por mata, se mecen con aq.ph )
+  for (int p = 0; p < AQ_NPLANT; p++)
+  {
+    const AqPlant &pl = AQ_PL[p];
+    int hh = (AQ_SANDY + 3) - y;
+    if (hh < 0 || hh >= pl.h)
+      continue;
+    if (x1 <= pl.x - 16 || x0 >= pl.x + 20)
+      continue;
+    for (int k = 0; k < 2; k++)
+    {
+      int H = k ? (pl.h * 3) / 4 : pl.h;
+      if (hh >= H)
+        continue;
+      float cx = pl.x + (k ? 8 : 0) + sinf(aq.ph + hh * 0.085f + pl.x * 0.05f + k * 1.7f) * (hh * 0.11f);
+      int ci = (int)cx;
+      int th = 1 + ((H - hh) * 2) / H;
+      int xa = ci - th, xb = ci + th;
+      if (xa < x0)
+        xa = x0;
+      if (xb > x1 - 1)
+        xb = x1 - 1;
+      for (int xx = xa; xx <= xb; xx++)
+        buf[xx - x0] = (xx >= ci) ? pl.c1 : pl.c2;
+    }
+  }
+
+  // Cangrejo
+  {
+    int cx = (int)aq.crab.x;
+    if (y >= AQ_CRABY - 9 && y <= AQ_CRABY + 8 && x1 > cx - 14 && x0 < cx + 15)
+    {
+      int step = (cx / 3) & 1;
+      int xa = cx - 14 < x0 ? x0 : cx - 14, xb = cx + 14 > x1 - 1 ? x1 - 1 : cx + 14;
+      uint16_t c;
+      for (int xx = xa; xx <= xb; xx++)
+        if (aqCrabPix(cx, step, xx, y, c))
+          buf[xx - x0] = c;
+    }
+  }
+
+  // Peces
+  for (int i = 0; i < AQ_NFISH; i++)
+  {
+    const AqFish &f = aq.fish[i];
+    const AqSp &s = AQ_SP[f.sp];
+    int W = s.a + s.tl + 3, H = s.b + s.fh + 2;
+    int fx = (int)f.x, fy = (int)f.y;
+    if (y < fy - H || y > fy + H || x1 <= fx - W || x0 > fx + W)
+      continue;
+    int xa = fx - W < x0 ? x0 : fx - W, xb = fx + W > x1 - 1 ? x1 - 1 : fx + W;
+    uint16_t c;
+    for (int xx = xa; xx <= xb; xx++)
+      if (aqFishPix(f, fx, fy, xx, y, c))
+        buf[xx - x0] = c;
+  }
+
+  // Burbujas ( por encima de todo )
+  for (int i = 0; i < AQ_NBUB; i++)
+  {
+    const AqBub &q = aq.bub[i];
+    if (!q.on)
+      continue;
+    int r = q.r;
+    if (y < q.cy - r - 1 || y > q.cy + r + 1 || x1 <= q.cx - r - 1 || x0 > q.cx + r + 1)
+      continue;
+    int xa = q.cx - r - 1 < x0 ? x0 : q.cx - r - 1, xb = q.cx + r + 1 > x1 - 1 ? x1 - 1 : q.cx + r + 1;
+    for (int xx = xa; xx <= xb; xx++)
+    {
+      int dx = xx - q.cx, dy = y - q.cy, dd = dx * dx + dy * dy;
+      if (r == 1)
+      {
+        if (dd <= 1)
+          buf[xx - x0] = 0xFFFF;
+      }
+      else if (dx == -1 && dy == -1)
+        buf[xx - x0] = 0xFFFF;
+      else if (dd <= r * r + 1 && dd >= (r - 1) * (r - 1))
+        buf[xx - x0] = AQ_RGB(190, 240, 255);
+    }
+  }
+}
+
+// Repinta un rectangulo [x0,x1) x [y0,y1) linea a linea. Cada pixel se escribe UNA vez con su color final,
+// asi que no hay parpadeo y no hace falta ningun sprite: solo un buffer de 128 bytes en la pila.
+static void aqRect(int x0, int y0, int x1, int y1)
+{
+  if (x0 < 0)
+    x0 = 0;
+  if (x1 > 320)
+    x1 = 320;
+  if (y0 < AQ_TOP)
+    y0 = AQ_TOP;
+  if (y1 > AQ_BOT)
+    y1 = AQ_BOT;
+  if (x0 >= x1 || y0 >= y1)
+    return;
+  uint16_t buf[64];
+  tft.startWrite();
+  for (int y = y0; y < y1; y++)
+    for (int x = x0; x < x1; x += 64)
+    {
+      int w = x1 - x;
+      if (w > 64)
+        w = 64;
+      aqRow(x, y, w, buf);
+      tft.setAddrWindow(x, y, w, 1);
+      tft.pushColors(buf, w, true);
+    }
+  tft.endWrite();
+}
+
+static inline void aqAdd(AqRect &d, int l, int t, int r, int b)
+{
+  if (d.l >= d.r)
+  {
+    d.l = l;
+    d.t = t;
+    d.r = r;
+    d.b = b;
+    return;
+  }
+  if (l < d.l)
+    d.l = l;
+  if (t < d.t)
+    d.t = t;
+  if (r > d.r)
+    d.r = r;
+  if (b > d.b)
+    d.b = b;
+}
+
+static void aqFishBox(const AqFish &f, int &l, int &t, int &r, int &b)
+{
+  const AqSp &s = AQ_SP[f.sp];
+  int W = s.a + s.tl + 3, H = s.b + s.fh + 2;
+  l = (int)f.x - W;
+  r = (int)f.x + W + 1;
+  t = (int)f.y - H;
+  b = (int)f.y + H + 1;
+}
+
+static void aqFishNew(AqFish &f, uint8_t sp, bool inicial)
+{
+  const AqSp &s = AQ_SP[sp];
+  int W = s.a + s.tl + 3;
+  f.sp = sp;
+  f.dir = (esp_random() & 1) ? 1 : -1;
+  f.vx = (sp == 3 ? 0.9f : 0.35f) + (esp_random() % 100) * (sp == 3 ? 0.007f : 0.008f);
+  f.y = AQ_YMIN + esp_random() % (AQ_YMAX - AQ_YMIN);
+  f.ty = f.y;
+  f.ph = (esp_random() % 628) / 100.0f;
+  f.wag = 0;
+  if (inicial)
+    f.x = esp_random() % 320;
+  else
+    f.x = f.dir > 0 ? -W - 2 : 320 + W + 2;
+}
+
+static void aqInit()
+{
+  for (int i = 0; i < AQ_NFISH; i++)
+    aqFishNew(aq.fish[i], i < 5 ? i : (i == 5 ? 3 : 0), true);
+  for (int i = 0; i < AQ_NBUB; i++)
+  {
+    aq.bub[i].on = false;
+    aq.bub[i].wait = millis() + esp_random() % 4000;
+  }
+  aq.crab.x = 60 + esp_random() % 200;
+  aq.crab.dir = (esp_random() & 1) ? 1 : -1;
+  aq.crab.pausa = 0;
+  aq.ph = 0;
+  aq.lastPlant = 0;
+  aq.init = true;
+}
+
+// Un fotograma: mueve todo y repinta solo lo que ha cambiado ( caja vieja + caja nueva de cada cosa )
+static void aqFrame(unsigned long now)
+{
+  AqRect d[AQ_NFISH + AQ_NBUB + 1 + AQ_NPLANT];
+  int nd = 0;
+
+  // Peces
+  for (int i = 0; i < AQ_NFISH; i++)
+  {
+    AqFish &f = aq.fish[i];
+    AqRect r = {0, 0, 0, 0};
+    int l, t, rr, b;
+    aqFishBox(f, l, t, rr, b);
+    aqAdd(r, l, t, rr, b);
+    f.x += f.dir * f.vx;
+    float dy = f.ty - f.y;
+    f.y += constrain(dy * 0.04f, -0.3f, 0.3f);
+    if (fabsf(dy) < 1.5f && (esp_random() % 400) == 0)
+      f.ty = AQ_YMIN + esp_random() % (AQ_YMAX - AQ_YMIN);
+    f.ph += 0.22f + f.vx * 0.3f;
+    f.wag = (int)(sinf(f.ph) * 3.4f);
+    const AqSp &s = AQ_SP[f.sp];
+    int W = s.a + s.tl + 3;
+    if ((f.dir > 0 && f.x > 320 + W + 6) || (f.dir < 0 && f.x < -W - 6))
+      aqFishNew(f, f.sp, false);
+    aqFishBox(f, l, t, rr, b);
+    aqAdd(r, l, t, rr, b);
+    d[nd++] = r;
+  }
+
+  // Burbujas
+  for (int i = 0; i < AQ_NBUB; i++)
+  {
+    AqBub &q = aq.bub[i];
+    AqRect r = {0, 0, 0, 0};
+    if (q.on)
+      aqAdd(r, q.cx - q.r - 1, q.cy - q.r - 1, q.cx + q.r + 2, q.cy + q.r + 2);
+    if (!q.on)
+    {
+      if (now >= q.wait)
+      {
+        q.on = true;
+        q.x = 8 + esp_random() % 304;
+        q.y = AQ_SANDY - 3;
+        q.r = 1 + esp_random() % 3;
+        q.sp = 0.5f + (esp_random() % 100) * 0.009f;
+        q.ph = (esp_random() % 628) / 100.0f;
+        q.cx = (int)q.x;
+        q.cy = (int)q.y;
+      }
+    }
+    else
+    {
+      q.y -= q.sp;
+      q.ph += 0.13f;
+      q.cx = (int)(q.x + sinf(q.ph) * 3.0f);
+      q.cy = (int)q.y;
+      if (q.cy < AQ_TOP + q.r + 2)
+      {
+        q.on = false;
+        q.wait = now + esp_random() % 3000;
+      }
+    }
+    if (q.on)
+      aqAdd(r, q.cx - q.r - 1, q.cy - q.r - 1, q.cx + q.r + 2, q.cy + q.r + 2);
+    d[nd++] = r;
+  }
+
+  // Cangrejo
+  {
+    AqCrab &c = aq.crab;
+    AqRect r = {0, 0, 0, 0};
+    aqAdd(r, (int)c.x - 15, AQ_CRABY - 10, (int)c.x + 16, AQ_CRABY + 9);
+    if (now >= c.pausa)
+    {
+      c.x += c.dir * 0.45f;
+      if (c.x < 18)
+      {
+        c.x = 18;
+        c.dir = 1;
+      }
+      else if (c.x > 302)
+      {
+        c.x = 302;
+        c.dir = -1;
+      }
+      if ((esp_random() % 500) == 0)
+        c.pausa = now + 800 + esp_random() % 2500;
+      if ((esp_random() % 900) == 0)
+        c.dir = -c.dir;
+    }
+    aqAdd(r, (int)c.x - 15, AQ_CRABY - 10, (int)c.x + 16, AQ_CRABY + 9);
+    d[nd++] = r;
+  }
+
+  // Algas
+  if (now - aq.lastPlant >= AQ_PLANT_MS)
+  {
+    aq.lastPlant = now;
+    aq.ph += 0.10f;
+    for (int p = 0; p < AQ_NPLANT; p++)
+    {
+      AqRect r = {0, 0, 0, 0};
+      aqAdd(r, AQ_PL[p].x - 16, (AQ_SANDY + 3) - AQ_PL[p].h - 1, AQ_PL[p].x + 20, AQ_SANDY + 4);
+      d[nd++] = r;
+    }
+  }
+
+  // Ya esta todo movido: ahora se pinta
+  for (int i = 0; i < nd; i++)
+    if (d[i].l < d[i].r)
+      aqRect(d[i].l, d[i].t, d[i].r, d[i].b);
+}
+
+#define AQ_LED_MS 4000 // duracion de una respiracion completa (sube y baja), en ms
+#define AQ_LED_MAX 255 // brillo maximo del rojo (0-255); baja el numero si te molesta de noche
+
+// Respiracion del LED rojo: sube y baja suave. El cuadrado del seno compensa que el ojo ve mal los tonos bajos
+static uint8_t aqBrillo(unsigned long now)
+{
+  float t = (float)(now % AQ_LED_MS) / (float)AQ_LED_MS;
+  float s = 0.5f - 0.5f * cosf(t * 6.2831853f);
+  return (uint8_t)(s * s * AQ_LED_MAX);
+}
+
+void esp32_2432S028R_AcuarioScreen(unsigned long mElapsed)
+{
+  mineria = getMiningData(mElapsed);
+  Serial.printf("M8AX - %s >>> Completados %s Share(s), %s Khashes, Prom. Hashrate %s KH/s %s°\n",
+                mineria.currentTime.c_str(), mineria.completedShares.c_str(), mineria.totalKHashes.c_str(), mineria.currentHashRate.c_str(), mineria.temp.c_str());
+
+  bool redraw = hasChangedScreen;
+  if (!aq.init)
+  {
+    aqInit();
+    redraw = true;
+  }
+  if (redraw)
+  {
+    tft.fillRect(0, 0, 320, 170, TFT_BLACK);
+    aqRect(0, AQ_TOP, 320, AQ_BOT);
+  }
+  printPoolData(); // barra de precios de abajo (solo se repinta cuando toca)
+  hasChangedScreen = false;
+
+  char horaStr[9] = "";
+  char lastHora[9] = "";
+  char hashStr[16];
+  char lastHash[16] = "";
+  snprintf(hashStr, sizeof(hashStr), "%s", mineria.currentHashRate.c_str());
+
+  unsigned long start = millis();
+  unsigned long lastMiningUpdate = 0;
+  unsigned long lastTouchChk = 0;
+  unsigned long lastFrame = 0;
+  const int aqIdx = currentDisplayDriver->current_cyclic_screen;
+  unsigned long lastLed = 0;
+  ledSet(LED_PIN_G, 2, 0);
+  ledSet(LED_PIN_B, 3, 0);
+
+  while (millis() - start < AQ_SLICE_MS)
+  {
+    unsigned long now = millis();
+
+    // ---- Tactil (igual que Pong / Life / Lluvia) ----
+    if (now - lastTouchChk >= 40 && now - previousTouchMillis >= 500)
+    {
+      lastTouchChk = now;
+      int16_t t_x, t_y;
+      if (touch.getXY(t_x, t_y))
+      {
+        previousTouchMillis = now;
+        autoPantallas = false;
+        bloqueAvisoActivo = false;
+        if (((t_x > 109) && (t_x < 211)) && ((t_y > 185) && (t_y < 241)))
+        {
+          bottomScreenBlue ^= true;
+          hasChangedScreen = true;
+        }
+        else if ((t_x > 235) && ((t_y > 0) && (t_y < 16)))
+        {
+          esp32_2432S028R_AlternateScreenState();
+        }
+        else if (t_x > 160)
+        {
+          currentDisplayDriver->current_cyclic_screen = (currentDisplayDriver->current_cyclic_screen + 1) % currentDisplayDriver->num_cyclic_screens;
+        }
+        else
+        {
+          currentDisplayDriver->current_cyclic_screen = currentDisplayDriver->current_cyclic_screen - 1;
+          if (currentDisplayDriver->current_cyclic_screen < 0)
+            currentDisplayDriver->current_cyclic_screen = currentDisplayDriver->num_cyclic_screens - 1;
+        }
+        break;
+      }
+    }
+
+    // Cambio automático cada 1 minuto
+    if (autoPantallas && millis() - lastAutoChange >= 60000UL)
+    {
+      currentDisplayDriver->current_cyclic_screen =
+          (currentDisplayDriver->current_cyclic_screen + 1) % currentDisplayDriver->num_cyclic_screens;
+      lastAutoChange = millis();
+      break;
+    }
+
+    // ---- Peces, burbujas, cangrejo y algas ----
+    if (now - lastFrame >= AQ_FRAME_MS)
+    {
+      lastFrame = now;
+      aqFrame(now);
+    }
+
+    // ---- LED rojo respirando ----
+    if (now - lastLed >= 20)
+    {
+      lastLed = now;
+      ledSet(LED_PIN, 1, aqBrillo(now));
+    }
+
+    // ---- Hora (izquierda) y hashrate (derecha), arriba como en las demas ----
+    if (now - lastMiningUpdate >= 1000)
+    {
+      lastMiningUpdate = now;
+      mineria = getMiningData(mElapsed);
+      snprintf(hashStr, sizeof(hashStr), "%s", mineria.currentHashRate.c_str());
+      time_t epoch = (time_t)timeClient.getEpochTime();
+      struct tm *ti = localtime(&epoch);
+      snprintf(horaStr, sizeof(horaStr), "%02d:%02d:%02d", ti->tm_hour, ti->tm_min, ti->tm_sec);
+      if (strcmp(horaStr, lastHora) != 0 || strcmp(hashStr, lastHash) != 0)
+      {
+        pongDrawHud(hashStr, horaStr);
+        strcpy(lastHora, horaStr);
+        strcpy(lastHash, hashStr);
+      }
+    }
+    webAtender();
+    delay(2);
+  }
+
+  if (currentDisplayDriver->current_cyclic_screen != aqIdx)
+    ledsLibres(); // si nos vamos a otra pantalla, se sueltan y apagan los LEDs; si seguimos aqui, sigue respirando
+  tft.setTextPadding(0);
+  tft.setTextDatum(TL_DATUM);
+
+  cuentita++;
+  if (cuentita == 15)
+  {
+    ajustarZonaHoraria();
+    obtenerLocYTemp();
+    obtenerVariacionesBTC(variacion1dia, variacion1semana);
+  }
+}
+
 void analiCadaSegundo(unsigned long frame)
 {
   unsigned long epochTime = timeClient.getEpochTime(); // Obtener segundos desde 1970
@@ -22781,11 +23570,15 @@ void analiCadaSegundo(unsigned long frame)
   }
 
   // Si ya ha pasado el tiempo de arranque mínimo (por ejemplo, 10 minutos) y han pasado 2 horas desde el último mensaje de Telegram
+
   if (startTime > 0 && epochTime - startTime >= minStartupTime && epochTime - lastTelegramEpochTime >= interval)
   {
     // Ajustar la zona horaria si es necesario
-    if ((mes == 3 || mes == 4 || mes == 10 || mes == 11) && horita >= 0 && horita <= 5)
+    if ((mes == 3 || mes == 4 || mes == 9 || mes == 10 || mes == 11) && horita >= 0 && horita <= 5)
+    {
       ajustarZonaHoraria();
+      epochTime = timeClient.getEpochTime();
+    }
     obtenerLocYTemp();
     obtenerVariacionesBTC(variacion1dia, variacion1semana);
     // Verificar si los datos de Telegram están configurados
@@ -22867,14 +23660,10 @@ void analiCadaSegundo(unsigned long frame)
     }
   }
 
-  if (sdPendiente.length() && millis() - sdPendienteUltimo >= 60000UL)
+  if (sdColaN && !sdSinTarjeta && millis() - sdColaUltimo >= 60000UL) // tarjeta puesta: cada minuto. Ranura vacía: se prueba una vez en cada ciclo de Telegram
   {
-    sdPendienteUltimo = millis();
-    if (sdGuardaTelegram(sdPendiente) || ++sdPendienteIntentos >= 10)
-    {
-      sdPendiente = "", sdPendiente.reserve(0);
-      sdPendienteIntentos = 0;
-    }
+    sdColaUltimo = millis();
+    sdVuelcaCola();
   }
 }
 
@@ -22891,6 +23680,7 @@ void esp32_2432S028R_AnimateCurrentScreen(unsigned long frame)
 }
 
 // Variables para controlar el parpadeo con millis()
+
 unsigned long previousMillis = 0;
 unsigned long previousTouchMillis = 0;
 char currentScreen = 0;
@@ -22978,7 +23768,7 @@ void esp32_2432S028R_DoLedStuff(unsigned long frame)
   }
 }
 
-CyclicScreenFunction esp32_2432S028RCyclicScreens[] = {esp32_2432S028R_MinerScreen, esp32_2432S028R_BTCprice, esp32_2432S028R_ClockScreen, esp32_2432S028R_WeatherScreen, esp32_2432S028R_ECGScreen, tDisplay_granHash, tDisplay_hashGigante, RelojDeNumeros, tDisplay_m8axScreen7, esp32_2432S028R_m8axScreen1, esp32_2432S028R_m8axScreen2, tDisplay_m8axScreenMegaNerd, tDisplay_m8axScreen5, tDisplay_m8axScreen6, esp32_2432S028R_BannerScreen, tDisplay_Primos, esp32_2432S028R_CifrasScreen, esp32_2432S028R_HanoiScreen, esp32_2432S028R_TetrisScreen, esp32_2432S028R_AjedrezScreen, esp32_2432S028R_GalaxianScreen, esp32_2432S028R_NemesisScreen, esp32_2432S028R_AsteroidesScreen, esp32_2432S028R_PongScreen, esp32_2432S028R_KrakoutScreen, esp32_2432S028R_SnakeScreen, esp32_2432S028R_FlappyHashScreen, esp32_2432S028R_DoomScreen, esp32_2432S028R_LifeScreen, esp32_2432S028R_FractalScreen, esp32_2432S028R_Fractal3DScreen, esp32_2432S028R_AtractoresScreen, esp32_2432S028R_GalaxiasScreen, esp32_2432S028R_RainScreen, esp32_2432S028R_DemoScreen, esp32_2432S028R_monedaYdado, esp32_2432S028R_CalcScreen, esp32_2432S028R_Conecta4Screen, tDisplay_m8axScreen3, tDisplay_m8axScreen4};
+CyclicScreenFunction esp32_2432S028RCyclicScreens[] = {esp32_2432S028R_MinerScreen, esp32_2432S028R_BTCprice, esp32_2432S028R_ClockScreen, esp32_2432S028R_WeatherScreen, esp32_2432S028R_ECGScreen, tDisplay_granHash, tDisplay_hashGigante, RelojDeNumeros, tDisplay_m8axScreen7, esp32_2432S028R_m8axScreen1, esp32_2432S028R_m8axScreen2, tDisplay_m8axScreenMegaNerd, tDisplay_m8axScreen5, tDisplay_m8axScreen6, esp32_2432S028R_BannerScreen, tDisplay_Primos, esp32_2432S028R_CifrasScreen, esp32_2432S028R_HanoiScreen, esp32_2432S028R_TetrisScreen, esp32_2432S028R_AjedrezScreen, esp32_2432S028R_GalaxianScreen, esp32_2432S028R_NemesisScreen, esp32_2432S028R_AsteroidesScreen, esp32_2432S028R_PongScreen, esp32_2432S028R_KrakoutScreen, esp32_2432S028R_SnakeScreen, esp32_2432S028R_FlappyHashScreen, esp32_2432S028R_DoomScreen, esp32_2432S028R_LifeScreen, esp32_2432S028R_FractalScreen, esp32_2432S028R_Fractal3DScreen, esp32_2432S028R_AtractoresScreen, esp32_2432S028R_GalaxiasScreen, esp32_2432S028R_RainScreen, esp32_2432S028R_AcuarioScreen, esp32_2432S028R_DemoScreen, esp32_2432S028R_monedaYdado, esp32_2432S028R_CalcScreen, esp32_2432S028R_Conecta4Screen, tDisplay_m8axScreen3, tDisplay_m8axScreen4};
 
 DisplayDriver esp32_2432S028RDriver = {
     esp32_2432S028R_Init,
